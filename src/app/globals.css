@@ -58,3 +58,21 @@ a {
 .recharts-wrapper {
   outline: none;
 }
+
+.channel-data-page .ant-card {
+  box-shadow: 0 8px 24px rgba(21, 34, 50, 0.04);
+}
+
+.channel-data-page .ant-table-wrapper {
+  max-width: 100%;
+}
+
+.channel-data-page .ant-table-cell {
+  white-space: nowrap;
+}
+
+.channel-weekly-table .ant-table-tbody > tr > td,
+.channel-weekly-table .ant-table-thead > tr > th,
+.channel-weekly-table .ant-table-summary > tr > td {
+  padding: 8px 10px;
+}

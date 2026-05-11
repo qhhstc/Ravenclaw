@@ -1,5 +1,5 @@
-import ModulePlaceholder from "@/components/common/ModulePlaceholder";
+import OrderListPage from "@/components/orders/OrderListPage";
 
 export default function OrdersPage() {
-  return <ModulePlaceholder title="订单中心模块开发中" />;
+  return <OrderListPage />;
 }
