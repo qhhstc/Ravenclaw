@@ -14,6 +14,8 @@ import { useMemo, useState } from "react";
 import { appRoutes, getRouteTitle, getSelectedRoute, getSystemIcon } from "@/lib/routes";
 
 const { Header, Content, Sider } = Layout;
+const siderWidth = 208;
+const collapsedSiderWidth = 72;
 
 type AdminShellProps = {
   children: React.ReactNode;
@@ -37,7 +39,8 @@ export default function AdminShell({ children, userName }: AdminShellProps) {
   return (
     <Layout className="min-h-screen">
       <Sider
-        width={236}
+        width={siderWidth}
+        collapsedWidth={collapsedSiderWidth}
         collapsible
         collapsed={collapsed}
         trigger={null}
@@ -49,8 +52,8 @@ export default function AdminShell({ children, userName }: AdminShellProps) {
           </div>
           {!collapsed ? (
             <div className="min-w-0">
-              <div className="truncate text-base font-semibold text-[#172033]">Ravenclaw</div>
-              <div className="text-xs text-[#8a94a6]">跨境经营数据中心</div>
+              <div className="text-[15px] font-semibold leading-5 text-[#172033]">Ravenclaw</div>
+              <div className="text-xs leading-4 text-[#8a94a6]">跨境经营数据中心</div>
             </div>
           ) : null}
         </div>
@@ -67,7 +70,7 @@ export default function AdminShell({ children, userName }: AdminShellProps) {
         />
       </Sider>
 
-      <Layout className={collapsed ? "ml-[80px] min-h-screen" : "ml-[236px] min-h-screen"}>
+      <Layout className="min-h-screen">
         <Header className="sticky top-0 z-10 flex h-16 items-center justify-between overflow-hidden border-b border-[#e8edf5] !bg-white px-6">
           <Space size={14}>
             <Button

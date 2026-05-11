@@ -1,5 +1,5 @@
-import ModulePlaceholder from "@/components/common/ModulePlaceholder";
+import BasicDataTabs from "@/components/basic/BasicDataTabs";
 
 export default function BasicSettingsPage() {
-  return <ModulePlaceholder title="基础资料模块开发中" />;
+  return <BasicDataTabs />;
 }
