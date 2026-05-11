@@ -1,0 +1,241 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id            Int                @id @default(autoincrement())
+  name          String
+  email         String             @unique
+  passwordHash  String
+  role          String             @default("admin")
+  status        String             @default("active")
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  customers     Customer[]         @relation("CustomerOwner")
+  metrics       ChannelDailyMetric[] @relation("MetricCreator")
+  importBatches MetricImportBatch[] @relation("ImportCreator")
+  followups     CustomerFollowup[] @relation("FollowupOwner")
+}
+
+model Brand {
+  id          Int       @id @default(autoincrement())
+  name        String
+  code        String    @unique
+  website     String?
+  defaultCurrency String @default("CNY")
+  description String?
+  status      String    @default("active")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  stores      Store[]
+  channels    Channel[]
+  metrics     ChannelDailyMetric[]
+  customers   Customer[]
+}
+
+model Platform {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String   @unique
+  type      String
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  stores    Store[]
+  channels  Channel[]
+  metrics   ChannelDailyMetric[]
+}
+
+model Store {
+  id            Int      @id @default(autoincrement())
+  brandId       Int
+  platformId    Int
+  name          String   @unique
+  domain        String?
+  marketCountry String?
+  currency      String   @default("USD")
+  businessType  String?
+  manager       String?
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  brand         Brand    @relation(fields: [brandId], references: [id])
+  platform      Platform @relation(fields: [platformId], references: [id])
+  channels      Channel[]
+  metrics       ChannelDailyMetric[]
+
+  @@index([brandId])
+  @@index([platformId])
+}
+
+model Channel {
+  id            Int      @id @default(autoincrement())
+  brandId       Int?
+  platformId    Int?
+  storeId       Int?
+  businessLine  String
+  channelGroup  String?
+  channelName   String
+  channelType   String
+  status        String   @default("active")
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  brand         Brand?   @relation(fields: [brandId], references: [id])
+  platform      Platform? @relation(fields: [platformId], references: [id])
+  store         Store?   @relation(fields: [storeId], references: [id])
+  metrics       ChannelDailyMetric[]
+  customers     Customer[] @relation("CustomerSourceChannel")
+
+  @@unique([businessLine, channelName, storeId])
+  @@index([brandId])
+  @@index([platformId])
+  @@index([storeId])
+}
+
+model Country {
+  id     Int    @id @default(autoincrement())
+  name   String
+  code   String @unique
+  region String?
+  status String @default("active")
+}
+
+model Currency {
+  id     Int    @id @default(autoincrement())
+  code   String @unique
+  name   String
+  symbol String
+  status String @default("active")
+}
+
+model ExchangeRate {
+  id             Int      @id @default(autoincrement())
+  baseCurrency   String
+  targetCurrency String
+  rate           Decimal  @db.Decimal(18, 6)
+  rateDate       DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([baseCurrency, targetCurrency, rateDate])
+}
+
+model ChannelDailyMetric {
+  id                  Int      @id @default(autoincrement())
+  date                DateTime
+  brandId             Int
+  platformId          Int
+  storeId             Int?
+  channelId           Int
+  countryCode         String?
+  currency            String
+  salesAmountOriginal Decimal  @default(0) @db.Decimal(18, 2)
+  adSpendOriginal     Decimal  @default(0) @db.Decimal(18, 2)
+  refundAmountOriginal Decimal @default(0) @db.Decimal(18, 2)
+  orderCount          Int      @default(0)
+  visitorCount        Int      @default(0)
+  exchangeRate        Decimal  @default(1) @db.Decimal(18, 6)
+  salesAmountBase     Decimal  @default(0) @db.Decimal(18, 2)
+  adSpendBase         Decimal  @default(0) @db.Decimal(18, 2)
+  refundAmountBase    Decimal  @default(0) @db.Decimal(18, 2)
+  remark              String?
+  createdBy           Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  brand               Brand    @relation(fields: [brandId], references: [id])
+  platform            Platform @relation(fields: [platformId], references: [id])
+  store               Store?   @relation(fields: [storeId], references: [id])
+  channel             Channel  @relation(fields: [channelId], references: [id])
+  creator             User?    @relation("MetricCreator", fields: [createdBy], references: [id])
+
+  @@index([date])
+  @@index([brandId])
+  @@index([platformId])
+  @@index([storeId])
+  @@index([channelId])
+}
+
+model MetricImportBatch {
+  id           Int      @id @default(autoincrement())
+  fileName     String
+  sourceType   String
+  importMonth  String
+  status       String   @default("pending")
+  totalRows    Int      @default(0)
+  successRows  Int      @default(0)
+  failedRows   Int      @default(0)
+  errorMessage String?  @db.Text
+  createdBy    Int?
+  createdAt    DateTime @default(now())
+  creator      User?    @relation("ImportCreator", fields: [createdBy], references: [id])
+
+  @@index([createdBy])
+}
+
+model Customer {
+  id              Int      @id @default(autoincrement())
+  name            String
+  customerType    String
+  countryCode     String?
+  email           String?
+  phone           String?
+  whatsapp        String?
+  website         String?
+  sourceChannelId Int?
+  brandId         Int?
+  ownerId         Int?
+  level           String?
+  status          String   @default("active")
+  tags            Json?
+  remark          String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  sourceChannel   Channel? @relation("CustomerSourceChannel", fields: [sourceChannelId], references: [id])
+  brand           Brand?   @relation(fields: [brandId], references: [id])
+  owner           User?    @relation("CustomerOwner", fields: [ownerId], references: [id])
+  contacts        CustomerContact[]
+  followups       CustomerFollowup[]
+
+  @@index([sourceChannelId])
+  @@index([brandId])
+  @@index([ownerId])
+}
+
+model CustomerContact {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  name       String
+  position   String?
+  email      String?
+  phone      String?
+  whatsapp   String?
+  isPrimary  Boolean  @default(false)
+  remark     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+model CustomerFollowup {
+  id             Int      @id @default(autoincrement())
+  customerId     Int
+  inquiryId      Int?
+  followupType   String
+  content        String   @db.Text
+  nextFollowupAt DateTime?
+  ownerId        Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  owner          User?    @relation("FollowupOwner", fields: [ownerId], references: [id])
+
+  @@index([customerId])
+  @@index([ownerId])
+}

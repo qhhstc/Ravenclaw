@@ -1,0 +1,60 @@
+@import "tailwindcss";
+@import "antd/dist/reset.css";
+
+:root {
+  --background: #f5f7fb;
+  --foreground: #172033;
+  --primary: #1677ff;
+  --muted: #6b7280;
+  --border: #edf0f5;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ant-layout {
+  background: var(--background);
+}
+
+.ant-card {
+  border-color: var(--border);
+  border-radius: 8px;
+}
+
+.ant-card .ant-card-body {
+  padding: 20px;
+}
+
+.ant-table-wrapper .ant-table {
+  border-radius: 8px;
+}
+
+.ant-table-thead > tr > th {
+  background: #f7f9fc !important;
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.recharts-wrapper {
+  outline: none;
+}
