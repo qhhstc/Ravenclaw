@@ -1,5 +1,10 @@
-import ModulePlaceholder from "@/components/common/ModulePlaceholder";
+import { redirect } from "next/navigation";
+import UserAccountManager from "@/components/system/UserAccountManager";
+import { requireUser } from "@/lib/auth";
+import { canManageAccounts } from "@/lib/permissions";
 
-export default function SystemSettingsPage() {
-  return <ModulePlaceholder title="系统设置模块开发中" />;
+export default async function SystemSettingsPage() {
+  const user = await requireUser();
+  if (!canManageAccounts(user.role)) redirect("/dashboard");
+  return <UserAccountManager />;
 }

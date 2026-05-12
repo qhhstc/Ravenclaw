@@ -30,6 +30,13 @@ export const customerDetailInclude = {
     include: { owner: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "desc" },
   },
+  orders: {
+    include: {
+      items: true,
+      salesperson: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { orderDate: "desc" },
+  },
 } satisfies Prisma.CustomerInclude;
 
 export function apiError(error: unknown, fallback = "操作失败，请稍后重试") {

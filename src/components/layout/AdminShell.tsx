@@ -8,7 +8,6 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import { Avatar, Button, Layout, Menu, Space, Tooltip, Typography } from "antd";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { appRoutes, getRouteTitle, getSelectedRoute, getSystemIcon } from "@/lib/routes";
@@ -20,9 +19,10 @@ const collapsedSiderWidth = 72;
 type AdminShellProps = {
   children: React.ReactNode;
   userName: string;
+  userRole: string;
 };
 
-export default function AdminShell({ children, userName }: AdminShellProps) {
+export default function AdminShell({ children, userName, userRole }: AdminShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
@@ -62,11 +62,15 @@ export default function AdminShell({ children, userName }: AdminShellProps) {
           className="border-0 px-2 py-3"
           mode="inline"
           selectedKeys={[selectedKey]}
-          items={appRoutes.map((route) => ({
-            key: route.path,
-            icon: route.icon,
-            label: <Link href={route.path}>{route.menuLabel}</Link>,
-          }))}
+          onClick={({ key }) => router.push(String(key))}
+          items={appRoutes
+            .map((route) => ({
+              key: route.path,
+              icon: route.icon,
+              label: route.menuLabel,
+            }))
+            .filter((item) => userRole !== "sales" || item.key !== "/reports/profit")
+            .filter((item) => userRole === "admin" || item.key !== "/settings/system")}
         />
       </Sider>
 

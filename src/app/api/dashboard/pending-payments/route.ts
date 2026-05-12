@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError, paymentDueWhere, toNumber } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { canViewAllOrders, requireApiSession } from "@/lib/permissions";
 
 function isOverdue(value?: Date | null) {
   return Boolean(value && value.getTime() < Date.now());
@@ -8,15 +9,17 @@ function isOverdue(value?: Date | null) {
 
 export async function GET() {
   try {
+    const session = await requireApiSession();
     const pendingWhere = paymentDueWhere("pending");
     const overdueWhere = paymentDueWhere("overdue");
+    const scopeWhere = canViewAllOrders(session.role) ? {} : { OR: [{ createdBy: session.userId }, { salespersonId: session.userId }] };
     const [pendingOrders, overdueOrderCount] = await Promise.all([
       prisma.order.findMany({
-        where: pendingWhere,
+        where: { AND: [pendingWhere, scopeWhere] },
         include: { customer: { select: { id: true, name: true, companyName: true } } },
         orderBy: [{ dueDate: "asc" }, { unpaidAmount: "desc" }],
       }),
-      prisma.order.count({ where: overdueWhere }),
+      prisma.order.count({ where: { AND: [overdueWhere, scopeWhere] } }),
     ]);
 
     const sorted = [...pendingOrders].sort((a, b) => {
@@ -35,7 +38,7 @@ export async function GET() {
       items: sorted.slice(0, 5).map((order) => ({
         id: order.id,
         orderNo: order.orderNo,
-        customerName: order.customer?.name ?? order.customer?.companyName ?? "散客/平台订单",
+        customerName: order.customerName ?? order.customer?.name ?? order.customer?.companyName ?? "散客/平台订单",
         countryCode: order.countryCode,
         totalAmount: toNumber(order.totalAmount),
         paidAmount: toNumber(order.paidAmount),

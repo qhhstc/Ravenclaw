@@ -1,29 +1,38 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { BASE_CURRENCY, COST_TYPES, calculateItemProfit, calculateOrderProfit, decimal, decimalRate, normalizeCostRows, roundMoney, toNumber } from "@/lib/order-profit-calculations";
+import { ApiAuthError, canViewAllOrders, type SessionUser } from "@/lib/permissions";
 
 export const ORDER_SOURCES = ["quote", "wordpress_wholesale", "shopify", "amazon", "tiktok_shop", "manual", "influencer", "other"] as const;
-export const ORDER_STATUSES = ["draft", "pending_confirm", "confirmed", "processing", "shipped", "completed", "cancelled", "refunded"] as const;
+export const ORDER_STATUSES = ["pending_payment", "paid", "preparing", "shipped", "in_transit", "customs_clearance", "delivered", "completed", "after_sales_reship", "cancelled", "refunded", "draft", "pending_confirm", "confirmed", "processing"] as const;
 export const PAYMENT_STATUSES = ["unpaid", "partial_paid", "paid", "refunded"] as const;
 export const SHIPPING_STATUSES = ["unshipped", "partial_shipped", "shipped", "delivered"] as const;
 export const CLOSED_ORDER_STATUSES = ["cancelled", "refunded"];
 
 export const orderInclude = {
   customer: { select: { id: true, name: true, companyName: true, countryCode: true, brandId: true, sourceChannelId: true } },
+  salesperson: { select: { id: true, name: true, email: true } },
   brand: { select: { id: true, name: true, code: true } },
   platform: { select: { id: true, name: true, code: true } },
   store: { select: { id: true, name: true, defaultCurrency: true, primaryMarketCode: true, brandId: true, platformId: true } },
-  channel: { select: { id: true, businessLine: true, channelName: true, store: { select: { id: true, name: true } } } },
+  channel: { select: { id: true, businessLine: true, channelName: true, store: { select: { id: true, name: true } }, platform: { select: { id: true, name: true } } } },
   quote: { select: { id: true, quoteNo: true, totalAmount: true, status: true } },
   inquiry: { select: { id: true, inquiryNo: true, title: true, status: true } },
   creator: { select: { id: true, name: true, email: true } },
+  items: { take: 3, orderBy: { id: "asc" }, include: { product: { select: { id: true, sku: true, name: true } } } },
 } satisfies Prisma.OrderInclude;
 
 export const orderDetailInclude = {
   ...orderInclude,
-  items: { orderBy: { id: "asc" } },
+  items: { orderBy: { id: "asc" }, include: { product: { select: { id: true, sku: true, name: true, specification: true } } } },
+  costs: { orderBy: { id: "asc" } },
+  statusLogs: { orderBy: { createdAt: "desc" }, include: { creator: { select: { id: true, name: true, email: true } } } },
 } satisfies Prisma.OrderInclude;
 
 export function apiError(error: unknown, fallback = "操作失败，请稍后重试") {
+  if (error instanceof ApiAuthError) {
+    return NextResponse.json({ message: error.message }, { status: error.status });
+  }
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") return NextResponse.json({ message: "数据已存在，请检查唯一字段" }, { status: 409 });
     if (error.code === "P2003") return NextResponse.json({ message: "该数据已被其他模块使用，无法删除" }, { status: 409 });
@@ -42,18 +51,8 @@ export function parseOptionalInt(value: string | null) {
   return Number.isInteger(numericValue) && numericValue > 0 ? numericValue : undefined;
 }
 
-export function toNumber(value: unknown, fallback = 0) {
-  if (value === null || value === undefined || value === "") return fallback;
-  if (typeof value === "object" && value !== null && "toNumber" in value) {
-    const numeric = (value as { toNumber: () => number }).toNumber();
-    return Number.isFinite(numeric) ? numeric : fallback;
-  }
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : fallback;
-}
-
 export function money(value: number) {
-  return Math.round(value * 100) / 100;
+  return roundMoney(value);
 }
 
 export function optionalDate(value: unknown) {
@@ -87,11 +86,23 @@ export function paymentStatusFor(totalAmount: number, paidAmount: number, orderS
 }
 
 export type OrderItemInput = {
+  productId?: number | null;
   sku?: string | null;
   productName: string;
+  specification?: string | null;
   quantity: number;
-  unitPrice: number;
-  costPrice?: number | null;
+  saleUnitPrice: number;
+  purchaseUnitCost: number;
+  packagingUnitCost: number;
+  remark?: string | null;
+};
+
+export type OrderCostInput = {
+  costType: string;
+  amount: number;
+  currency: string;
+  exchangeRate: number;
+  baseAmount: number;
   remark?: string | null;
 };
 
@@ -101,27 +112,42 @@ export function normalizeOrderItems(input: unknown): OrderItemInput[] {
     const row = item as Record<string, unknown>;
     const productName = textValue(row.productName);
     if (!productName) throw new Error(`第 ${index + 1} 行商品名称不能为空`);
-    const quantity = Math.max(Math.floor(toNumber(row.quantity, 0)), 0);
-    const unitPrice = toNumber(row.unitPrice, -1);
-    if (quantity <= 0) throw new Error(`第 ${index + 1} 行数量必须大于 0`);
-    if (unitPrice < 0) throw new Error(`第 ${index + 1} 行售价不能小于 0`);
-    const costPrice = row.costPrice === null || row.costPrice === undefined || row.costPrice === "" ? null : Math.max(toNumber(row.costPrice), 0);
-    return { sku: textValue(row.sku), productName, quantity, unitPrice, costPrice, remark: textValue(row.remark) };
+    const calculated = calculateItemProfit(row);
+    if (calculated.quantity <= 0) throw new Error(`第 ${index + 1} 行数量必须大于 0`);
+    return {
+      productId: optionalNumber(row.productId),
+      sku: textValue(row.sku),
+      productName,
+      specification: textValue(row.specification),
+      quantity: calculated.quantity,
+      saleUnitPrice: calculated.saleUnitPrice,
+      purchaseUnitCost: calculated.purchaseUnitCost,
+      packagingUnitCost: calculated.packagingUnitCost,
+      remark: textValue(row.remark),
+    };
   });
 }
 
-export function calculateOrderAmounts(input: Record<string, unknown>, items: OrderItemInput[]) {
-  const productAmount = money(items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0));
-  const shippingFee = Math.max(toNumber(input.shippingFee), 0);
-  const discountAmount = Math.max(toNumber(input.discountAmount), 0);
-  const taxAmount = Math.max(toNumber(input.taxAmount), 0);
-  const otherFee = Math.max(toNumber(input.otherFee), 0);
-  const totalAmount = money(productAmount + shippingFee + taxAmount + otherFee - discountAmount);
+export function normalizeOrderCosts(input: unknown, items: OrderItemInput[], currency: string, exchangeRate: number): OrderCostInput[] {
+  const costs = (Array.isArray(input) ? input.map((cost) => cost as Record<string, unknown>) : []).filter(
+    (cost): cost is Record<string, unknown> & { costType: string } => typeof cost.costType === "string",
+  );
+  return normalizeCostRows(costs, items, currency, exchangeRate).map((cost) => ({
+    costType: cost.costType,
+    amount: cost.amount,
+    currency: cost.currency,
+    exchangeRate: cost.exchangeRate,
+    baseAmount: cost.baseAmount,
+    remark: cost.remark,
+  }));
+}
+
+export function calculateOrderAmounts(input: Record<string, unknown>, items: OrderItemInput[], costs: OrderCostInput[]) {
+  const profit = calculateOrderProfit(items, costs);
   const paidAmount = money(Math.max(toNumber(input.paidAmount), 0));
-  if (totalAmount < 0) throw new Error("订单总金额不能小于 0");
-  if (paidAmount > totalAmount) throw new Error("已收金额不能大于订单总金额");
-  const unpaidAmount = money(totalAmount - paidAmount);
-  return { productAmount, shippingFee, discountAmount, taxAmount, otherFee, totalAmount, paidAmount, unpaidAmount };
+  if (paidAmount > profit.salesAmount) throw new Error("已收金额不能大于订单销售总金额");
+  const unpaidAmount = money(profit.salesAmount - paidAmount);
+  return { ...profit, productAmount: profit.salesAmount, totalAmount: profit.salesAmount, paidAmount, unpaidAmount };
 }
 
 type OrderCountDelegate = {
@@ -137,17 +163,25 @@ export async function nextOrderNo(tx: OrderCountDelegate) {
   return `ORD-${month}-${String(count + 1).padStart(4, "0")}`;
 }
 
-export function normalizeOrderInput(input: Record<string, unknown>, forcedOrderNo?: string) {
+export function normalizeOrderInput(input: Record<string, unknown>, forcedOrderNo?: string, session?: SessionUser | null) {
+  const currency = textValue(input.currency) ?? "USD";
+  const exchangeRate = Math.max(toNumber(input.exchangeRate, 1), 0.000001);
   const items = normalizeOrderItems(input.items);
-  const orderStatus = enumValue(input.orderStatus, ORDER_STATUSES, "draft");
-  const amounts = calculateOrderAmounts(input, items);
+  const costs = normalizeOrderCosts(input.costs, items, currency, exchangeRate);
+  const orderStatus = enumValue(input.orderStatus, ORDER_STATUSES, "pending_payment");
+  const amounts = calculateOrderAmounts(input, items, costs);
   const orderDate = optionalDate(input.orderDate) ?? new Date();
+  const customerName = textValue(input.customerName);
+  const createdBy = optionalNumber(input.createdBy) ?? session?.userId ?? null;
+  const salespersonId = session?.role === "sales" ? session.userId : optionalNumber(input.salespersonId) ?? createdBy;
   return {
     data: {
       orderNo: textValue(forcedOrderNo) ?? textValue(input.orderNo) ?? undefined,
       externalOrderNo: textValue(input.externalOrderNo),
       orderSource: enumValue(input.orderSource, ORDER_SOURCES, "manual"),
       customerId: optionalNumber(input.customerId),
+      customerName,
+      salespersonId,
       inquiryId: optionalNumber(input.inquiryId),
       quoteId: optionalNumber(input.quoteId),
       brandId: optionalNumber(input.brandId),
@@ -155,24 +189,63 @@ export function normalizeOrderInput(input: Record<string, unknown>, forcedOrderN
       storeId: optionalNumber(input.storeId),
       channelId: optionalNumber(input.channelId),
       countryCode: textValue(input.countryCode),
-      currency: textValue(input.currency) ?? "USD",
-      ...amounts,
+      currency,
+      exchangeRate,
+      baseCurrency: textValue(input.baseCurrency) ?? BASE_CURRENCY,
+      productAmount: decimal(amounts.productAmount),
+      shippingFee: decimal(0),
+      discountAmount: decimal(0),
+      taxAmount: decimal(0),
+      otherFee: decimal(amounts.otherCost),
+      totalAmount: decimal(amounts.totalAmount),
+      salesAmount: decimal(amounts.salesAmount),
+      totalCost: decimal(amounts.totalCost),
+      grossProfit: decimal(amounts.grossProfit),
+      grossMargin: decimalRate(amounts.grossMargin),
+      paidAmount: decimal(amounts.paidAmount),
+      unpaidAmount: decimal(amounts.unpaidAmount),
       orderStatus,
-      paymentStatus: paymentStatusFor(amounts.totalAmount, amounts.paidAmount, orderStatus, input.paymentStatus),
+      paymentStatus: paymentStatusFor(amounts.salesAmount, amounts.paidAmount, orderStatus, input.paymentStatus),
       shippingStatus: enumValue(input.shippingStatus, SHIPPING_STATUSES, "unshipped"),
       orderDate,
+      shipmentDate: optionalDate(input.shipmentDate) ?? optionalDate(input.actualShipDate),
+      paymentMethod: textValue(input.paymentMethod),
       expectedShipDate: optionalDate(input.expectedShipDate),
-      actualShipDate: optionalDate(input.actualShipDate),
+      actualShipDate: optionalDate(input.actualShipDate) ?? optionalDate(input.shipmentDate),
       dueDate: optionalDate(input.dueDate),
       trackingNo: textValue(input.trackingNo),
       logisticsProvider: textValue(input.logisticsProvider),
       remark: textValue(input.remark),
-      createdBy: optionalNumber(input.createdBy),
+      createdBy,
     },
-    items: items.map((item) => ({
-      ...item,
-      totalPrice: money(item.quantity * item.unitPrice),
-      totalCost: money(item.quantity * (item.costPrice ?? 0)),
+    items: items.map((item) => {
+      const calculated = calculateItemProfit(item);
+      return {
+        productId: item.productId,
+        sku: item.sku,
+        productName: item.productName,
+        specification: item.specification,
+        quantity: calculated.quantity,
+        unitPrice: decimal(calculated.saleUnitPrice),
+        costPrice: decimal(calculated.purchaseUnitCost),
+        totalPrice: decimal(calculated.salesSubtotal),
+        totalCost: decimal(calculated.purchaseCostSubtotal + calculated.packagingCostSubtotal),
+        saleUnitPrice: decimal(calculated.saleUnitPrice),
+        salesSubtotal: decimal(calculated.salesSubtotal),
+        purchaseUnitCost: decimal(calculated.purchaseUnitCost),
+        purchaseCostSubtotal: decimal(calculated.purchaseCostSubtotal),
+        packagingUnitCost: decimal(calculated.packagingUnitCost),
+        packagingCostSubtotal: decimal(calculated.packagingCostSubtotal),
+        remark: item.remark,
+      };
+    }),
+    costs: costs.map((cost) => ({
+      costType: cost.costType,
+      amount: decimal(cost.amount),
+      currency: cost.currency,
+      exchangeRate: new Prisma.Decimal(cost.exchangeRate.toFixed(6)),
+      baseAmount: decimal(cost.baseAmount),
+      remark: cost.remark,
     })),
   };
 }
@@ -194,25 +267,30 @@ export function paymentDueWhere(status?: string | null): Prisma.OrderWhereInput 
   return {};
 }
 
-export function buildOrderWhere(params: URLSearchParams): Prisma.OrderWhereInput {
+export function buildOrderWhere(params: URLSearchParams, session?: SessionUser | null): Prisma.OrderWhereInput {
   const keyword = params.get("keyword")?.trim();
   const brandId = parseOptionalInt(params.get("brandId"));
   const platformId = parseOptionalInt(params.get("platformId"));
   const storeId = parseOptionalInt(params.get("storeId"));
   const channelId = parseOptionalInt(params.get("channelId"));
   const customerId = parseOptionalInt(params.get("customerId"));
+  const salespersonId = parseOptionalInt(params.get("salespersonId"));
   const dateFrom = optionalDate(params.get("dateFrom"));
   const dateTo = optionalDate(params.get("dateTo"));
-  return {
-    ...(keyword ? {
-      OR: [
-        { orderNo: { contains: keyword } },
-        { externalOrderNo: { contains: keyword } },
-        { customer: { is: { name: { contains: keyword } } } },
-        { customer: { is: { companyName: { contains: keyword } } } },
-        { items: { some: { productName: { contains: keyword } } } },
-      ],
-    } : {}),
+  const filters: Prisma.OrderWhereInput[] = [];
+  if (session && !canViewAllOrders(session.role)) filters.push({ OR: [{ createdBy: session.userId }, { salespersonId: session.userId }] });
+  if (keyword) filters.push({
+    OR: [
+      { orderNo: { contains: keyword } },
+      { externalOrderNo: { contains: keyword } },
+      { customerName: { contains: keyword } },
+      { customer: { is: { name: { contains: keyword } } } },
+      { customer: { is: { companyName: { contains: keyword } } } },
+      { items: { some: { productName: { contains: keyword } } } },
+      { items: { some: { sku: { contains: keyword } } } },
+    ],
+  });
+  const simple: Prisma.OrderWhereInput = {
     ...(params.get("orderSource") ? { orderSource: params.get("orderSource")! } : {}),
     ...(params.get("orderStatus") ? { orderStatus: params.get("orderStatus")! } : {}),
     ...(params.get("paymentStatus") ? { paymentStatus: params.get("paymentStatus")! } : {}),
@@ -222,11 +300,14 @@ export function buildOrderWhere(params: URLSearchParams): Prisma.OrderWhereInput
     ...(storeId ? { storeId } : {}),
     ...(channelId ? { channelId } : {}),
     ...(customerId ? { customerId } : {}),
+    ...(salespersonId ? { salespersonId } : {}),
     ...(params.get("countryCode") ? { countryCode: params.get("countryCode")! } : {}),
     ...(params.get("currency") ? { currency: params.get("currency")! } : {}),
     ...(dateFrom || dateTo ? { orderDate: { ...(dateFrom ? { gte: dateFrom } : {}), ...(dateTo ? { lte: dateTo } : {}) } } : {}),
     ...paymentDueWhere(params.get("paymentDue")),
   };
+  filters.push(simple);
+  return filters.length > 1 ? { AND: filters } : simple;
 }
 
 export function dashboardPaymentDateRange() {
@@ -237,3 +318,5 @@ export function dashboardPaymentDateRange() {
   endOfToday.setDate(endOfToday.getDate() + 1);
   return { now, startOfToday, endOfToday };
 }
+
+export { COST_TYPES, toNumber };

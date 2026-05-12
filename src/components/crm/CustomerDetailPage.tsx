@@ -8,6 +8,7 @@ import CustomerContactPanel from "./CustomerContactPanel";
 import CustomerFollowupPanel from "./CustomerFollowupPanel";
 import CustomerFormModal from "./CustomerFormModal";
 import CustomerRelatedPanel from "./CustomerRelatedPanel";
+import CustomerTradeAnalysisPanel from "./CustomerTradeAnalysisPanel";
 import {
   FollowupTime,
   LevelTag,
@@ -148,6 +149,7 @@ export default function CustomerDetailPage({ customerId }: Props) {
                 },
                 { key: "contacts", label: "联系人", children: <CustomerContactPanel customerId={customer.id} contacts={customer.contacts ?? []} onReload={loadCustomer} /> },
                 { key: "followups", label: "跟进记录", children: <CustomerFollowupPanel customerId={customer.id} followups={customer.followups ?? []} onReload={loadCustomer} /> },
+                { key: "trade", label: "交易分析", children: <CustomerTradeAnalysisPanel orders={customer.orders ?? []} /> },
                 { key: "related", label: "相关数据", children: <CustomerRelatedPanel /> },
               ]}
             />

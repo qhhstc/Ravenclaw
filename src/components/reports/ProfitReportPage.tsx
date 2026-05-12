@@ -1,0 +1,177 @@
+"use client";
+
+import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Button, Card, DatePicker, Empty, Select, Space, Statistic, Table, Tabs, Typography, message } from "antd";
+import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { MarginTag, compactMoneyText, formatDate, moneyText, percentText } from "@/components/orders/orderOptions";
+
+type Summary = { orderCount: number; salesAmount: number; totalCost: number; grossProfit: number; grossMargin: number | null };
+type RankingRow = Summary & { name: string };
+type CostRow = { costType: string; name: string; amount: number; ratio: number | null };
+type ProductRow = { sku: string; productName: string; quantity: number; salesAmount: number; purchaseCost: number; packagingCost: number; grossProfit: number; grossMargin: number | null };
+type OrderProfitRow = { id: number; orderNo: string; customerName: string; orderDate: string; salesAmount: number; totalCost: number; grossProfit: number; grossMargin: number | null; salespersonName: string; orderStatus: string };
+type ReportData = {
+  summary: Summary;
+  daily: RankingRow[];
+  weekly: RankingRow[];
+  monthly: RankingRow[];
+  yearly: RankingRow[];
+  costComposition: CostRow[];
+  customerRanking: RankingRow[];
+  productRanking: ProductRow[];
+  orderDetails: OrderProfitRow[];
+  message?: string;
+};
+
+const emptyReport: ReportData = {
+  summary: { orderCount: 0, salesAmount: 0, totalCost: 0, grossProfit: 0, grossMargin: null },
+  daily: [],
+  weekly: [],
+  monthly: [],
+  yearly: [],
+  costComposition: [],
+  customerRanking: [],
+  productRanking: [],
+  orderDetails: [],
+};
+
+type Filters = { year: number; month?: number; dateFrom?: string; dateTo?: string };
+
+function query(filters: Filters, extra?: Record<string, string>) {
+  const params = new URLSearchParams({ year: String(filters.year) });
+  if (filters.month) params.set("month", String(filters.month));
+  if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+  if (filters.dateTo) params.set("dateTo", filters.dateTo);
+  Object.entries(extra ?? {}).forEach(([key, value]) => params.set(key, value));
+  return params.toString();
+}
+
+async function fetchReport(filters: Filters) {
+  const response = await fetch(`/api/reports/profit?${query(filters)}`);
+  const data = (await response.json()) as ReportData;
+  if (!response.ok) throw new Error(data.message || "利润报表加载失败");
+  return data;
+}
+
+const summaryColumns: ColumnsType<RankingRow> = [
+  { title: "周期/客户", dataIndex: "name", width: 180 },
+  { title: "订单数", dataIndex: "orderCount", width: 100, align: "right" },
+  { title: "销售额", dataIndex: "salesAmount", width: 140, align: "right", render: (value) => moneyText(value) },
+  { title: "总成本", dataIndex: "totalCost", width: 140, align: "right", render: (value) => moneyText(value) },
+  { title: "毛利", dataIndex: "grossProfit", width: 140, align: "right", render: (value) => <span className={Number(value) < 0 ? "font-semibold text-red-500" : ""}>{moneyText(value)}</span> },
+  { title: "毛利率", dataIndex: "grossMargin", width: 110, align: "right", render: (value) => <MarginTag value={value} /> },
+];
+
+const productColumns: ColumnsType<ProductRow> = [
+  { title: "SKU", dataIndex: "sku", width: 170 },
+  { title: "产品名称", dataIndex: "productName", width: 260 },
+  { title: "销售数量", dataIndex: "quantity", width: 100, align: "right" },
+  { title: "销售额", dataIndex: "salesAmount", width: 140, align: "right", render: (value) => moneyText(value) },
+  { title: "采购成本", dataIndex: "purchaseCost", width: 140, align: "right", render: (value) => moneyText(value) },
+  { title: "包装成本", dataIndex: "packagingCost", width: 140, align: "right", render: (value) => moneyText(value) },
+  { title: "毛利", dataIndex: "grossProfit", width: 140, align: "right", render: (value) => <span className={Number(value) < 0 ? "font-semibold text-red-500" : ""}>{moneyText(value)}</span> },
+  { title: "毛利率", dataIndex: "grossMargin", width: 110, align: "right", render: (value) => <MarginTag value={value} /> },
+];
+
+const costColumns: ColumnsType<CostRow> = [
+  { title: "成本类型", dataIndex: "name", width: 220 },
+  { title: "金额", dataIndex: "amount", width: 160, align: "right", render: (value) => moneyText(value, "CNY") },
+  { title: "占总成本比例", dataIndex: "ratio", width: 150, align: "right", render: percentText },
+];
+
+const orderColumns: ColumnsType<OrderProfitRow> = [
+  { title: "订单编号", dataIndex: "orderNo", width: 160, render: (value, row) => <Link className="font-medium" href={`/orders/${row.id}`}>{value}</Link> },
+  { title: "客户名称", dataIndex: "customerName", width: 210 },
+  { title: "下单日期", dataIndex: "orderDate", width: 120, render: formatDate },
+  { title: "销售额", dataIndex: "salesAmount", width: 140, align: "right", render: (value) => moneyText(value) },
+  { title: "总成本", dataIndex: "totalCost", width: 140, align: "right", render: (value) => moneyText(value) },
+  { title: "毛利", dataIndex: "grossProfit", width: 140, align: "right", render: (value) => <span className={Number(value) < 0 ? "font-semibold text-red-500" : ""}>{moneyText(value)}</span> },
+  { title: "毛利率", dataIndex: "grossMargin", width: 110, align: "right", render: (value) => <MarginTag value={value} /> },
+  { title: "业务员", dataIndex: "salespersonName", width: 120 },
+];
+
+export default function ProfitReportPage() {
+  const [filters, setFilters] = useState<Filters>({ year: 2026, month: 5 });
+  const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState<ReportData>(emptyReport);
+
+  const loadReport = useCallback(async () => {
+    setLoading(true);
+    try {
+      setReport(await fetchReport(filters));
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "利润报表加载失败");
+      setReport(emptyReport);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
+
+  useEffect(() => {
+    queueMicrotask(loadReport);
+  }, [loadReport]);
+
+  function exportReport(type: string) {
+    window.location.href = `/api/reports/profit/export?${query(filters, { type })}`;
+  }
+
+  return (
+    <div className="max-w-full overflow-hidden">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <Typography.Title level={3} className="!mb-1 !text-[#172033]">利润报表</Typography.Title>
+          <Typography.Text type="secondary">按订单、客户与产品汇总外贸业务毛利表现。</Typography.Text>
+        </div>
+        <Space wrap>
+          <Button icon={<DownloadOutlined />} onClick={() => exportReport("daily")}>导出日报</Button>
+          <Button icon={<DownloadOutlined />} onClick={() => exportReport("weekly")}>导出周报</Button>
+          <Button icon={<DownloadOutlined />} onClick={() => exportReport("monthly")}>导出月报</Button>
+          <Button icon={<DownloadOutlined />} onClick={() => exportReport("yearly")}>导出年报</Button>
+          <Button icon={<DownloadOutlined />} onClick={() => exportReport("costs")}>导出成本构成</Button>
+          <Button icon={<DownloadOutlined />} onClick={() => exportReport("orders")}>导出订单利润明细</Button>
+          <Button icon={<DownloadOutlined />} onClick={() => exportReport("customers")}>导出客户排行</Button>
+          <Button icon={<DownloadOutlined />} onClick={() => exportReport("products")}>导出产品排行</Button>
+        </Space>
+      </div>
+
+      <Card className="mb-4" styles={{ body: { padding: 16 } }}>
+        <Space wrap>
+          <Select value={filters.year} style={{ width: 120 }} options={[2025, 2026, 2027].map((value) => ({ label: `${value}年`, value }))} onChange={(year) => setFilters((current) => ({ ...current, year }))} />
+          <Select allowClear value={filters.month} style={{ width: 120 }} placeholder="月份" options={Array.from({ length: 12 }, (_, index) => ({ label: `${index + 1}月`, value: index + 1 }))} onChange={(month) => setFilters((current) => ({ ...current, month }))} />
+          <DatePicker.RangePicker
+            value={filters.dateFrom && filters.dateTo ? [dayjs(filters.dateFrom), dayjs(filters.dateTo)] : null}
+            onChange={(values) => setFilters((current) => ({ ...current, dateFrom: values?.[0]?.toISOString(), dateTo: values?.[1]?.endOf("day").toISOString() }))}
+          />
+          <Button icon={<ReloadOutlined />} onClick={() => setFilters({ year: 2026, month: 5 })}>重置</Button>
+        </Space>
+      </Card>
+
+      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-5">
+        <Card><Statistic title="总订单数" value={report.summary.orderCount} /></Card>
+        <Card><Statistic title="总销售额" value={compactMoneyText(report.summary.salesAmount)} /></Card>
+        <Card><Statistic title="总成本" value={compactMoneyText(report.summary.totalCost)} /></Card>
+        <Card><Statistic title="总毛利" value={compactMoneyText(report.summary.grossProfit)} valueStyle={{ color: report.summary.grossProfit < 0 ? "#ff4d4f" : "#16a34a" }} /></Card>
+        <Card><Statistic title="平均毛利率" value={percentText(report.summary.grossMargin)} /></Card>
+      </div>
+
+      <Card styles={{ body: { padding: 0 } }}>
+        <Tabs
+          tabBarStyle={{ paddingInline: 16, marginBottom: 12 }}
+          items={[
+            { key: "daily", label: "日报", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.daily} pagination={false} locale={{ emptyText: <Empty description="暂无每日利润数据" /> }} /> },
+            { key: "weekly", label: "周报", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.weekly} pagination={false} locale={{ emptyText: <Empty description="暂无每周利润数据" /> }} /> },
+            { key: "monthly", label: "月度统计", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.monthly} pagination={false} locale={{ emptyText: <Empty description="暂无月度利润数据" /> }} /> },
+            { key: "yearly", label: "年度统计", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.yearly} pagination={false} locale={{ emptyText: <Empty description="暂无年度利润数据" /> }} /> },
+            { key: "costs", label: "成本构成表", children: <Table loading={loading} rowKey="costType" columns={costColumns} dataSource={report.costComposition} pagination={false} scroll={{ x: 620 }} /> },
+            { key: "customers", label: "客户利润排行", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.customerRanking} pagination={false} scroll={{ x: 850 }} /> },
+            { key: "products", label: "产品利润排行", children: <Table loading={loading} rowKey="sku" columns={productColumns} dataSource={report.productRanking} pagination={false} scroll={{ x: 1240 }} /> },
+            { key: "orders", label: "订单利润明细", children: <Table loading={loading} rowKey="id" columns={orderColumns} dataSource={report.orderDetails} pagination={{ pageSize: 10 }} scroll={{ x: 1180 }} /> },
+          ]}
+        />
+      </Card>
+    </div>
+  );
+}

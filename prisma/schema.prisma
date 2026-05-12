@@ -21,6 +21,9 @@ model User {
   importBatches MetricImportBatch[] @relation("ImportCreator")
   followups     CustomerFollowup[] @relation("FollowupOwner")
   orders        Order[]            @relation("OrderCreator")
+  salesOrders   Order[]            @relation("OrderSalesperson")
+  orderStatusLogs OrderStatusLog[] @relation("OrderStatusLogCreator")
+  attachments   Attachment[]       @relation("AttachmentUploader")
 }
 
 model Brand {
@@ -41,6 +44,7 @@ model Brand {
   inquiries   Inquiry[]
   quotes      Quote[]
   orders      Order[]
+  products    Product[]
 }
 
 model Platform {
@@ -116,6 +120,54 @@ model Channel {
   @@index([brandId])
   @@index([platformId])
   @@index([storeId])
+}
+
+model Vendor {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  vendorType  String   @default("supplier")
+  countryCode String?
+  contact     String?
+  email       String?
+  phone       String?
+  whatsapp    String?
+  website     String?
+  remark      String?  @db.Text
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  products    Product[]
+
+  @@index([vendorType])
+  @@index([countryCode])
+  @@index([status])
+}
+
+model Product {
+  id                   Int      @id @default(autoincrement())
+  sku                  String   @unique
+  name                 String
+  specification        String?
+  category             String?
+  defaultPurchasePrice Decimal  @default(0) @db.Decimal(18, 2)
+  defaultPackagingCost Decimal  @default(0) @db.Decimal(18, 2)
+  currency             String   @default("USD")
+  weight               Decimal? @db.Decimal(18, 3)
+  volume               Decimal? @db.Decimal(18, 3)
+  defaultVendorId      Int?
+  brandId              Int?
+  status               String   @default("active")
+  remark               String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  defaultVendor        Vendor?  @relation(fields: [defaultVendorId], references: [id], onDelete: SetNull)
+  brand                Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  orderItems           OrderItem[]
+
+  @@index([defaultVendorId])
+  @@index([brandId])
+  @@index([status])
+  @@index([category])
 }
 
 model Country {
@@ -402,8 +454,10 @@ model Order {
   id              Int      @id @default(autoincrement())
   orderNo         String   @unique
   externalOrderNo String?
-  orderSource     String
+  orderSource     String   @default("manual")
   customerId      Int?
+  customerName    String?
+  salespersonId   Int?
   inquiryId       Int?
   quoteId         Int?     @unique
   brandId         Int?
@@ -412,18 +466,26 @@ model Order {
   channelId       Int?
   countryCode     String?
   currency        String   @default("USD")
+  exchangeRate    Decimal  @default(1) @db.Decimal(18, 6)
+  baseCurrency    String   @default("CNY")
   productAmount   Decimal  @default(0) @db.Decimal(18, 2)
   shippingFee     Decimal  @default(0) @db.Decimal(18, 2)
   discountAmount  Decimal  @default(0) @db.Decimal(18, 2)
   taxAmount       Decimal  @default(0) @db.Decimal(18, 2)
   otherFee        Decimal  @default(0) @db.Decimal(18, 2)
   totalAmount     Decimal  @default(0) @db.Decimal(18, 2)
+  salesAmount     Decimal  @default(0) @db.Decimal(18, 2)
+  totalCost       Decimal  @default(0) @db.Decimal(18, 2)
+  grossProfit     Decimal  @default(0) @db.Decimal(18, 2)
+  grossMargin     Decimal? @db.Decimal(9, 4)
   paidAmount      Decimal  @default(0) @db.Decimal(18, 2)
   unpaidAmount    Decimal  @default(0) @db.Decimal(18, 2)
   orderStatus     String   @default("draft")
   paymentStatus   String   @default("unpaid")
   shippingStatus  String   @default("unshipped")
   orderDate       DateTime
+  shipmentDate    DateTime?
+  paymentMethod   String?
   expectedShipDate DateTime?
   actualShipDate  DateTime?
   dueDate         DateTime?
@@ -434,6 +496,7 @@ model Order {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  salesperson     User?    @relation("OrderSalesperson", fields: [salespersonId], references: [id], onDelete: SetNull)
   inquiry         Inquiry? @relation(fields: [inquiryId], references: [id], onDelete: SetNull)
   quote           Quote?   @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   brand           Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
@@ -442,9 +505,13 @@ model Order {
   channel         Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
   creator         User?    @relation("OrderCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   items           OrderItem[]
+  costs           OrderCost[]
+  statusLogs      OrderStatusLog[]
 
   @@index([orderSource])
   @@index([customerId])
+  @@index([customerName])
+  @@index([salespersonId])
   @@index([inquiryId])
   @@index([brandId])
   @@index([platformId])
@@ -453,26 +520,90 @@ model Order {
   @@index([countryCode])
   @@index([currency])
   @@index([orderDate])
+  @@index([shipmentDate])
   @@index([dueDate])
   @@index([orderStatus])
   @@index([paymentStatus])
   @@index([shippingStatus])
 }
 
+model OrderStatusLog {
+  id          Int      @id @default(autoincrement())
+  orderId     Int
+  fromStatus  String?
+  toStatus    String
+  remark      String?  @db.Text
+  createdBy   Int?
+  createdAt   DateTime @default(now())
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  creator     User?    @relation("OrderStatusLogCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([toStatus])
+  @@index([createdBy])
+}
+
+model Attachment {
+  id             Int      @id @default(autoincrement())
+  bizType        String
+  bizId          Int
+  fileName       String
+  fileUrl        String
+  fileType       String?
+  fileSize       Int      @default(0)
+  attachmentType String   @default("other")
+  uploadedBy     Int?
+  createdAt      DateTime @default(now())
+  uploader       User?    @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
+
+  @@index([bizType, bizId])
+  @@index([attachmentType])
+  @@index([uploadedBy])
+}
+
 model OrderItem {
   id          Int      @id @default(autoincrement())
   orderId     Int
+  productId   Int?
   sku         String?
   productName String
+  specification String?
   quantity    Int      @default(1)
   unitPrice   Decimal  @default(0) @db.Decimal(18, 2)
   costPrice   Decimal? @db.Decimal(18, 2)
   totalPrice  Decimal  @default(0) @db.Decimal(18, 2)
   totalCost   Decimal  @default(0) @db.Decimal(18, 2)
+  saleUnitPrice Decimal @default(0) @db.Decimal(18, 2)
+  salesSubtotal Decimal @default(0) @db.Decimal(18, 2)
+  purchaseUnitCost Decimal @default(0) @db.Decimal(18, 2)
+  purchaseCostSubtotal Decimal @default(0) @db.Decimal(18, 2)
+  packagingUnitCost Decimal @default(0) @db.Decimal(18, 2)
+  packagingCostSubtotal Decimal @default(0) @db.Decimal(18, 2)
   remark      String?  @db.Text
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
+  @@index([productId])
+  @@index([sku])
+}
+
+model OrderCost {
+  id           Int      @id @default(autoincrement())
+  orderId      Int
+  costType     String
+  amount       Decimal  @default(0) @db.Decimal(18, 2)
+  currency     String   @default("USD")
+  exchangeRate Decimal  @default(1) @db.Decimal(18, 6)
+  baseAmount   Decimal  @default(0) @db.Decimal(18, 2)
+  remark       String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, costType])
+  @@index([orderId])
+  @@index([costType])
 }

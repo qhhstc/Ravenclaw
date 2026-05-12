@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { apiError, money, nextOrderNo, optionalDate, paymentStatusFor, toNumber } from "@/lib/orders";
-import { getSession } from "@/lib/auth";
+import { apiError, nextOrderNo, normalizeOrderInput, optionalDate } from "@/lib/orders";
+import { canCreateOrder, forbidden, requireApiSession } from "@/lib/permissions";
 
 const ALLOWED_QUOTE_STATUSES = new Set(["accepted", "sent", "draft"]);
 
@@ -11,7 +11,8 @@ export async function POST(request: NextRequest, context: Context) {
   try {
     const { quoteId } = await context.params;
     const input = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    const session = await getSession();
+    const session = await requireApiSession();
+    if (!canCreateOrder(session.role)) return forbidden("当前角色不能转订单");
     const order = await prisma.$transaction(async (tx) => {
       const quote = await tx.quote.findUnique({
         where: { id: Number(quoteId) },
@@ -24,57 +25,51 @@ export async function POST(request: NextRequest, context: Context) {
       if (!quote.items.length) throw new Error("报价单没有商品明细，无法转订单");
 
       const orderNo = await nextOrderNo(tx);
-      const productAmount = toNumber(quote.productAmount);
-      const shippingFee = toNumber(quote.shippingFee);
-      const discountAmount = toNumber(quote.discountAmount);
-      const taxAmount = toNumber(quote.taxAmount);
-      const otherFee = toNumber(quote.otherFee);
-      const totalAmount = toNumber(quote.totalAmount);
-      const paidAmount = 0;
-      const unpaidAmount = totalAmount;
       const orderDate = new Date();
       const dueDate = optionalDate(input.dueDate) ?? new Date(orderDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const orderInput = {
+        orderNo,
+        orderSource: "quote",
+        customerId: quote.customerId,
+        customerName: quote.customer?.name,
+        inquiryId: quote.inquiryId,
+        quoteId: quote.id,
+        brandId: quote.brandId ?? quote.inquiry?.brandId ?? quote.customer?.brandId ?? quote.channel?.brandId ?? quote.store?.brandId ?? null,
+        platformId: quote.platformId ?? quote.inquiry?.platformId ?? quote.channel?.platformId ?? quote.store?.platformId ?? null,
+        storeId: quote.storeId ?? quote.inquiry?.storeId ?? quote.channel?.storeId ?? null,
+        channelId: quote.channelId ?? quote.inquiry?.channelId ?? null,
+        countryCode: quote.countryCode ?? quote.inquiry?.countryCode ?? quote.customer?.countryCode ?? quote.store?.primaryMarketCode ?? null,
+        currency: quote.currency,
+        orderStatus: "pending_payment",
+        paymentStatus: "unpaid",
+        shippingStatus: "unshipped",
+        orderDate,
+        dueDate,
+        paidAmount: 0,
+        remark: `由报价单 ${quote.quoteNo} 转订单`,
+        items: quote.items.map((item) => ({
+          sku: item.sku,
+          productName: item.productName,
+          quantity: item.quantity,
+          saleUnitPrice: item.unitPrice,
+          purchaseUnitCost: 0,
+          packagingUnitCost: 0,
+          remark: item.remark,
+        })),
+        costs: [
+          { costType: "domestic_shipping", amount: 0, currency: quote.currency, exchangeRate: 1 },
+          { costType: "international_shipping", amount: quote.shippingFee, currency: quote.currency, exchangeRate: 1 },
+          { costType: "platform_fee", amount: quote.otherFee, currency: quote.currency, exchangeRate: 1 },
+        ],
+      };
+      const normalized = normalizeOrderInput(orderInput, orderNo, session);
 
       const createdOrder = await tx.order.create({
         data: {
+          ...normalized.data,
           orderNo,
-          orderSource: "quote",
-          customerId: quote.customerId,
-          inquiryId: quote.inquiryId,
-          quoteId: quote.id,
-          brandId: quote.brandId ?? quote.inquiry?.brandId ?? quote.customer?.brandId ?? quote.channel?.brandId ?? quote.store?.brandId ?? null,
-          platformId: quote.platformId ?? quote.inquiry?.platformId ?? quote.channel?.platformId ?? quote.store?.platformId ?? null,
-          storeId: quote.storeId ?? quote.inquiry?.storeId ?? quote.channel?.storeId ?? null,
-          channelId: quote.channelId ?? quote.inquiry?.channelId ?? null,
-          countryCode: quote.countryCode ?? quote.inquiry?.countryCode ?? quote.customer?.countryCode ?? quote.store?.primaryMarketCode ?? null,
-          currency: quote.currency,
-          productAmount,
-          shippingFee,
-          discountAmount,
-          taxAmount,
-          otherFee,
-          totalAmount,
-          paidAmount,
-          unpaidAmount,
-          orderStatus: "confirmed",
-          paymentStatus: paymentStatusFor(totalAmount, paidAmount, "confirmed"),
-          shippingStatus: "unshipped",
-          orderDate,
-          dueDate,
-          createdBy: session?.userId ?? null,
-          remark: `由报价单 ${quote.quoteNo} 转订单`,
-          items: {
-            create: quote.items.map((item) => ({
-              sku: item.sku,
-              productName: item.productName,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              costPrice: null,
-              totalPrice: item.totalPrice,
-              totalCost: money(0),
-              remark: item.remark,
-            })),
-          },
+          items: { create: normalized.items },
+          costs: { create: normalized.costs },
         },
         include: { items: true },
       });

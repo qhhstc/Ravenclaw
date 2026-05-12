@@ -1,3 +1,40 @@
+## 数据库初始化
+
+Seed 已拆分为正式初始化和演示数据两种模式。默认 `prisma db seed` 使用 `prod` 模式，避免生产环境误导入测试订单。
+
+### 生产环境
+
+```bash
+npm run db:seed:prod
+```
+
+生产模式只初始化系统运行必需的基础数据：管理员账号、可选业务/财务账号、国家地区、币种、基础汇率、品牌、平台、店铺、渠道和基础供应商分类。生产环境不要执行 demo seed。
+
+默认管理员账号：
+
+```text
+admin@example.com / admin123456
+```
+
+### 本地演示环境
+
+```bash
+npm run db:seed:demo
+```
+
+演示模式会导入示例产品、供应商、客户、询盘、报价、订单、成本、附件、渠道经营数据和利润报表测试数据，仅用于本地开发、测试和客户演示。
+
+### 直接使用 Prisma
+
+```bash
+SEED_MODE=prod npx prisma db seed
+SEED_MODE=demo npx prisma db seed
+```
+
+如果未设置 `SEED_MODE`，系统按 `prod` 模式执行。
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

@@ -187,9 +187,9 @@ export default function CustomerListPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 190,
+        width: 220,
         render: (_, row) => (
-          <Space size={4}>
+          <Space size={0} className="whitespace-nowrap">
             <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => router.push(`/crm/customers/${row.id}`)}>查看</Button>
             <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditing(row); setModalOpen(true); }}>编辑</Button>
             <Popconfirm title="确认删除该客户？" description="联系人和跟进记录会一并删除。" onConfirm={() => deleteCustomer(row.id)}>

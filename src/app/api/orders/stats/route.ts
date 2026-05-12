@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 import { apiError, buildOrderWhere, paymentDueWhere, toNumber } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { requireApiSession } from "@/lib/permissions";
 
 function monthRange(params: URLSearchParams) {
   const now = new Date();
@@ -23,31 +24,38 @@ function mergeWhere(base: Prisma.OrderWhereInput, extra: Prisma.OrderWhereInput)
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await requireApiSession();
     const params = request.nextUrl.searchParams;
     const { from, to } = monthRange(params);
-    const filteredWhere = buildOrderWhere(params);
+    const filteredWhere = buildOrderWhere(params, session);
     const monthWhere = mergeWhere(filteredWhere, { orderDate: { gte: from, lt: to } });
     const pendingWhere = mergeWhere(filteredWhere, paymentDueWhere("pending"));
     const overdueWhere = mergeWhere(filteredWhere, paymentDueWhere("overdue"));
 
     const [monthOrders, pendingPaymentCount, overduePaymentCount] = await Promise.all([
-      prisma.order.findMany({ where: monthWhere, select: { totalAmount: true, paidAmount: true, unpaidAmount: true } }),
+      prisma.order.findMany({ where: monthWhere, select: { salesAmount: true, totalAmount: true, totalCost: true, grossProfit: true, paidAmount: true, unpaidAmount: true } }),
       prisma.order.count({ where: pendingWhere }),
       prisma.order.count({ where: overdueWhere }),
     ]);
 
     const totals = monthOrders.reduce(
       (summary, order) => ({
-        totalAmount: summary.totalAmount + toNumber(order.totalAmount),
+        totalAmount: summary.totalAmount + toNumber(order.salesAmount ?? order.totalAmount),
+        totalCost: summary.totalCost + toNumber(order.totalCost),
+        grossProfit: summary.grossProfit + toNumber(order.grossProfit),
         paidAmount: summary.paidAmount + toNumber(order.paidAmount),
         unpaidAmount: summary.unpaidAmount + toNumber(order.unpaidAmount),
       }),
-      { totalAmount: 0, paidAmount: 0, unpaidAmount: 0 },
+      { totalAmount: 0, totalCost: 0, grossProfit: 0, paidAmount: 0, unpaidAmount: 0 },
     );
 
     return NextResponse.json({
       monthOrderCount: monthOrders.length,
       monthTotalAmount: totals.totalAmount,
+      monthSalesAmount: totals.totalAmount,
+      monthTotalCost: totals.totalCost,
+      monthGrossProfit: totals.grossProfit,
+      monthGrossMargin: totals.totalAmount > 0 ? totals.grossProfit / totals.totalAmount : null,
       monthPaidAmount: totals.paidAmount,
       monthUnpaidAmount: totals.unpaidAmount,
       pendingPaymentCount,

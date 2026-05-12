@@ -89,6 +89,28 @@ export type CustomerRecord = {
   owner?: CrmUser | null;
   contacts?: CustomerContact[];
   followups?: CustomerFollowup[];
+  orders?: Array<{
+    id: number;
+    orderNo: string;
+    orderDate: string;
+    currency: string;
+    salesAmount: number;
+    totalCost: number;
+    grossProfit: number;
+    grossMargin?: number | null;
+    paidAmount: number;
+    paymentStatus: string;
+    items?: Array<{
+      id?: number;
+      sku?: string | null;
+      productName: string;
+      quantity: number;
+      saleUnitPrice: number;
+      salesSubtotal?: number;
+      purchaseUnitCost: number;
+      packagingUnitCost: number;
+    }>;
+  }>;
 };
 
 export type CustomerContact = {

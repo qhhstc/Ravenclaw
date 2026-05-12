@@ -9,7 +9,9 @@
     "lint": "eslint",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "db:seed:prod": "SEED_MODE=prod prisma db seed",
+    "db:seed:demo": "SEED_MODE=demo prisma db seed"
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.2",
