@@ -8,8 +8,9 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import { Avatar, Button, Layout, Menu, Space, Tooltip, Typography } from "antd";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { appRoutes, getRouteTitle, getSelectedRoute, getSystemIcon } from "@/lib/routes";
 
 const { Header, Content, Sider } = Layout;
@@ -26,9 +27,12 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  const selectedKey = useMemo(() => getSelectedRoute(pathname), [pathname]);
-  const pageTitle = useMemo(() => getRouteTitle(pathname), [pathname]);
+  const activePendingPath = pendingPath && pendingPath !== pathname ? pendingPath : null;
+  const selectedKey = useMemo(() => activePendingPath ?? getSelectedRoute(pathname), [activePendingPath, pathname]);
+  const pageTitle = useMemo(() => getRouteTitle(activePendingPath ?? pathname), [activePendingPath, pathname]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -62,12 +66,23 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
           className="border-0 px-2 py-3"
           mode="inline"
           selectedKeys={[selectedKey]}
-          onClick={({ key }) => router.push(String(key))}
           items={appRoutes
             .map((route) => ({
               key: route.path,
               icon: route.icon,
-              label: route.menuLabel,
+              label: (
+                <Link
+                  href={route.path}
+                  prefetch
+                  onClick={() => {
+                    if (route.path !== pathname) {
+                      startTransition(() => setPendingPath(route.path));
+                    }
+                  }}
+                >
+                  {route.menuLabel}
+                </Link>
+              ),
             }))
             .filter((item) => userRole !== "sales" || item.key !== "/reports/profit")
             .filter((item) => userRole === "admin" || item.key !== "/settings/system")}
@@ -108,7 +123,10 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
           </Space>
         </Header>
 
-        <Content className="min-h-[calc(100vh-64px)] bg-[#f5f7fb] p-6">{children}</Content>
+        <Content className="relative min-h-[calc(100vh-64px)] bg-[#f5f7fb] p-6">
+          {(activePendingPath || isPending) ? <div className="absolute left-0 top-0 z-20 h-1 w-full overflow-hidden bg-[#e6f4ff]"><div className="h-full w-1/3 animate-pulse bg-[#1677ff]" /></div> : null}
+          {children}
+        </Content>
       </Layout>
     </Layout>
   );

@@ -20,6 +20,7 @@ export const storeTypeOptions = [
   { label: "Shopify / DTC Site", value: "shopify_dtc_site" },
   { label: "WordPress / Wholesale Site", value: "wordpress_wholesale_site" },
   { label: "TikTok Shop", value: "tiktok_shop" },
+  { label: "手动店铺/站点", value: "manual_store" },
   { label: "Ads Account", value: "ads_account" },
   { label: "Content Channel", value: "content_channel" },
   { label: "Other", value: "other" },
@@ -45,6 +46,7 @@ export const channelTypeOptions = [
 ];
 
 export const businessLineOptions = [
+  { label: "默认业务线", value: "默认业务线" },
   { label: "Amazon", value: "Amazon" },
   { label: "Shopify独立站", value: "Shopify独立站" },
   { label: "WordPress批发", value: "WordPress批发" },

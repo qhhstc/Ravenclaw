@@ -6,6 +6,7 @@ export async function seedProd(prisma: PrismaClient) {
   const userSeeds = [
     { email: "admin@example.com", password: "admin123456", name: "Admin", role: "admin" },
     { email: "sales1@example.com", password: "sales123456", name: "Sales 1", role: "sales" },
+    { email: "sales2@example.com", password: "sales123456", name: "Sales 2", role: "sales" },
     { email: "finance@example.com", password: "finance123456", name: "Finance", role: "finance" },
   ];
 
@@ -20,13 +21,13 @@ export async function seedProd(prisma: PrismaClient) {
     }),
   );
 
-  const brandSeeds = ["CALEMBOU", "BAHOMU", "WagEver"];
+  const brandSeeds = ["默认品牌"];
   const brands = await Promise.all(
     brandSeeds.map((name) =>
       prisma.brand.upsert({
         where: { code: codeFromName(name) },
         update: { name, status: "active" },
-        create: { name, code: codeFromName(name), website: name === "BAHOMU" ? "https://bahomu.com" : null, defaultCurrency: "CNY", status: "active" },
+        create: { name, code: codeFromName(name), website: null, defaultCurrency: "CNY", status: "active" },
       }),
     ),
   );
@@ -44,12 +45,7 @@ export async function seedProd(prisma: PrismaClient) {
   const platformMap = Object.fromEntries(platforms.map((platform) => [platform.name, platform]));
 
   const storeSeeds = [
-    { name: "CALEMBOU-US", brand: "CALEMBOU", platform: "Amazon", storeType: "amazon_store", marketScope: "single_market", primaryMarketCode: "US", defaultCurrency: "USD", settlementCurrency: "USD" },
-    { name: "BAHOMU-US", brand: "BAHOMU", platform: "Amazon", storeType: "amazon_store", marketScope: "single_market", primaryMarketCode: "US", defaultCurrency: "USD", settlementCurrency: "USD" },
-    { name: "BAHOMU-JP", brand: "BAHOMU", platform: "Amazon", storeType: "amazon_store", marketScope: "single_market", primaryMarketCode: "JP", defaultCurrency: "JPY", settlementCurrency: "JPY" },
-    { name: "bahomu.com", brand: "BAHOMU", platform: "Shopify", domain: "bahomu.com", storeType: "shopify_dtc_site", marketScope: "global", primaryMarketCode: "US", defaultCurrency: "USD", settlementCurrency: "USD" },
-    { name: "blindboxwholesale.com", brand: "BAHOMU", platform: "WordPress", domain: "blindboxwholesale.com", storeType: "wordpress_wholesale_site", marketScope: "global", primaryMarketCode: "US", defaultCurrency: "USD", settlementCurrency: "USD" },
-    { name: "TikTok Shop US", brand: "BAHOMU", platform: "TikTok", storeType: "tiktok_shop", marketScope: "single_market", primaryMarketCode: "US", defaultCurrency: "USD", settlementCurrency: "USD" },
+    { name: "默认店铺/站点", brand: "默认品牌", platform: "Manual", storeType: "manual_store", marketScope: "global", primaryMarketCode: "US", defaultCurrency: "USD", settlementCurrency: "USD" },
   ];
 
   const stores = await Promise.all(
@@ -59,7 +55,7 @@ export async function seedProd(prisma: PrismaClient) {
         update: {
           brandId: brandMap[store.brand].id,
           platformId: platformMap[store.platform].id,
-          domain: "domain" in store ? store.domain : null,
+          domain: null,
           storeType: store.storeType,
           marketScope: store.marketScope,
           primaryMarketCode: store.primaryMarketCode,
@@ -73,7 +69,7 @@ export async function seedProd(prisma: PrismaClient) {
           brandId: brandMap[store.brand].id,
           platformId: platformMap[store.platform].id,
           name: store.name,
-          domain: "domain" in store ? store.domain : null,
+          domain: null,
           storeType: store.storeType,
           marketScope: store.marketScope,
           primaryMarketCode: store.primaryMarketCode,
@@ -89,14 +85,7 @@ export async function seedProd(prisma: PrismaClient) {
   const storeMap = Object.fromEntries(stores.map((store) => [store.name, store]));
 
   const channelSeeds = [
-    { businessLine: "Amazon", platform: "Amazon", store: "CALEMBOU-US", channelGroup: "Amazon", channelName: "店铺整体", channelType: "store" },
-    { businessLine: "Amazon", platform: "Amazon", store: "BAHOMU-JP", channelGroup: "Amazon", channelName: "店铺整体", channelType: "store" },
-    { businessLine: "Shopify独立站", platform: "Shopify", store: "bahomu.com", channelGroup: "Shopify", channelName: "店铺整体", channelType: "store" },
-    { businessLine: "WordPress批发", platform: "WordPress", store: "blindboxwholesale.com", channelGroup: "SEO", channelName: "Google SEO", channelType: "organic" },
-    { businessLine: "WordPress批发", platform: "WordPress", store: "blindboxwholesale.com", channelGroup: "Google Ads", channelName: "Google Ads", channelType: "paid_ads" },
-    { businessLine: "TikTok", platform: "TikTok", store: "TikTok Shop US", channelGroup: "TikTok", channelName: "TT Shop达人", channelType: "influencer" },
-    { businessLine: "红人/达人", platform: "Influencer", channelGroup: "Instagram", channelName: "红人合作", channelType: "influencer" },
-    { businessLine: "独立站", platform: "EDM", channelGroup: "EDM", channelName: "老客邮件", channelType: "email" },
+    { businessLine: "默认业务线", platform: "Manual", store: "默认店铺/站点", channelGroup: "默认渠道", channelName: "默认渠道", channelType: "manual" },
   ];
 
   for (const [index, channel] of channelSeeds.entries()) {
@@ -104,7 +93,7 @@ export async function seedProd(prisma: PrismaClient) {
     const platform = platformMap[channel.platform];
     const existing = await prisma.channel.findFirst({ where: { businessLine: channel.businessLine, channelName: channel.channelName, storeId: store?.id ?? null } });
     const data = {
-      brandId: store?.brandId ?? brandMap.BAHOMU.id,
+      brandId: store?.brandId ?? brandMap["默认品牌"].id,
       platformId: platform.id,
       storeId: store?.id ?? null,
       channelGroup: channel.channelGroup,

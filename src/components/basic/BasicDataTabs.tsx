@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, Spin, Tabs } from "antd";
+import { useState } from "react";
 import BrandManager from "./BrandManager";
 import ChannelManager from "./ChannelManager";
 import CountryManager from "./CountryManager";
@@ -12,13 +13,15 @@ import { useBasicOptions } from "./useBasicOptions";
 
 export default function BasicDataTabs() {
   const { options, loading } = useBasicOptions();
+  const [activeKey, setActiveKey] = useState("brands");
 
   return (
     <Spin spinning={loading}>
       <Card styles={{ body: { padding: 0 } }}>
         <Tabs
-          defaultActiveKey="brands"
-          destroyOnHidden={false}
+          activeKey={activeKey}
+          onChange={setActiveKey}
+          destroyOnHidden
           items={[
             { key: "brands", label: "品牌管理", children: <BrandManager options={options} /> },
             { key: "platforms", label: "平台管理", children: <PlatformManager /> },
