@@ -18,6 +18,12 @@ function getSecret() {
   return process.env.SESSION_SECRET || "dev-only-session-secret";
 }
 
+function shouldUseSecureCookie() {
+  if (process.env.COOKIE_SECURE === "true") return true;
+  if (process.env.COOKIE_SECURE === "false") return false;
+  return process.env.NODE_ENV === "production";
+}
+
 function base64UrlEncode(value: string) {
   return Buffer.from(value).toString("base64url");
 }
@@ -67,7 +73,7 @@ export async function setSessionCookie(token: string) {
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookie(),
     maxAge: SESSION_MAX_AGE,
     path: "/",
   });

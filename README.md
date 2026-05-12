@@ -33,6 +33,20 @@ SEED_MODE=demo npx prisma db seed
 
 如果未设置 `SEED_MODE`，系统按 `prod` 模式执行。
 
+### HTTP 测试部署 Cookie
+
+如果生产环境暂时只通过 `http://服务器IP` 访问，需要在服务器 `.env` 设置：
+
+```bash
+COOKIE_SECURE="false"
+```
+
+绑定域名并启用 HTTPS 后，再改为：
+
+```bash
+COOKIE_SECURE="true"
+```
+
 ---
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
