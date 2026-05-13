@@ -1,21 +1,46 @@
 "use client";
 
 import {
+  BarChartOutlined,
   BellOutlined,
+  DollarOutlined,
+  GlobalOutlined,
+  IdcardOutlined,
+  LineChartOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  OrderedListOutlined,
+  ProductOutlined,
   SearchOutlined,
+  SettingOutlined,
+  ShopOutlined,
+  TeamOutlined,
+  UsergroupAddOutlined,
 } from "@ant-design/icons";
 import { Avatar, Button, Layout, Menu, Space, Tooltip, Typography } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { appRoutes, getRouteTitle, getSelectedRoute, getSystemIcon } from "@/lib/routes";
+import { createElement, useMemo, useState, useTransition, type ReactNode } from "react";
+import { appRoutes, getRouteTitle, getSelectedRoute } from "@/lib/routes";
 
 const { Header, Content, Sider } = Layout;
 const siderWidth = 208;
 const collapsedSiderWidth = 72;
+
+const iconMap: Record<string, ReactNode> = {
+  "bar-chart": createElement(BarChartOutlined),
+  dollar: createElement(DollarOutlined),
+  global: createElement(GlobalOutlined),
+  idcard: createElement(IdcardOutlined),
+  "line-chart": createElement(LineChartOutlined),
+  product: createElement(ProductOutlined),
+  "ordered-list": createElement(OrderedListOutlined),
+  setting: createElement(SettingOutlined),
+  shop: createElement(ShopOutlined),
+  team: createElement(TeamOutlined),
+  "usergroup-add": createElement(UsergroupAddOutlined),
+};
 
 type AdminShellProps = {
   children: React.ReactNode;
@@ -52,7 +77,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
       >
         <div className="flex h-16 items-center gap-3 border-b border-[#edf0f5] px-4">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#1677ff] text-white">
-            {getSystemIcon()}
+            {iconMap.global}
           </div>
           {!collapsed ? (
             <div className="min-w-0">
@@ -69,7 +94,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
           items={appRoutes
             .map((route) => ({
               key: route.path,
-              icon: route.icon,
+              icon: iconMap[route.iconKey] ?? iconMap.global,
               label: (
                 <Link
                   className="admin-shell-menu-link"
