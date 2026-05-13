@@ -1,42 +1,25 @@
 "use client";
 
-import {
-  BarChartOutlined,
-  DollarOutlined,
-  GlobalOutlined,
-  IdcardOutlined,
-  LineChartOutlined,
-  LogoutOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  OrderedListOutlined,
-  ProductOutlined,
-  SettingOutlined,
-  ShopOutlined,
-  TeamOutlined,
-  UsergroupAddOutlined,
-} from "@ant-design/icons";
-import { Button } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createElement, useMemo, useState, useTransition, type ReactNode } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { appRoutes, getRouteTitle, getSelectedRoute } from "@/lib/routes";
 
 const siderWidth = 208;
 const collapsedSiderWidth = 72;
 
-const iconMap: Record<string, ReactNode> = {
-  "bar-chart": createElement(BarChartOutlined),
-  dollar: createElement(DollarOutlined),
-  global: createElement(GlobalOutlined),
-  idcard: createElement(IdcardOutlined),
-  "line-chart": createElement(LineChartOutlined),
-  product: createElement(ProductOutlined),
-  "ordered-list": createElement(OrderedListOutlined),
-  setting: createElement(SettingOutlined),
-  shop: createElement(ShopOutlined),
-  team: createElement(TeamOutlined),
-  "usergroup-add": createElement(UsergroupAddOutlined),
+const iconMap: Record<string, string> = {
+  "bar-chart": "▦",
+  dollar: "¥",
+  global: "R",
+  idcard: "#",
+  "line-chart": "⌁",
+  product: "□",
+  "ordered-list": "≡",
+  setting: "⚙",
+  shop: "⌂",
+  team: "◎",
+  "usergroup-add": "+",
 };
 
 type AdminShellProps = {
@@ -66,13 +49,11 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
   return (
     <div className="admin-shell min-h-screen bg-[#f5f7fb]">
       <aside
-        className="admin-shell-sider fixed left-0 top-0 z-20 h-screen overflow-auto border-r border-[#e8edf5] bg-white"
+        className="fixed left-0 top-0 z-20 h-screen overflow-auto border-r border-[#e8edf5] bg-white"
         style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
       >
         <div className="flex h-16 items-center gap-3 border-b border-[#edf0f5] px-4">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#1677ff] text-white">
-            {iconMap.global}
-          </div>
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#1677ff] text-sm font-bold text-white">R</div>
           {!collapsed ? (
             <div className="min-w-0">
               <div className="text-[15px] font-semibold leading-5 text-[#172033]">Ravenclaw</div>
@@ -81,7 +62,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
           ) : null}
         </div>
 
-        <nav className="admin-shell-menu px-2 py-3">
+        <nav className="px-2 py-3">
           {appRoutes
             .filter((route) => userRole !== "sales" || route.path !== "/reports/profit")
             .filter((route) => userRole === "admin" || route.path !== "/settings/system")
@@ -90,7 +71,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
               return (
                 <Link
                   key={route.path}
-                  className={`admin-shell-menu-link mb-1 rounded-md px-3 text-sm transition ${selected ? "bg-[#e6f4ff] font-medium text-[#1677ff]" : "text-[#344054] hover:bg-[#f5f7fb]"}`}
+                  className={`mb-1 flex h-10 items-center overflow-hidden rounded-md px-3 text-sm no-underline transition ${selected ? "bg-[#e6f4ff] font-medium text-[#1677ff]" : "text-[#344054] hover:bg-[#f5f7fb]"}`}
                   href={route.path}
                   prefetch
                   title={route.menuLabel}
@@ -98,7 +79,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
                     if (route.path !== pathname) startTransition(() => setPendingPath(route.path));
                   }}
                 >
-                  <span className="mr-3 inline-flex w-4 shrink-0 items-center justify-center">{iconMap[route.iconKey] ?? iconMap.global}</span>
+                  <span className="mr-3 inline-flex w-4 shrink-0 items-center justify-center text-xs">{iconMap[route.iconKey] ?? "•"}</span>
                   {!collapsed ? <span className="min-w-0 truncate">{route.menuLabel}</span> : null}
                 </Link>
               );
@@ -109,11 +90,14 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
       <div className="min-h-screen" style={{ paddingLeft: sidebarWidth }}>
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between overflow-hidden border-b border-[#e8edf5] bg-white px-6">
           <div className="flex items-center gap-3">
-            <Button
-              type="text"
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            <button
+              type="button"
+              className="h-9 rounded-md border-0 bg-transparent px-3 text-lg text-[#344054] hover:bg-[#f5f7fb]"
               onClick={() => setCollapsed((value) => !value)}
-            />
+              aria-label={collapsed ? "展开菜单" : "收起菜单"}
+            >
+              {collapsed ? "☰" : "×"}
+            </button>
             <h1 className="m-0 text-xl font-semibold text-[#172033]">{pageTitle}</h1>
           </div>
 
@@ -124,9 +108,9 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
                 {userName || "Admin"}
               </span>
             </div>
-            <Button icon={<LogoutOutlined />} onClick={logout}>
+            <button type="button" className="h-9 rounded-md border border-[#d0d5dd] bg-white px-3 text-sm text-[#344054]" onClick={logout}>
               退出登录
-            </Button>
+            </button>
           </div>
         </header>
 
