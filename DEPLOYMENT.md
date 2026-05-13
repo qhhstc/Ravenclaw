@@ -23,8 +23,6 @@ pm2 restart order-profit-system --update-env
 `prod` seed 会初始化：
 
 - 管理员账号：`admin@example.com / admin123456 / admin`
-- 业务员账号：`sales1@example.com`、`sales2@example.com`
-- 财务账号：`finance@example.com`
 - 必要国家/地区
 - 必要币种
 - 基础汇率

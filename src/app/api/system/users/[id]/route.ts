@@ -72,16 +72,28 @@ export async function DELETE(_request: NextRequest, context: Context) {
 
     const { id } = await context.params;
     const userId = numericId(id);
-    if (userId === session.userId) return NextResponse.json({ message: "不能停用当前登录账号" }, { status: 400 });
+    if (userId === session.userId) return NextResponse.json({ message: "不能删除当前登录账号" }, { status: 400 });
 
-    const item = await prisma.user.update({
-      where: { id: userId },
-      data: { status: "inactive" },
-      select: userSelect,
+    const item = await prisma.$transaction(async (tx) => {
+      const existing = await tx.user.findUnique({ where: { id: userId }, select: userSelect });
+      if (!existing) throw new Error("账号不存在或已删除");
+
+      await tx.channelDailyMetric.updateMany({ where: { createdBy: userId }, data: { createdBy: null } });
+      await tx.channelMetricPeriod.updateMany({ where: { createdBy: userId }, data: { createdBy: null } });
+      await tx.metricImportBatch.updateMany({ where: { createdBy: userId }, data: { createdBy: null } });
+      await tx.customer.updateMany({ where: { ownerId: userId }, data: { ownerId: null } });
+      await tx.customerFollowup.updateMany({ where: { ownerId: userId }, data: { ownerId: null } });
+      await tx.order.updateMany({ where: { salespersonId: userId }, data: { salespersonId: null } });
+      await tx.order.updateMany({ where: { createdBy: userId }, data: { createdBy: null } });
+      await tx.orderStatusLog.updateMany({ where: { createdBy: userId }, data: { createdBy: null } });
+      await tx.attachment.updateMany({ where: { uploadedBy: userId }, data: { uploadedBy: null } });
+      await tx.user.delete({ where: { id: userId } });
+
+      return existing;
     });
 
     return NextResponse.json({ item, ok: true });
   } catch (error) {
-    return systemUserApiError(error, "账号停用失败");
+    return systemUserApiError(error, "账号删除失败");
   }
 }

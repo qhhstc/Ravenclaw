@@ -5,9 +5,6 @@ import { codeFromName, countrySeeds, currencySeeds, exchangeRateSeeds, platformT
 export async function seedProd(prisma: PrismaClient) {
   const userSeeds = [
     { email: "admin@example.com", password: "admin123456", name: "Admin", role: "admin" },
-    { email: "sales1@example.com", password: "sales123456", name: "Sales 1", role: "sales" },
-    { email: "sales2@example.com", password: "sales123456", name: "Sales 2", role: "sales" },
-    { email: "finance@example.com", password: "finance123456", name: "Finance", role: "finance" },
   ];
 
   const users = await Promise.all(

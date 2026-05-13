@@ -1,6 +1,6 @@
 "use client";
 
-import { EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, StopOutlined, CheckCircleOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Empty, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import { useCallback, useEffect, useState } from "react";
@@ -137,19 +137,17 @@ export default function UserAccountManager() {
     }
   }
 
-  async function setUserStatus(record: UserRecord, status: "active" | "inactive") {
+  async function deleteUser(record: UserRecord) {
     try {
       const response = await fetch(`/api/system/users/${record.id}`, {
-        method: status === "inactive" ? "DELETE" : "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: status === "inactive" ? undefined : JSON.stringify({ ...record, status: "active", password: "" }),
+        method: "DELETE",
       });
       const data = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(data.message || "操作失败");
-      message.success(status === "active" ? "账号已启用" : "账号已停用");
+      if (!response.ok) throw new Error(data.message || "删除失败");
+      message.success("账号已删除");
       await loadUsers();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "操作失败");
+      message.error(error instanceof Error ? error.message : "删除失败");
     }
   }
 
@@ -184,16 +182,10 @@ export default function UserAccountManager() {
             <Typography.Text type="secondary" className="px-2 text-xs">
               当前账号
             </Typography.Text>
-          ) : record.status === "active" ? (
-            <Popconfirm title="确认停用该账号？" description="停用后该账号将无法登录。" onConfirm={() => setUserStatus(record, "inactive")}>
-              <Button danger type="link" size="small" icon={<StopOutlined />}>
-                停用
-              </Button>
-            </Popconfirm>
           ) : (
-            <Popconfirm title="确认启用该账号？" onConfirm={() => setUserStatus(record, "active")}>
-              <Button type="link" size="small" icon={<CheckCircleOutlined />}>
-                启用
+            <Popconfirm title="确认删除该账号？" description="删除后不可恢复，历史业务记录会保留但不再关联该账号。" okText="确认删除" cancelText="取消" onConfirm={() => deleteUser(record)}>
+              <Button danger type="link" size="small" icon={<DeleteOutlined />}>
+                删除
               </Button>
             </Popconfirm>
           )}
@@ -222,7 +214,7 @@ export default function UserAccountManager() {
             <Typography.Title level={4} className="!mb-1">
               账号管理
             </Typography.Title>
-            <Typography.Text type="secondary">维护管理员、业务员、财务和只读账号；停用账号后将无法登录。</Typography.Text>
+            <Typography.Text type="secondary">维护管理员、业务员、财务和只读账号；当前登录管理员不能删除自己。</Typography.Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
             新增账号
