@@ -2,7 +2,6 @@
 
 import {
   BarChartOutlined,
-  BellOutlined,
   DollarOutlined,
   GlobalOutlined,
   IdcardOutlined,
@@ -12,19 +11,17 @@ import {
   MenuUnfoldOutlined,
   OrderedListOutlined,
   ProductOutlined,
-  SearchOutlined,
   SettingOutlined,
   ShopOutlined,
   TeamOutlined,
   UsergroupAddOutlined,
 } from "@ant-design/icons";
-import { Avatar, Button, Layout, Menu, Space, Tooltip, Typography } from "antd";
+import { Button } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createElement, useMemo, useState, useTransition, type ReactNode } from "react";
 import { appRoutes, getRouteTitle, getSelectedRoute } from "@/lib/routes";
 
-const { Header, Content, Sider } = Layout;
 const siderWidth = 208;
 const collapsedSiderWidth = 72;
 
@@ -58,6 +55,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
   const activePendingPath = pendingPath && pendingPath !== pathname ? pendingPath : null;
   const selectedKey = useMemo(() => activePendingPath ?? getSelectedRoute(pathname), [activePendingPath, pathname]);
   const pageTitle = useMemo(() => getRouteTitle(activePendingPath ?? pathname), [activePendingPath, pathname]);
+  const sidebarWidth = collapsed ? collapsedSiderWidth : siderWidth;
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -66,14 +64,10 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
   }
 
   return (
-    <Layout className="admin-shell min-h-screen">
-      <Sider
-        width={siderWidth}
-        collapsedWidth={collapsedSiderWidth}
-        collapsible
-        collapsed={collapsed}
-        trigger={null}
-        className="admin-shell-sider fixed left-0 top-0 z-20 h-screen overflow-auto border-r border-[#e8edf5] !bg-white"
+    <div className="admin-shell min-h-screen bg-[#f5f7fb]">
+      <aside
+        className="admin-shell-sider fixed left-0 top-0 z-20 h-screen overflow-auto border-r border-[#e8edf5] bg-white"
+        style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
       >
         <div className="flex h-16 items-center gap-3 border-b border-[#edf0f5] px-4">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#1677ff] text-white">
@@ -87,73 +81,60 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
           ) : null}
         </div>
 
-        <Menu
-          className="admin-shell-menu border-0 px-2 py-3"
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={appRoutes
-            .map((route) => ({
-              key: route.path,
-              icon: iconMap[route.iconKey] ?? iconMap.global,
-              label: (
+        <nav className="admin-shell-menu px-2 py-3">
+          {appRoutes
+            .filter((route) => userRole !== "sales" || route.path !== "/reports/profit")
+            .filter((route) => userRole === "admin" || route.path !== "/settings/system")
+            .map((route) => {
+              const selected = selectedKey === route.path;
+              return (
                 <Link
-                  className="admin-shell-menu-link"
+                  key={route.path}
+                  className={`admin-shell-menu-link mb-1 rounded-md px-3 text-sm transition ${selected ? "bg-[#e6f4ff] font-medium text-[#1677ff]" : "text-[#344054] hover:bg-[#f5f7fb]"}`}
                   href={route.path}
                   prefetch
+                  title={route.menuLabel}
                   onClick={() => {
-                    if (route.path !== pathname) {
-                      startTransition(() => setPendingPath(route.path));
-                    }
+                    if (route.path !== pathname) startTransition(() => setPendingPath(route.path));
                   }}
                 >
-                  {route.menuLabel}
+                  <span className="mr-3 inline-flex w-4 shrink-0 items-center justify-center">{iconMap[route.iconKey] ?? iconMap.global}</span>
+                  {!collapsed ? <span className="min-w-0 truncate">{route.menuLabel}</span> : null}
                 </Link>
-              ),
-            }))
-            .filter((item) => userRole !== "sales" || item.key !== "/reports/profit")
-            .filter((item) => userRole === "admin" || item.key !== "/settings/system")}
-        />
-      </Sider>
+              );
+            })}
+        </nav>
+      </aside>
 
-      <Layout className="min-h-screen">
-        <Header className="sticky top-0 z-10 flex h-16 items-center justify-between overflow-hidden border-b border-[#e8edf5] !bg-white px-6">
-          <Space size={14}>
+      <div className="min-h-screen" style={{ paddingLeft: sidebarWidth }}>
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-between overflow-hidden border-b border-[#e8edf5] bg-white px-6">
+          <div className="flex items-center gap-3">
             <Button
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed((value) => !value)}
             />
-            <Typography.Title level={4} className="!m-0 !text-[#172033]">
-              {pageTitle}
-            </Typography.Title>
-          </Space>
+            <h1 className="m-0 text-xl font-semibold text-[#172033]">{pageTitle}</h1>
+          </div>
 
-          <Space size={12} className="h-16">
-            <Tooltip title="搜索">
-              <Button type="text" shape="circle" icon={<SearchOutlined />} />
-            </Tooltip>
-            <Tooltip title="通知">
-              <Button type="text" shape="circle" icon={<BellOutlined />} />
-            </Tooltip>
-            <Space className="h-9 rounded-md bg-[#fafcff] px-2">
-              <Avatar size={28} style={{ backgroundColor: "#1677ff" }}>
-                A
-              </Avatar>
+          <div className="flex h-16 items-center gap-3">
+            <div className="flex h-9 items-center rounded-md bg-[#fafcff] px-2">
+              <div className="mr-2 grid h-7 w-7 place-items-center rounded-full bg-[#1677ff] text-sm text-white">A</div>
               <span className="max-w-[96px] truncate text-sm font-medium leading-none text-[#172033]">
                 {userName || "Admin"}
               </span>
-            </Space>
+            </div>
             <Button icon={<LogoutOutlined />} onClick={logout}>
               退出登录
             </Button>
-          </Space>
-        </Header>
+          </div>
+        </header>
 
-        <Content className="relative min-h-[calc(100vh-64px)] bg-[#f5f7fb] p-6">
-          {(activePendingPath || isPending) ? <div className="absolute left-0 top-0 z-20 h-1 w-full overflow-hidden bg-[#e6f4ff]"><div className="h-full w-1/3 animate-pulse bg-[#1677ff]" /></div> : null}
+        <main className="relative min-h-[calc(100vh-64px)] bg-[#f5f7fb] p-6">
+          {activePendingPath || isPending ? <div className="absolute left-0 top-0 z-20 h-1 w-full overflow-hidden bg-[#e6f4ff]"><div className="h-full w-1/3 animate-pulse bg-[#1677ff]" /></div> : null}
           {children}
-        </Content>
-      </Layout>
-    </Layout>
+        </main>
+      </div>
+    </div>
   );
 }
