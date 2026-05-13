@@ -8,15 +8,19 @@ import { useState } from "react";
 
 export type ChannelImportPreviewRow = {
   rowNumber: number;
+  businessBlock: string;
   businessLine: string;
   brandName: string;
   platformName: string;
   storeName: string;
   channelName: string;
-  channelType: string;
+  decisionOwner: string;
   year: number;
   month: number;
   weeks: Array<{ weekNumber: number; salesAmountOriginal: number; adSpendOriginal: number }>;
+  manualRating: string;
+  manualActionSuggestion: string;
+  decisionDeadline: string;
   remark: string;
   rawSummary: string;
 };

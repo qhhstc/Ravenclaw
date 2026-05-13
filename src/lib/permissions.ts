@@ -52,7 +52,7 @@ export function canDeleteOrder(role?: string | null) {
 }
 
 export function canViewProfitReports(role?: string | null) {
-  return ["admin", "finance", "viewer"].includes(role ?? "");
+  return ["admin", "finance"].includes(role ?? "");
 }
 
 export function canExport(role?: string | null) {

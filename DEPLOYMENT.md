@@ -23,6 +23,8 @@ pm2 restart order-profit-system --update-env
 `prod` seed 会初始化：
 
 - 管理员账号：`admin@example.com / admin123456 / admin`
+- 业务员账号：`sales1@example.com / sales123456 / sales`、`sales2@example.com / sales123456 / sales`
+- 财务账号：`finance@example.com / finance123456 / finance`
 - 必要国家/地区
 - 必要币种
 - 基础汇率
@@ -50,7 +52,7 @@ pm2 restart order-profit-system --update-env
 npm run db:seed:demo
 ```
 
-`demo` seed 会创建完整演示数据，包括示例产品、供应商、客户、询盘、报价、订单、成本、附件、渠道经营数据和利润报表测试数据。
+`demo` seed 会创建完整演示数据，包括示例产品、供应商、客户、询盘、报价、订单、成本、附件、四板块经营数据、渠道经营数据和利润报表测试数据。
 
 ## 生产环境禁止操作
 

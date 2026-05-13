@@ -6,6 +6,7 @@ export type ChannelWeekValue = {
 
 export type ChannelDataRow = {
   channelId: number;
+  businessBlock?: string | null;
   businessLine: string;
   channelGroup?: string | null;
   channelName: string;
@@ -26,6 +27,28 @@ export type ChannelDataRow = {
   } | null;
   countryCode?: string | null;
   currency: string;
+  productCostBase?: number;
+  otherCostBase?: number;
+  manualRating?: string | null;
+  aiRating?: string | null;
+  ratingSource?: string | null;
+  aiAnalysisStatus?: string | null;
+  aiActionSuggestion?: string | null;
+  manualActionSuggestion?: string | null;
+  aiRiskNotes?: string | null;
+  warningType?: string | null;
+  warningLevel?: string | null;
+  decisionOwner?: string | null;
+  decisionDeadline?: string | null;
+  nextBudgetBase?: number | null;
+  budgetAdjustReason?: string | null;
+  aiAnalyzedAt?: string | null;
+  quarter?: {
+    salesAmount: number;
+    adSpend: number;
+    productCost: number;
+    otherCost: number;
+  };
   remark?: string | null;
   weeks: ChannelWeekValue[];
 };

@@ -256,6 +256,23 @@ model ChannelMetricPeriod {
   salesAmountBase      Decimal  @default(0) @db.Decimal(18, 2)
   adSpendBase          Decimal  @default(0) @db.Decimal(18, 2)
   refundAmountBase     Decimal  @default(0) @db.Decimal(18, 2)
+  businessBlock        String?
+  productCostBase      Decimal  @default(0) @db.Decimal(18, 2)
+  otherCostBase        Decimal  @default(0) @db.Decimal(18, 2)
+  manualRating         String?
+  aiRating             String?
+  ratingSource         String   @default("none")
+  aiAnalysisStatus     String   @default("pending")
+  aiActionSuggestion   String?  @db.Text
+  manualActionSuggestion String? @db.Text
+  aiRiskNotes          String?  @db.Text
+  warningType          String?
+  warningLevel         String?
+  decisionOwner        String?
+  decisionDeadline     DateTime?
+  nextBudgetBase       Decimal? @db.Decimal(18, 2)
+  budgetAdjustReason   String?  @db.Text
+  aiAnalyzedAt         DateTime?
   remark               String?  @db.Text
   createdBy            Int?
   createdAt            DateTime @default(now())
@@ -275,6 +292,11 @@ model ChannelMetricPeriod {
   @@index([platformId])
   @@index([storeId])
   @@index([channelId])
+  @@index([businessBlock])
+  @@index([ratingSource])
+  @@index([aiAnalysisStatus])
+  @@index([warningLevel])
+  @@index([decisionDeadline])
 }
 
 model MetricImportBatch {

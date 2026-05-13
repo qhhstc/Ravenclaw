@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { logApiDuration } from "@/lib/api-logger";
 import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, parseOptionalInt, parsePositiveInt, toNumber } from "@/lib/channel-data";
+import { ApiAuthError, requireApiSession } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -41,7 +42,19 @@ function ratio(numerator: number, denominator: number) {
 export async function GET(request: NextRequest) {
   const startedAt = performance.now();
   try {
+    const session = await requireApiSession();
     const filters = parseFilters(request.nextUrl.searchParams);
+    if (session.role !== "admin" && session.role !== "finance") {
+      return Response.json({
+        filters,
+        message: "当前角色已隐藏公司整体经营数据。",
+        kpis: { salesAmount: 0, adSpend: 0, roi: null, adSpendRatio: null, channelCount: 0, paidChannelCount: 0 },
+        weeklyTrend: WEEK_NUMBERS.map((weekNumber) => ({ weekNumber, week: `W${weekNumber}`, salesAmount: 0, adSpend: 0 })),
+        businessLineShare: [],
+        roiRanking: [],
+        weeklyTable: [],
+      });
+    }
     const channels = await prisma.channel.findMany({
       where: channelWhere(filters),
       select: {
@@ -178,6 +191,7 @@ export async function GET(request: NextRequest) {
       weeklyTable,
     });
   } catch (error) {
+    if (error instanceof ApiAuthError) return Response.json({ message: error.message }, { status: error.status });
     return Response.json(
       { message: error instanceof Error ? error.message : "获取经营看板数据失败" },
       { status: 400 },

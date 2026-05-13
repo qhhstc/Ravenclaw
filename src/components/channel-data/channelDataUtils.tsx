@@ -1,5 +1,6 @@
 import { Tag } from "antd";
 import { channelTypeOptions } from "@/lib/basic-options";
+import { businessBlockLabel } from "@/lib/business-blocks";
 import type { ChannelDataRow } from "./channelDataTypes";
 
 export const weekNumbers = [1, 2, 3, 4, 5] as const;
@@ -37,12 +38,37 @@ export function rowAdSpend(row: ChannelDataRow) {
   return sumWeeks(row, "adSpendOriginal");
 }
 
+export function rowProductCost(row: ChannelDataRow) {
+  return Number(row.productCostBase || 0);
+}
+
+export function rowOtherCost(row: ChannelDataRow) {
+  return Number(row.otherCostBase || 0);
+}
+
+export function rowGrossProfit(row: ChannelDataRow) {
+  return rowSales(row) - rowAdSpend(row) - rowProductCost(row) - rowOtherCost(row);
+}
+
 export function safeRatio(numerator: number, denominator: number) {
   return denominator > 0 ? numerator / denominator : null;
 }
 
 export function channelTypeLabel(value?: string | null) {
   return channelTypeOptions.find((option) => option.value === value)?.label ?? value ?? "-";
+}
+
+export function blockLabel(value?: string | null) {
+  return businessBlockLabel(value);
+}
+
+export function ratingText(row: ChannelDataRow) {
+  if (row.ratingSource === "ai" && row.aiRating) return row.aiRating;
+  return row.manualRating || row.aiRating || "";
+}
+
+export function actionText(row: ChannelDataRow) {
+  return row.aiActionSuggestion || row.manualActionSuggestion || "";
 }
 
 export function RoiTag({ value }: { value: number | null }) {

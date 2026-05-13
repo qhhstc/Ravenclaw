@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { inferBusinessBlock } from "@/lib/business-blocks";
 import { prisma } from "@/lib/prisma";
 
 export const WEEK_NUMBERS = [1, 2, 3, 4, 5] as const;
@@ -28,6 +29,19 @@ export type ChannelDataRowInput = {
   countryCode?: string | null;
   currency?: string;
   exchangeRate?: number;
+  businessBlock?: string | null;
+  productCostBase?: number;
+  otherCostBase?: number;
+  manualRating?: string | null;
+  ratingSource?: string | null;
+  aiAnalysisStatus?: string | null;
+  manualActionSuggestion?: string | null;
+  warningType?: string | null;
+  warningLevel?: string | null;
+  decisionOwner?: string | null;
+  decisionDeadline?: string | null;
+  nextBudgetBase?: number | null;
+  budgetAdjustReason?: string | null;
   remark?: string | null;
   weeks: ChannelDataWeekInput[];
 };
@@ -120,6 +134,31 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
   });
 
   const metricMap = new Map(metrics.map((metric) => [`${metric.channelId}-${metric.weekNumber}`, metric]));
+  const quarter = quarterFromMonth(filters.month);
+  const quarterMetrics = await prisma.channelMetricPeriod.findMany({
+    where: {
+      year: filters.year,
+      quarter,
+      periodType: PERIOD_TYPE_WEEK,
+      channelId: { in: channels.map((channel) => channel.id) },
+    },
+    select: {
+      channelId: true,
+      salesAmountBase: true,
+      adSpendBase: true,
+      productCostBase: true,
+      otherCostBase: true,
+    },
+  });
+  const quarterMap = new Map<number, { salesAmount: number; adSpend: number; productCost: number; otherCost: number }>();
+  quarterMetrics.forEach((metric) => {
+    const current = quarterMap.get(metric.channelId) ?? { salesAmount: 0, adSpend: 0, productCost: 0, otherCost: 0 };
+    current.salesAmount += toNumber(metric.salesAmountBase);
+    current.adSpend += toNumber(metric.adSpendBase);
+    current.productCost += toNumber(metric.productCostBase);
+    current.otherCost += toNumber(metric.otherCostBase);
+    quarterMap.set(metric.channelId, current);
+  });
 
   return channels.map((channel) => {
     const weeks = WEEK_NUMBERS.map((weekNumber) => {
@@ -130,10 +169,19 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
         adSpendOriginal: toNumber(metric?.adSpendOriginal),
       };
     });
-    const firstMetricWithRemark = metrics.find((metric) => metric.channelId === channel.id && metric.remark);
+    const firstMetric = metrics.find((metric) => metric.channelId === channel.id && (metric.remark || metric.manualRating || metric.manualActionSuggestion || metric.decisionOwner || metric.decisionDeadline || metric.nextBudgetBase));
+    const businessBlock = inferBusinessBlock({
+      businessBlock: firstMetric?.businessBlock,
+      businessLine: channel.businessLine,
+      platformName: channel.platform?.name,
+      storeType: channel.store?.storeType,
+      channelType: channel.channelType,
+    });
+    const quarterTotals = quarterMap.get(channel.id) ?? { salesAmount: 0, adSpend: 0, productCost: 0, otherCost: 0 };
 
     return {
       channelId: channel.id,
+      businessBlock,
       businessLine: channel.businessLine,
       channelGroup: channel.channelGroup,
       channelName: channel.channelName,
@@ -145,7 +193,24 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
       store: channel.store,
       countryCode: channel.store?.primaryMarketCode ?? null,
       currency: channel.store?.defaultCurrency ?? channel.brand?.defaultCurrency ?? "CNY",
-      remark: firstMetricWithRemark?.remark ?? "",
+      productCostBase: toNumber(firstMetric?.productCostBase),
+      otherCostBase: toNumber(firstMetric?.otherCostBase),
+      manualRating: firstMetric?.manualRating ?? "",
+      aiRating: firstMetric?.aiRating ?? "",
+      ratingSource: firstMetric?.ratingSource ?? "none",
+      aiAnalysisStatus: firstMetric?.aiAnalysisStatus ?? "pending",
+      aiActionSuggestion: firstMetric?.aiActionSuggestion ?? "",
+      manualActionSuggestion: firstMetric?.manualActionSuggestion ?? "",
+      aiRiskNotes: firstMetric?.aiRiskNotes ?? "",
+      warningType: firstMetric?.warningType ?? "",
+      warningLevel: firstMetric?.warningLevel ?? "",
+      decisionOwner: firstMetric?.decisionOwner ?? "",
+      decisionDeadline: firstMetric?.decisionDeadline?.toISOString() ?? null,
+      nextBudgetBase: firstMetric?.nextBudgetBase === null || firstMetric?.nextBudgetBase === undefined ? null : toNumber(firstMetric.nextBudgetBase),
+      budgetAdjustReason: firstMetric?.budgetAdjustReason ?? "",
+      aiAnalyzedAt: firstMetric?.aiAnalyzedAt?.toISOString() ?? null,
+      quarter: quarterTotals,
+      remark: firstMetric?.remark ?? "",
       weeks,
     };
   });

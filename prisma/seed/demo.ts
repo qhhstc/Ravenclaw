@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { inferBusinessBlock } from "../../src/lib/business-blocks";
 
 const platformTypes: Record<string, string> = {
   Amazon: "marketplace",
@@ -35,6 +36,16 @@ function orderPaymentStatus(totalAmount: number, paidAmount: number, orderStatus
 
 function orderGrossMargin(salesAmount: number, grossProfit: number) {
   return salesAmount > 0 ? Number((grossProfit / salesAmount).toFixed(4)) : null;
+}
+
+function demoBlockMeta(businessBlock: string) {
+  const meta: Record<string, { rating: string; action: string; owner: string; nextBudget: number; reason: string; productCostRatio: number; otherCostRatio: number; warningType?: string; warningLevel?: string }> = {
+    amazon: { rating: "A", action: "继续放量高 ROI 店铺，监控广告占销。", owner: "Admin", nextBudget: 185000, reason: "Amazon ROI 稳定，建议预算小幅上调。", productCostRatio: 0.34, otherCostRatio: 0.08 },
+    independent_site: { rating: "B", action: "优化 Shopify 落地页和 EDM 复购路径。", owner: "Sales 1", nextBudget: 112000, reason: "独立站销售下滑，预算先稳住并测试素材。", productCostRatio: 0.36, otherCostRatio: 0.09, warningType: "销售环比下滑", warningLevel: "yellow" },
+    tiktok: { rating: "B", action: "筛选达人内容，控制单量履约成本。", owner: "Sales 2", nextBudget: 42000, reason: "TikTok 有增量但波动大，保持测试预算。", productCostRatio: 0.32, otherCostRatio: 0.1 },
+    b2b: { rating: "S", action: "B 端线索质量高，优先跟进大额询盘。", owner: "Admin", nextBudget: 18000, reason: "SEO 自然流量贡献高，广告只补关键词缺口。", productCostRatio: 0.43, otherCostRatio: 0.12 },
+  };
+  return meta[businessBlock] ?? meta.independent_site;
 }
 
 function productCost(items: Array<{ quantity: number; purchaseUnitCost: number }>) {
@@ -415,9 +426,17 @@ export async function seedDemo(prisma: PrismaClient) {
     const channel = metricSeed.channel;
     const currency = channel.store?.defaultCurrency ?? channel.brand?.defaultCurrency ?? "CNY";
     const countryCode = channel.store?.primaryMarketCode ?? null;
+    const businessBlock = inferBusinessBlock({
+      businessLine: channel.businessLine,
+      platformName: channel.platform?.name,
+      storeType: channel.store?.storeType,
+      channelType: channel.channelType,
+    });
+    const blockMeta = demoBlockMeta(businessBlock);
 
     for (const [weekIndex, [salesAmount, adSpend]] of metricSeed.weeks.entries()) {
       const weekNumber = weekIndex + 1;
+      const firstWeek = weekNumber === 1;
       await prisma.channelMetricPeriod.upsert({
         where: {
           year_month_periodType_weekNumber_channelId: {
@@ -441,8 +460,21 @@ export async function seedDemo(prisma: PrismaClient) {
           salesAmountBase: salesAmount,
           adSpendBase: adSpend,
           refundAmountBase: 0,
+          businessBlock,
+          productCostBase: firstWeek ? money(metricSeed.weeks.reduce((sum, [sales]) => sum + sales, 0) * blockMeta.productCostRatio) : 0,
+          otherCostBase: firstWeek ? money(metricSeed.weeks.reduce((sum, [, ad]) => sum + ad, 0) * blockMeta.otherCostRatio) : 0,
+          manualRating: firstWeek ? blockMeta.rating : null,
+          ratingSource: firstWeek ? "manual" : "none",
+          aiAnalysisStatus: "pending",
+          manualActionSuggestion: firstWeek ? blockMeta.action : null,
+          warningType: firstWeek ? blockMeta.warningType ?? null : null,
+          warningLevel: firstWeek ? blockMeta.warningLevel ?? null : null,
+          decisionOwner: firstWeek ? blockMeta.owner : null,
+          decisionDeadline: firstWeek ? new Date("2026-05-28T00:00:00.000Z") : null,
+          nextBudgetBase: firstWeek ? blockMeta.nextBudget : null,
+          budgetAdjustReason: firstWeek ? blockMeta.reason : null,
           createdBy: admin.id,
-          remark: null,
+          remark: firstWeek ? "演示四板块经营分析预留字段。" : null,
         },
         create: {
           year: 2026,
@@ -463,8 +495,21 @@ export async function seedDemo(prisma: PrismaClient) {
           salesAmountBase: salesAmount,
           adSpendBase: adSpend,
           refundAmountBase: 0,
+          businessBlock,
+          productCostBase: firstWeek ? money(metricSeed.weeks.reduce((sum, [sales]) => sum + sales, 0) * blockMeta.productCostRatio) : 0,
+          otherCostBase: firstWeek ? money(metricSeed.weeks.reduce((sum, [, ad]) => sum + ad, 0) * blockMeta.otherCostRatio) : 0,
+          manualRating: firstWeek ? blockMeta.rating : null,
+          ratingSource: firstWeek ? "manual" : "none",
+          aiAnalysisStatus: "pending",
+          manualActionSuggestion: firstWeek ? blockMeta.action : null,
+          warningType: firstWeek ? blockMeta.warningType ?? null : null,
+          warningLevel: firstWeek ? blockMeta.warningLevel ?? null : null,
+          decisionOwner: firstWeek ? blockMeta.owner : null,
+          decisionDeadline: firstWeek ? new Date("2026-05-28T00:00:00.000Z") : null,
+          nextBudgetBase: firstWeek ? blockMeta.nextBudget : null,
+          budgetAdjustReason: firstWeek ? blockMeta.reason : null,
           createdBy: admin.id,
-          remark: null,
+          remark: firstWeek ? "演示四板块经营分析预留字段。" : null,
         },
       });
     }
@@ -1196,4 +1241,3 @@ export async function seedDemo(prisma: PrismaClient) {
 
   console.log(`Seed completed. Admin user: ${admin.email}. CRM customers: ${customerSeeds.length + extraCustomerSeeds.length}. Orders: ${orderSeeds.length}`);
 }
-

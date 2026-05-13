@@ -1,6 +1,6 @@
 "use client";
 
-import { DownloadOutlined, DollarOutlined, SettingOutlined, UserOutlined } from "@ant-design/icons";
+import { DownloadOutlined, DollarOutlined, ReloadOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Col, DatePicker, Empty, List, Progress, Row, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -61,18 +61,21 @@ const customerStatusLabels: Record<string, string> = {
   invalid: "无效客户",
 };
 
-const defaultFilters = { year: 2026, month: 5 };
+const defaultFilters = { year: 2026, month: 5, quarter: 2 };
 
 type DashboardFilters = {
   year: number;
   month: number;
+  quarter?: number;
   brandId?: number;
   platformId?: number;
   storeId?: number;
   countryCode?: string;
+  currency?: string;
 };
 
 type DashboardOverviewData = {
+  message?: string;
   kpis: {
     salesAmount: number;
     adSpend: number;
@@ -96,6 +99,67 @@ type DashboardOverviewData = {
   }>;
 };
 
+type BusinessBlocksData = {
+  message?: string;
+  visibility: {
+    role: string;
+    scope: string;
+    canViewGlobal: boolean;
+    canViewProfit: boolean;
+    canViewBudget: boolean;
+    canEditDecisions: boolean;
+  };
+  totals: {
+    salesAmount: number;
+    adSpend: number;
+    productCost: number;
+    otherCost: number;
+    grossProfit: number;
+    grossMargin: number | null;
+    roi: number | null;
+  } | null;
+  blockPerformance: Array<{
+    businessBlock: string;
+    blockName: string;
+    salesAmount: number;
+    salesShare: number | null;
+    adSpend: number;
+    productCost: number;
+    otherCost: number;
+    grossProfit: number;
+    grossMargin: number | null;
+    roi: number | null;
+    monthOverMonth: number | null;
+    rating: { label: string; source: string };
+    keyAction: string;
+    aiAnalysisStatus: string;
+  }>;
+  warnings: Array<{
+    businessBlock: string;
+    blockName: string;
+    channelId: number;
+    channelName: string;
+    warningType: string;
+    currentValue: number;
+    monthOverMonth: number | null;
+    suggestedAction: string;
+    decisionOwner: string;
+    decisionDeadline?: string | null;
+    warningLevel: string;
+    remark?: string | null;
+  }>;
+  budgetSuggestions: Array<{
+    businessBlock: string;
+    blockName: string;
+    currentAdSpend: number;
+    nextBudget: number | null;
+    adjustAmount: number | null;
+    adjustRatio: number | null;
+    adjustReason: string;
+  }>;
+  fieldDefinitions: Array<{ field: string; description: string }>;
+};
+
 type Option = { label: string; value: string | number };
 
 type OptionRecord = { id: number; name: string; code?: string };
@@ -108,6 +172,15 @@ const emptyOverview: DashboardOverviewData = {
   businessLineShare: [],
   roiRanking: [],
   weeklyTable: [],
+};
+
+const emptyBusinessBlocks: BusinessBlocksData = {
+  visibility: { role: "viewer", scope: "limited", canViewGlobal: false, canViewProfit: false, canViewBudget: false, canEditDecisions: false },
+  totals: null,
+  blockPerformance: [],
+  warnings: [],
+  budgetSuggestions: [],
+  fieldDefinitions: [],
 };
 
 function moneyFormatter(value: number) {
@@ -126,6 +199,14 @@ function ratioFormatter(value: number | null) {
 
 function percentFormatter(value: number | null) {
   return value === null || !Number.isFinite(value) ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+function rateColor(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "default";
+  if (value >= 0.3) return "green";
+  if (value >= 0.2) return "blue";
+  if (value >= 0.1) return "orange";
+  return "red";
 }
 
 function formatDateTime(value?: string | Date | null) {
@@ -175,6 +256,8 @@ export default function DashboardOverview() {
   const [followupLoading, setFollowupLoading] = useState(false);
   const [pendingPayments, setPendingPayments] = useState<PendingPaymentData>(emptyPendingPayments);
   const [pendingPaymentsLoading, setPendingPaymentsLoading] = useState(false);
+  const [businessBlocks, setBusinessBlocks] = useState<BusinessBlocksData>(emptyBusinessBlocks);
+  const [businessBlocksLoading, setBusinessBlocksLoading] = useState(false);
 
   const columns = useMemo<ColumnsType<DashboardOverviewData["weeklyTable"][number]>>(
     () => [
@@ -205,6 +288,56 @@ export default function DashboardOverview() {
         align: "right",
         render: (value: number | null) => <Tag color={roiColor(value)}>{ratioFormatter(value)}</Tag>,
       },
+    ],
+    [],
+  );
+
+  const blockColumns = useMemo<ColumnsType<BusinessBlocksData["blockPerformance"][number]>>(
+    () => [
+      { title: "板块", dataIndex: "blockName", fixed: "left", width: 120, render: (value) => <Typography.Text strong>{value}</Typography.Text> },
+      { title: "销售额", dataIndex: "salesAmount", width: 130, align: "right", render: moneyFormatter },
+      { title: "销售占比", dataIndex: "salesShare", width: 110, align: "right", render: percentFormatter },
+      { title: "广告投入", dataIndex: "adSpend", width: 130, align: "right", render: moneyFormatter },
+      {
+        title: "经营毛利",
+        dataIndex: "grossProfit",
+        width: 130,
+        align: "right",
+        render: (value: number) => <span className={value < 0 ? "font-semibold text-red-500" : "font-semibold text-[#172033]"}>{moneyFormatter(value)}</span>,
+      },
+      { title: "毛利率", dataIndex: "grossMargin", width: 100, align: "right", render: (value: number | null) => <Tag color={rateColor(value)}>{percentFormatter(value)}</Tag> },
+      { title: "ROI", dataIndex: "roi", width: 90, align: "right", render: (value: number | null) => <Tag color={roiColor(value)}>{ratioFormatter(value)}</Tag> },
+      { title: "环比上月", dataIndex: "monthOverMonth", width: 110, align: "right", render: (value: number | null) => <Tag color={value === null ? "default" : value >= 0 ? "green" : "red"}>{percentFormatter(value)}</Tag> },
+      { title: "评级", dataIndex: "rating", width: 120, render: (value: BusinessBlocksData["blockPerformance"][number]["rating"]) => <Tag color={value.source === "none" ? "default" : "purple"}>{value.label}</Tag> },
+      { title: "关键动作", dataIndex: "keyAction", width: 240, render: (value: string) => value || "待填写 / 待 AI 分析" },
+    ],
+    [],
+  );
+
+  const warningColumns = useMemo<ColumnsType<BusinessBlocksData["warnings"][number]>>(
+    () => [
+      { title: "板块", dataIndex: "blockName", width: 110 },
+      { title: "渠道", dataIndex: "channelName", width: 150 },
+      { title: "异常类型", dataIndex: "warningType", width: 150 },
+      { title: "本月数据", dataIndex: "currentValue", width: 130, align: "right", render: moneyFormatter },
+      { title: "环比", dataIndex: "monthOverMonth", width: 100, align: "right", render: percentFormatter },
+      { title: "建议动作", dataIndex: "suggestedAction", width: 240 },
+      { title: "负责人", dataIndex: "decisionOwner", width: 120 },
+      { title: "决策 deadline", dataIndex: "decisionDeadline", width: 140, render: (value?: string | null) => (value ? dayjs(value).format("YYYY-MM-DD") : "-") },
+      { title: "预警等级", dataIndex: "warningLevel", width: 100, render: (value: string) => <Tag color={value === "red" ? "red" : value === "yellow" ? "orange" : "blue"}>{value || "info"}</Tag> },
+      { title: "备注", dataIndex: "remark", width: 180, render: (value) => value || "-" },
+    ],
+    [],
+  );
+
+  const budgetColumns = useMemo<ColumnsType<BusinessBlocksData["budgetSuggestions"][number]>>(
+    () => [
+      { title: "板块", dataIndex: "blockName", width: 120 },
+      { title: "本月广告", dataIndex: "currentAdSpend", width: 130, align: "right", render: moneyFormatter },
+      { title: "下月建议预算", dataIndex: "nextBudget", width: 150, align: "right", render: (value: number | null) => (value === null ? "待填写" : moneyFormatter(value)) },
+      { title: "调整额", dataIndex: "adjustAmount", width: 130, align: "right", render: (value: number | null) => (value === null ? "—" : moneyFormatter(value)) },
+      { title: "调整比例", dataIndex: "adjustRatio", width: 110, align: "right", render: percentFormatter },
+      { title: "调整逻辑", dataIndex: "adjustReason", width: 260 },
     ],
     [],
   );
@@ -289,6 +422,29 @@ export default function DashboardOverview() {
     }
   }, []);
 
+  const loadBusinessBlocks = useCallback(async (nextFilters: DashboardFilters) => {
+    setBusinessBlocksLoading(true);
+    try {
+      const response = await fetch(`/api/dashboard/business-blocks?${toQuery(nextFilters)}`);
+      const data = (await response.json()) as BusinessBlocksData & { message?: string };
+      if (!response.ok) throw new Error(data.message || "四板块经营数据加载失败");
+      setBusinessBlocks({
+        ...emptyBusinessBlocks,
+        ...data,
+        visibility: data.visibility ?? emptyBusinessBlocks.visibility,
+        blockPerformance: data.blockPerformance ?? [],
+        warnings: data.warnings ?? [],
+        budgetSuggestions: data.budgetSuggestions ?? [],
+        fieldDefinitions: data.fieldDefinitions ?? [],
+      });
+    } catch (loadError) {
+      message.error(loadError instanceof Error ? loadError.message : "四板块经营数据加载失败");
+      setBusinessBlocks(emptyBusinessBlocks);
+    } finally {
+      setBusinessBlocksLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     queueMicrotask(() => {
       void loadOptions();
@@ -300,11 +456,21 @@ export default function DashboardOverview() {
   useEffect(() => {
     queueMicrotask(() => {
       void loadOverview(filters);
+      void loadBusinessBlocks(filters);
     });
-  }, [filters, loadOverview]);
+  }, [filters, loadBusinessBlocks, loadOverview]);
 
   function updateFilter(patch: Partial<DashboardFilters>) {
     setFilters((current) => ({ ...current, ...patch }));
+  }
+
+  function refreshDashboard() {
+    void loadOverview(filters);
+    void loadBusinessBlocks(filters);
+  }
+
+  function showAiPlaceholder() {
+    message.info("AI 经营分析后续接入，当前版本支持手动评级和建议动作。");
   }
 
   return (
@@ -320,19 +486,26 @@ export default function DashboardOverview() {
                 format="YYYY年M月"
                 style={{ width: 140 }}
                 onChange={(value) => {
-                  if (value) updateFilter({ year: value.year(), month: value.month() + 1 });
+                  if (value) updateFilter({ year: value.year(), month: value.month() + 1, quarter: Math.ceil((value.month() + 1) / 3) });
                 }}
+              />
+              <Select
+                placeholder="季度"
+                value={filters.quarter}
+                style={{ width: 100 }}
+                options={[1, 2, 3, 4].map((quarter) => ({ label: `Q${quarter}`, value: quarter }))}
+                onChange={(value) => updateFilter({ quarter: value })}
               />
               <Select allowClear showSearch optionFilterProp="label" placeholder="全部品牌" value={filters.brandId} style={{ width: 160 }} options={brandOptions} onChange={(value) => updateFilter({ brandId: value })} />
               <Select allowClear showSearch optionFilterProp="label" placeholder="全部平台" value={filters.platformId} style={{ width: 160 }} options={platformOptions} onChange={(value) => updateFilter({ platformId: value })} />
               <Select allowClear showSearch optionFilterProp="label" placeholder="全部店铺" value={filters.storeId} style={{ width: 180 }} options={storeOptions} onChange={(value) => updateFilter({ storeId: value })} />
               <Select allowClear showSearch optionFilterProp="label" placeholder="全部国家" value={filters.countryCode} style={{ width: 160 }} options={countryOptions} onChange={(value) => updateFilter({ countryCode: value })} />
+              <Select allowClear placeholder="币种" value={filters.currency} style={{ width: 100 }} options={["CNY", "USD", "JPY", "EUR", "GBP"].map((currency) => ({ label: currency, value: currency }))} onChange={(value) => updateFilter({ currency: value })} />
             </Space>
             <Space>
+              <Button icon={<ReloadOutlined />} loading={loading || businessBlocksLoading} onClick={refreshDashboard}>刷新数据</Button>
+              <Button icon={<RobotOutlined />} onClick={showAiPlaceholder}>AI 分析</Button>
               <Button icon={<DownloadOutlined />} disabled>导出报表</Button>
-              <Button type="primary" icon={<SettingOutlined />} disabled>
-                自定义看板
-              </Button>
             </Space>
           </div>
         </Spin>
@@ -407,6 +580,58 @@ export default function DashboardOverview() {
           extra={<Link href="/channel-data">查看全部</Link>}
         >
           <Table columns={columns} dataSource={overview.weeklyTable} rowKey={(row) => String(row.channelId)} pagination={false} scroll={{ x: 1650 }} size="middle" locale={{ emptyText: <Empty description="暂无周报数据" /> }} />
+        </Card>
+      </Spin>
+
+      <Spin spinning={businessBlocksLoading}>
+        <Card
+          className="mt-4"
+          title="四板块经营"
+          extra={<Tag color={businessBlocks.visibility.canViewGlobal ? "green" : "orange"}>{businessBlocks.visibility.canViewGlobal ? "全局视角" : "已按角色脱敏"}</Tag>}
+        >
+          {businessBlocks.message ? <Alert type="info" showIcon message={businessBlocks.message} className="mb-4" /> : null}
+          {businessBlocks.visibility.canViewGlobal ? (
+            <>
+              <Row gutter={[12, 12]} className="mb-4">
+                <Col xs={24} md={6}><Card size="small"><Statistic title="销售额" value={moneyFormatter(businessBlocks.totals?.salesAmount ?? 0)} /></Card></Col>
+                <Col xs={24} md={6}><Card size="small"><Statistic title="广告投入" value={moneyFormatter(businessBlocks.totals?.adSpend ?? 0)} /></Card></Col>
+                <Col xs={24} md={6}><Card size="small"><Statistic title="经营毛利" value={moneyFormatter(businessBlocks.totals?.grossProfit ?? 0)} valueStyle={{ color: (businessBlocks.totals?.grossProfit ?? 0) < 0 ? "#cf1322" : "#172033" }} /></Card></Col>
+                <Col xs={24} md={6}><Card size="small"><Statistic title="整体毛利率" value={percentFormatter(businessBlocks.totals?.grossMargin ?? null)} /></Card></Col>
+              </Row>
+              <Table columns={blockColumns} dataSource={businessBlocks.blockPerformance} rowKey={(row) => row.businessBlock} pagination={false} scroll={{ x: 1390 }} locale={{ emptyText: <Empty description="暂无四板块经营数据" /> }} />
+            </>
+          ) : (
+            <Empty description="当前角色不能查看公司整体经营毛利、预算建议和全局经营表现" />
+          )}
+        </Card>
+
+        <Card className="mt-4" title="预警与动作">
+          {businessBlocks.visibility.canViewGlobal ? (
+            <Table columns={warningColumns} dataSource={businessBlocks.warnings} rowKey={(row) => `${row.channelId}-${row.warningType}`} pagination={false} scroll={{ x: 1500 }} locale={{ emptyText: <Empty description="暂无预警，待 AI 分析或手动填写" /> }} />
+          ) : (
+            <Empty description="当前角色仅显示自己负责范围，暂不展示全局预警" />
+          )}
+        </Card>
+
+        <Card className="mt-4" title="预算建议">
+          {businessBlocks.visibility.canViewBudget ? (
+            <Table columns={budgetColumns} dataSource={businessBlocks.budgetSuggestions} rowKey={(row) => row.businessBlock} pagination={false} scroll={{ x: 900 }} locale={{ emptyText: <Empty description="暂无预算建议，待填写 / 待 AI 分析" /> }} />
+          ) : (
+            <Alert type="info" showIcon message="预算建议属于管理员经营视角，当前角色不可查看。" />
+          )}
+        </Card>
+
+        <Card className="mt-4" title="字段口径说明">
+          <Table
+            size="small"
+            rowKey={(row) => row.field}
+            columns={[
+              { title: "字段", dataIndex: "field", width: 150 },
+              { title: "口径说明", dataIndex: "description" },
+            ]}
+            dataSource={businessBlocks.fieldDefinitions}
+            pagination={false}
+          />
         </Card>
       </Spin>
 

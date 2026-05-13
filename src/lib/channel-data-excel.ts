@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { Prisma } from "@prisma/client";
-import { channelTypeOptions } from "@/lib/basic-options";
+import { businessBlockLabel, inferBusinessBlock } from "@/lib/business-blocks";
 import {
   PERIOD_TYPE_WEEK,
   WEEK_NUMBERS,
@@ -19,12 +19,10 @@ const percentFormat = "0.0%";
 const maxImportFileSize = 10 * 1024 * 1024;
 
 const exportHeaders = [
-  "业务线",
-  "所属品牌",
-  "平台",
-  "店铺/站点",
-  "渠道名称",
-  "渠道类型",
+  "板块",
+  "二级",
+  "渠道",
+  "负责人",
   "W1销售",
   "W1广告",
   "W2销售",
@@ -35,21 +33,30 @@ const exportHeaders = [
   "W4广告",
   "W5销售",
   "W5广告",
-  "月销售",
+  "月销售额",
   "月广告",
-  "ROI",
-  "广告占比",
-  "销售占比",
+  "月ROI",
+  "月广告占销",
+  "月销售占比",
+  "季销售额",
+  "季广告",
+  "季ROI",
+  "季广告占销",
+  "季销售占比",
+  "评级",
+  "建议动作",
+  "决策deadline",
   "备注",
 ] as const;
 
 export const importHeaders = [
-  "业务线",
   "所属品牌",
   "平台",
   "店铺/站点",
-  "渠道名称",
-  "渠道类型",
+  "板块",
+  "二级",
+  "渠道",
+  "负责人",
   "年份",
   "月份",
   "W1销售",
@@ -62,6 +69,19 @@ export const importHeaders = [
   "W4广告",
   "W5销售",
   "W5广告",
+  "月销售额",
+  "月广告",
+  "月ROI",
+  "月广告占销",
+  "月销售占比",
+  "季销售额",
+  "季广告",
+  "季ROI",
+  "季广告占销",
+  "季销售占比",
+  "评级",
+  "建议动作",
+  "决策deadline",
   "备注",
 ] as const;
 
@@ -69,15 +89,19 @@ type MonthlyRow = Awaited<ReturnType<typeof getMonthlyRows>>[number];
 
 export type ChannelImportRow = {
   rowNumber: number;
+  businessBlock: string;
   businessLine: string;
   brandName: string;
   platformName: string;
   storeName: string;
   channelName: string;
-  channelType: string;
+  decisionOwner: string;
   year: number;
   month: number;
   weeks: Array<{ weekNumber: number; salesAmountOriginal: number; adSpendOriginal: number }>;
+  manualRating: string;
+  manualActionSuggestion: string;
+  decisionDeadline: string;
   remark: string;
   rawSummary: string;
 };
@@ -102,10 +126,6 @@ export type ChannelImportConfirmResult = {
   errors: ChannelImportErrorRow[];
   batchId: number;
 };
-
-function channelTypeLabel(value?: string | null) {
-  return channelTypeOptions.find((option) => option.value === value)?.label ?? value ?? "-";
-}
 
 function getWeek(row: MonthlyRow, weekNumber: number) {
   return row.weeks.find((week) => week.weekNumber === weekNumber) ?? {
@@ -141,14 +161,16 @@ function applyHeaderStyle(row: ExcelJS.Row) {
   });
 }
 
-function applyNumericFormats(sheet: ExcelJS.Worksheet, headerRowNumber: number, amountColumns: number[], percentColumns: number[], roiColumn: number) {
+function applyNumericFormats(sheet: ExcelJS.Worksheet, headerRowNumber: number, amountColumns: number[], percentColumns: number[], roiColumns: number[]) {
   amountColumns.forEach((columnNumber) => {
     sheet.getColumn(columnNumber).numFmt = moneyFormat;
   });
   percentColumns.forEach((columnNumber) => {
     sheet.getColumn(columnNumber).numFmt = percentFormat;
   });
-  sheet.getColumn(roiColumn).numFmt = roiFormat;
+  roiColumns.forEach((columnNumber) => {
+    sheet.getColumn(columnNumber).numFmt = roiFormat;
+  });
 
   for (let rowNumber = headerRowNumber + 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
     const row = sheet.getRow(rowNumber);
@@ -158,7 +180,9 @@ function applyNumericFormats(sheet: ExcelJS.Worksheet, headerRowNumber: number, 
     percentColumns.forEach((columnNumber) => {
       row.getCell(columnNumber).alignment = { horizontal: "right" };
     });
-    row.getCell(roiColumn).alignment = { horizontal: "right" };
+    roiColumns.forEach((columnNumber) => {
+      row.getCell(columnNumber).alignment = { horizontal: "right" };
+    });
   }
 }
 
@@ -177,6 +201,30 @@ function monthLabel(year: number, month: number) {
 
 function fileMonth(year: number, month: number) {
   return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function quarterSales(row: MonthlyRow) {
+  return toNumber(row.quarter?.salesAmount);
+}
+
+function quarterAdSpend(row: MonthlyRow) {
+  return toNumber(row.quarter?.adSpend);
+}
+
+function displayRating(row: MonthlyRow) {
+  if (row.ratingSource === "ai" && row.aiRating) return row.aiRating;
+  return row.manualRating || row.aiRating || "";
+}
+
+function displayAction(row: MonthlyRow) {
+  return row.aiActionSuggestion || row.manualActionSuggestion || "";
+}
+
+function formatExcelDate(value?: string | Date | null) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date;
 }
 
 async function getExchangeRateSummary(filters: ChannelDataFilters, channelIds: number[]) {
@@ -216,7 +264,7 @@ export async function createChannelDataExportWorkbook(filters: ChannelDataFilter
     views: [{ state: "frozen", ySplit: 5 }],
   });
 
-  sheet.mergeCells("A1:V1");
+  sheet.mergeCells("A1:AC1");
   sheet.getCell("A1").value = `渠道效率追踪表 - ${monthLabel(filters.year, filters.month)}`;
   sheet.getCell("A1").font = { bold: true, size: 16, color: { argb: "FF172033" } };
   sheet.getCell("A1").alignment = { horizontal: "center" };
@@ -225,7 +273,7 @@ export async function createChannelDataExportWorkbook(filters: ChannelDataFilter
   sheet.getCell("D2").value = "单位：元";
   sheet.getCell("G2").value = `汇率：${exchangeRateSummary}`;
   sheet.getCell("A3").value = "说明：销售额和广告费按渠道录入，月度和季度指标由系统自动汇总";
-  sheet.mergeCells("A3:V3");
+  sheet.mergeCells("A3:AC3");
   sheet.getCell("A3").font = { color: { argb: "FF667085" } };
 
   const headerRow = sheet.addRow(exportHeaders);
@@ -238,13 +286,16 @@ export async function createChannelDataExportWorkbook(filters: ChannelDataFilter
     const roi = ratio(sales, adSpend);
     const adRatio = sales > 0 ? adSpend / sales : 0;
     const salesShare = totalSales > 0 ? sales / totalSales : 0;
+    const qSales = quarterSales(row);
+    const qAdSpend = quarterAdSpend(row);
+    const qRoi = ratio(qSales, qAdSpend);
+    const qAdRatio = qSales > 0 ? qAdSpend / qSales : 0;
+    const qSalesShare = rows.reduce((total, item) => total + quarterSales(item), 0) > 0 ? qSales / rows.reduce((total, item) => total + quarterSales(item), 0) : 0;
     const dataRow = sheet.addRow([
+      businessBlockLabel(row.businessBlock),
       row.businessLine,
-      row.brand?.name ?? "-",
-      row.platform?.name ?? "-",
-      row.store?.name ?? "-",
       row.channelName,
-      channelTypeLabel(row.channelType),
+      row.decisionOwner ?? "",
       getWeek(row, 1).salesAmountOriginal,
       getWeek(row, 1).adSpendOriginal,
       getWeek(row, 2).salesAmountOriginal,
@@ -260,10 +311,22 @@ export async function createChannelDataExportWorkbook(filters: ChannelDataFilter
       roi,
       adRatio,
       salesShare,
+      qSales,
+      qAdSpend,
+      qRoi,
+      qAdRatio,
+      qSalesShare,
+      displayRating(row),
+      displayAction(row),
+      formatExcelDate(row.decisionDeadline),
       row.remark ?? "",
     ]);
-    styleRoiCell(dataRow.getCell(19), roi);
+    styleRoiCell(dataRow.getCell(17), roi);
+    styleRoiCell(dataRow.getCell(22), qRoi);
   });
+
+  const totalQuarterSales = rows.reduce((total, row) => total + quarterSales(row), 0);
+  const totalQuarterAdSpend = rows.reduce((total, row) => total + quarterAdSpend(row), 0);
 
   const totalRow = sheet.addRow([
     "合计",
@@ -281,18 +344,27 @@ export async function createChannelDataExportWorkbook(filters: ChannelDataFilter
     ratio(totalSales, totalAdSpend),
     totalSales > 0 ? totalAdSpend / totalSales : 0,
     1,
+    totalQuarterSales,
+    totalQuarterAdSpend,
+    ratio(totalQuarterSales, totalQuarterAdSpend),
+    totalQuarterSales > 0 ? totalQuarterAdSpend / totalQuarterSales : 0,
+    1,
+    "",
+    "",
+    "",
     "",
   ]);
   totalRow.font = { bold: true };
   totalRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFF6FF" } };
-  styleRoiCell(totalRow.getCell(19), ratio(totalSales, totalAdSpend));
+  styleRoiCell(totalRow.getCell(17), ratio(totalSales, totalAdSpend));
+  styleRoiCell(totalRow.getCell(22), ratio(totalQuarterSales, totalQuarterAdSpend));
 
-  const widths = [14, 14, 14, 22, 16, 14, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 10, 12, 12, 24];
+  const widths = [12, 16, 18, 14, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 10, 12, 12, 14, 14, 10, 12, 12, 10, 24, 16, 24];
   widths.forEach((width, index) => {
     sheet.getColumn(index + 1).width = width;
   });
 
-  applyNumericFormats(sheet, headerRowNumber, [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], [20, 21], 19);
+  applyNumericFormats(sheet, headerRowNumber, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 20, 21], [18, 19, 23, 24], [17, 22]);
   sheet.autoFilter = { from: { row: headerRowNumber, column: 1 }, to: { row: headerRowNumber, column: exportHeaders.length } };
 
   return workbook;
@@ -316,12 +388,13 @@ export async function createChannelImportTemplateWorkbook() {
 
   exampleRows.forEach((row) => {
     dataSheet.addRow([
-      row.businessLine,
       row.brand?.name ?? "",
       row.platform?.name ?? "",
       row.store?.name ?? "",
+      businessBlockLabel(row.businessBlock),
+      row.businessLine,
       row.channelName,
-      channelTypeLabel(row.channelType),
+      row.decisionOwner ?? "",
       2026,
       5,
       getWeek(row, 1).salesAmountOriginal,
@@ -334,19 +407,32 @@ export async function createChannelImportTemplateWorkbook() {
       getWeek(row, 4).adSpendOriginal,
       getWeek(row, 5).salesAmountOriginal,
       getWeek(row, 5).adSpendOriginal,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      displayRating(row),
+      displayAction(row),
+      formatExcelDate(row.decisionDeadline),
       "示例数据，可删除后填写",
     ]);
   });
 
-  const widths = [14, 14, 14, 22, 16, 14, 10, 10, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 26];
+  const widths = [14, 14, 22, 12, 16, 18, 14, 10, 10, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 10, 12, 12, 14, 14, 10, 12, 12, 10, 24, 16, 26];
   widths.forEach((width, index) => {
     dataSheet.getColumn(index + 1).width = width;
   });
-  [9, 10, 11, 12, 13, 14, 15, 16, 17, 18].forEach((columnNumber) => {
+  [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 25, 26].forEach((columnNumber) => {
     dataSheet.getColumn(columnNumber).numFmt = moneyFormat;
   });
   for (let rowNumber = 2; rowNumber <= 200; rowNumber += 1) {
-    dataSheet.getCell(`G${rowNumber}`).dataValidation = {
+    dataSheet.getCell(`H${rowNumber}`).dataValidation = {
       type: "whole",
       operator: "between",
       formulae: [2000, 2100],
@@ -354,7 +440,7 @@ export async function createChannelImportTemplateWorkbook() {
       errorTitle: "年份格式错误",
       error: "请填写四位年份，例如 2026",
     };
-    dataSheet.getCell(`H${rowNumber}`).dataValidation = {
+    dataSheet.getCell(`I${rowNumber}`).dataValidation = {
       type: "whole",
       operator: "between",
       formulae: [1, 12],
@@ -367,13 +453,15 @@ export async function createChannelImportTemplateWorkbook() {
   const instructionSheet = workbook.addWorksheet("填写说明");
   instructionSheet.columns = [{ width: 90 }];
   [
-    "1. 所属品牌、平台、店铺/站点、渠道名称需要和系统基础资料一致。",
+    "1. 所属品牌、平台、店铺/站点、渠道需要和系统基础资料一致。",
     "2. 年份填写四位数字，例如 2026。",
     "3. 月份填写 1-12。",
     "4. W1-W5 销售和广告可以为空，空值按 0 处理。",
-    "5. 不要修改表头名称。",
-    "6. 导入会按照 年份 + 月份 + 渠道 匹配并更新数据。",
-    "7. 如果渠道不存在，该行会导入失败并返回错误原因。",
+    "5. 月度/季度计算字段会被系统忽略并重新计算。",
+    "6. 负责人、评级、建议动作、决策 deadline、备注会写入渠道周期数据。",
+    "7. 不要修改表头名称。",
+    "8. 导入会按照 年份 + 月份 + 渠道 匹配并更新数据。",
+    "9. 如果渠道不存在，该行会导入失败并返回错误原因。",
   ].forEach((text) => instructionSheet.addRow([text]));
   instructionSheet.getRow(1).font = { bold: true };
 
@@ -481,16 +569,20 @@ export async function parseChannelImportWorkbook(fileName: string, buffer: Array
 
     const draft: ChannelImportRow = {
       rowNumber,
-      businessLine: normalizeText(values[0]),
-      brandName: normalizeText(values[1]),
-      platformName: normalizeText(values[2]),
-      storeName: normalizeText(values[3]),
-      channelName: normalizeText(values[4]),
-      channelType: normalizeText(values[5]),
+      brandName: normalizeText(values[0]),
+      platformName: normalizeText(values[1]),
+      storeName: normalizeText(values[2]),
+      businessBlock: normalizeText(values[3]),
+      businessLine: normalizeText(values[4]),
+      channelName: normalizeText(values[5]),
+      decisionOwner: normalizeText(values[6]),
       year: 0,
       month: 0,
       weeks: [],
-      remark: normalizeText(values[18]),
+      manualRating: normalizeText(values[29]),
+      manualActionSuggestion: normalizeText(values[30]),
+      decisionDeadline: normalizeText(values[31]),
+      remark: normalizeText(values[32]),
       rawSummary: "",
     };
     const errors: string[] = [];
@@ -500,8 +592,8 @@ export async function parseChannelImportWorkbook(fileName: string, buffer: Array
     if (!draft.storeName) errors.push("店铺/站点为空");
     if (!draft.channelName) errors.push("渠道名称为空");
 
-    const year = parseInteger(values[6]);
-    const month = parseInteger(values[7]);
+    const year = parseInteger(values[7]);
+    const month = parseInteger(values[8]);
     if (year === null) errors.push("年份为空");
     else if (!Number.isInteger(year) || year < 2000 || year > 2100) errors.push("年份格式不正确");
     if (month === null) errors.push("月份为空");
@@ -511,8 +603,8 @@ export async function parseChannelImportWorkbook(fileName: string, buffer: Array
     draft.month = Number.isFinite(month) ? Number(month) : 0;
 
     draft.weeks = WEEK_NUMBERS.map((weekNumber, index) => {
-      const sales = parseAmount(values[8 + index * 2]);
-      const adSpend = parseAmount(values[9 + index * 2]);
+      const sales = parseAmount(values[9 + index * 2]);
+      const adSpend = parseAmount(values[10 + index * 2]);
       if (!Number.isFinite(sales)) errors.push(`W${weekNumber}销售不是数字`);
       if (!Number.isFinite(adSpend)) errors.push(`W${weekNumber}广告不是数字`);
       return {
@@ -591,8 +683,11 @@ async function resolveImportRow(row: ChannelImportRow) {
       brandId: true,
       platformId: true,
       storeId: true,
+      businessLine: true,
+      channelType: true,
       channelName: true,
-      store: { select: { id: true, primaryMarketCode: true, defaultCurrency: true } },
+      platform: { select: { id: true, name: true } },
+      store: { select: { id: true, primaryMarketCode: true, defaultCurrency: true, storeType: true } },
       brand: { select: { defaultCurrency: true } },
     },
   });
@@ -657,6 +752,18 @@ export async function importChannelRows({
       const platformId = channel.platformId;
       const currency = channel.store?.defaultCurrency ?? channel.brand?.defaultCurrency ?? "CNY";
       const countryCode = channel.store?.primaryMarketCode ?? null;
+      const parsedDecisionDeadline = row.decisionDeadline ? new Date(row.decisionDeadline) : null;
+      const decisionDeadline = parsedDecisionDeadline && Number.isFinite(parsedDecisionDeadline.getTime()) ? parsedDecisionDeadline : null;
+      const businessBlock = inferBusinessBlock({
+        businessBlock: row.businessBlock,
+        businessLine: channel.businessLine,
+        platformName: channel.platform?.name,
+        storeType: channel.store?.storeType,
+        channelType: channel.channelType,
+      });
+      const manualRating = row.manualRating?.trim() || null;
+      const manualActionSuggestion = row.manualActionSuggestion?.trim() || null;
+      const decisionOwner = row.decisionOwner?.trim() || null;
       await prisma.$transaction(
         WEEK_NUMBERS.map((weekNumber) => {
           const week = row.weeks.find((item) => item.weekNumber === weekNumber);
@@ -684,6 +791,13 @@ export async function importChannelRows({
               exchangeRate: new Prisma.Decimal("1"),
               salesAmountBase: toDecimal(salesAmount),
               adSpendBase: toDecimal(adSpend),
+              businessBlock,
+              manualRating,
+              ratingSource: manualRating ? "manual" : "none",
+              aiAnalysisStatus: "pending",
+              manualActionSuggestion,
+              decisionOwner,
+              decisionDeadline,
               remark: row.remark || null,
               createdBy,
             },
@@ -704,6 +818,13 @@ export async function importChannelRows({
               exchangeRate: new Prisma.Decimal("1"),
               salesAmountBase: toDecimal(salesAmount),
               adSpendBase: toDecimal(adSpend),
+              businessBlock,
+              manualRating,
+              ratingSource: manualRating ? "manual" : "none",
+              aiAnalysisStatus: "pending",
+              manualActionSuggestion,
+              decisionOwner,
+              decisionDeadline,
               remark: row.remark || null,
               createdBy,
             },
