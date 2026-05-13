@@ -1,5 +1,7 @@
+import { AntdRegistry } from "@ant-design/nextjs-registry";
 import type { Metadata } from "next";
 import AntdProvider from "@/components/common/AntdProvider";
+import { getThemeBootstrapScript } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,9 +15,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
-      <body className="min-h-full">
-        <AntdProvider>{children}</AntdProvider>
+    <html lang="zh-CN" className="h-full antialiased" data-theme="light" suppressHydrationWarning>
+      <body className="min-h-full bg-[var(--background)] text-[var(--foreground)]">
+        <script dangerouslySetInnerHTML={{ __html: getThemeBootstrapScript() }} />
+        <AntdRegistry>
+          <AntdProvider>{children}</AntdProvider>
+        </AntdRegistry>
       </body>
     </html>
   );

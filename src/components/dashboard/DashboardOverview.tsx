@@ -1,17 +1,17 @@
 "use client";
 
-import { DownloadOutlined, DollarOutlined, ReloadOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Col, DatePicker, Empty, List, Progress, Row, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
+import { DownloadOutlined, DollarOutlined, QuestionCircleOutlined, ReloadOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Col, DatePicker, Empty, List, Modal, Progress, Row, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { todoCards } from "./dashboardData";
 
-const TrendComposedChart = dynamic(() => import("./DashboardCharts").then((module) => module.TrendComposedChart), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-[#f5f7fb]" /> });
-const BusinessLinePieChart = dynamic(() => import("./DashboardCharts").then((module) => module.BusinessLinePieChart), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-[#f5f7fb]" /> });
-const TrendBarChart = dynamic(() => import("./DashboardCharts").then((module) => module.TrendBarChart), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-[#f5f7fb]" /> });
+const TrendComposedChart = dynamic(() => import("./DashboardCharts").then((module) => module.TrendComposedChart), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-[var(--soft-bg)]" /> });
+const BusinessLinePieChart = dynamic(() => import("./DashboardCharts").then((module) => module.BusinessLinePieChart), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-[var(--soft-bg)]" /> });
+const TrendBarChart = dynamic(() => import("./DashboardCharts").then((module) => module.TrendBarChart), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-[var(--soft-bg)]" /> });
 
 type FollowupCustomerData = {
   todayCount: number;
@@ -221,6 +221,13 @@ function roiColor(value: number | null) {
   return "blue";
 }
 
+function warningLevelTag(value?: string | null) {
+  const normalized = value?.trim().toUpperCase();
+  const level = normalized === "A" || normalized === "B" || normalized === "C" || normalized === "D" ? normalized : "B";
+  const colorMap: Record<string, string> = { A: "green", B: "blue", C: "orange", D: "red" };
+  return <Tag color={colorMap[level]}>{level}</Tag>;
+}
+
 function toQuery(filters: DashboardFilters) {
   const params = new URLSearchParams({ year: String(filters.year), month: String(filters.month) });
   Object.entries(filters).forEach(([key, value]) => {
@@ -233,6 +240,15 @@ function toQuery(filters: DashboardFilters) {
 
 function getWeek(row: DashboardOverviewData["weeklyTable"][number], weekNumber: number) {
   return row.weeks[String(weekNumber)] ?? { salesAmount: 0, adSpend: 0 };
+}
+
+function BusinessBlockMetric({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--soft-bg)] px-3 py-2">
+      <div className="text-xs text-[var(--muted)]">{title}</div>
+      <div className="mt-1 text-right text-sm font-semibold text-[var(--foreground)]">{children}</div>
+    </div>
+  );
 }
 
 async function fetchOptions<T>(path: string, mapper: (item: T) => Option) {
@@ -258,6 +274,7 @@ export default function DashboardOverview() {
   const [pendingPaymentsLoading, setPendingPaymentsLoading] = useState(false);
   const [businessBlocks, setBusinessBlocks] = useState<BusinessBlocksData>(emptyBusinessBlocks);
   const [businessBlocksLoading, setBusinessBlocksLoading] = useState(false);
+  const [definitionOpen, setDefinitionOpen] = useState(false);
 
   const columns = useMemo<ColumnsType<DashboardOverviewData["weeklyTable"][number]>>(
     () => [
@@ -269,8 +286,8 @@ export default function DashboardOverview() {
         width: 210,
         render: (_, row) => (
           <div>
-            <div className="font-medium text-[#172033]">{row.channelName}</div>
-            <div className="text-xs text-[#8a94a6]">{row.storeName}</div>
+            <div className="font-medium text-[var(--foreground)]">{row.channelName}</div>
+            <div className="text-xs text-[var(--muted-weak)]">{row.storeName}</div>
           </div>
         ),
       },
@@ -292,28 +309,6 @@ export default function DashboardOverview() {
     [],
   );
 
-  const blockColumns = useMemo<ColumnsType<BusinessBlocksData["blockPerformance"][number]>>(
-    () => [
-      { title: "板块", dataIndex: "blockName", fixed: "left", width: 120, render: (value) => <Typography.Text strong>{value}</Typography.Text> },
-      { title: "销售额", dataIndex: "salesAmount", width: 130, align: "right", render: moneyFormatter },
-      { title: "销售占比", dataIndex: "salesShare", width: 110, align: "right", render: percentFormatter },
-      { title: "广告投入", dataIndex: "adSpend", width: 130, align: "right", render: moneyFormatter },
-      {
-        title: "经营毛利",
-        dataIndex: "grossProfit",
-        width: 130,
-        align: "right",
-        render: (value: number) => <span className={value < 0 ? "font-semibold text-red-500" : "font-semibold text-[#172033]"}>{moneyFormatter(value)}</span>,
-      },
-      { title: "毛利率", dataIndex: "grossMargin", width: 100, align: "right", render: (value: number | null) => <Tag color={rateColor(value)}>{percentFormatter(value)}</Tag> },
-      { title: "ROI", dataIndex: "roi", width: 90, align: "right", render: (value: number | null) => <Tag color={roiColor(value)}>{ratioFormatter(value)}</Tag> },
-      { title: "环比上月", dataIndex: "monthOverMonth", width: 110, align: "right", render: (value: number | null) => <Tag color={value === null ? "default" : value >= 0 ? "green" : "red"}>{percentFormatter(value)}</Tag> },
-      { title: "评级", dataIndex: "rating", width: 120, render: (value: BusinessBlocksData["blockPerformance"][number]["rating"]) => <Tag color={value.source === "none" ? "default" : "purple"}>{value.label}</Tag> },
-      { title: "关键动作", dataIndex: "keyAction", width: 240, render: (value: string) => value || "待填写 / 待 AI 分析" },
-    ],
-    [],
-  );
-
   const warningColumns = useMemo<ColumnsType<BusinessBlocksData["warnings"][number]>>(
     () => [
       { title: "板块", dataIndex: "blockName", width: 110 },
@@ -324,7 +319,7 @@ export default function DashboardOverview() {
       { title: "建议动作", dataIndex: "suggestedAction", width: 240 },
       { title: "负责人", dataIndex: "decisionOwner", width: 120 },
       { title: "决策 deadline", dataIndex: "decisionDeadline", width: 140, render: (value?: string | null) => (value ? dayjs(value).format("YYYY-MM-DD") : "-") },
-      { title: "预警等级", dataIndex: "warningLevel", width: 100, render: (value: string) => <Tag color={value === "red" ? "red" : value === "yellow" ? "orange" : "blue"}>{value || "info"}</Tag> },
+      { title: "预警等级", dataIndex: "warningLevel", width: 100, render: warningLevelTag },
       { title: "备注", dataIndex: "remark", width: 180, render: (value) => value || "-" },
     ],
     [],
@@ -474,7 +469,7 @@ export default function DashboardOverview() {
   }
 
   return (
-    <div className="space-y-5 overflow-hidden">
+    <div className="page-stack page-stack-lg">
       <Card styles={{ body: { padding: 16 } }}>
         <Spin spinning={optionLoading}>
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -514,133 +509,194 @@ export default function DashboardOverview() {
       {error ? <Alert type="error" showIcon message={error} /> : null}
 
       <Spin spinning={loading}>
-        <Row gutter={[12, 12]}>
-          {kpiCards.map((item) => (
-            <Col xs={24} sm={12} lg={8} xl={6} xxl={3} key={item.title}>
-              <Card styles={{ body: { padding: 16 } }}>
-                <Statistic title={item.title} value={item.value} styles={{ content: { color: "#172033", fontSize: 22 } }} />
-                <div className="mt-3 text-xs text-[#667085]">
-                  <Tag color={item.color}>{item.tag}</Tag>
-                </div>
+        <div className="space-y-4">
+          <Row gutter={[16, 16]}>
+            {kpiCards.map((item) => (
+              <Col xs={24} sm={12} lg={8} xl={6} xxl={3} key={item.title}>
+                <Card className="h-full" styles={{ body: { padding: 16 } }}>
+                  <Statistic title={item.title} value={item.value} styles={{ content: { color: "var(--foreground)", fontSize: 22 } }} />
+                  <div className="mt-3 text-xs text-[var(--muted)]">
+                    <Tag color={item.color}>{item.tag}</Tag>
+                  </div>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} xl={14}>
+              <Card className="dashboard-chart-card h-full" title="销售额 vs 广告费趋势">
+                <TrendComposedChart data={overview.weeklyTrend} />
               </Card>
             </Col>
-          ))}
-        </Row>
 
-        <Row gutter={[16, 16]} className="mt-4">
-          <Col xs={24} xl={14}>
-            <Card title="销售额 vs 广告费趋势">
-              <TrendComposedChart data={overview.weeklyTrend} />
-            </Card>
-          </Col>
+            <Col xs={24} xl={10}>
+              <Card className="dashboard-chart-card h-full" title="渠道销售占比">
+                <BusinessLinePieChart data={overview.businessLineShare} />
+              </Card>
+            </Col>
+          </Row>
 
-          <Col xs={24} xl={10}>
-            <Card title="渠道销售占比">
-              <BusinessLinePieChart data={overview.businessLineShare} />
-            </Card>
-          </Col>
-        </Row>
-
-        <Row gutter={[16, 16]} className="mt-4">
-          <Col xs={24} xl={8}>
-            <Card title="渠道 ROI 排行">
-              {overview.roiRanking.length ? (
-                <div className="space-y-4">
-                  {overview.roiRanking.map((item) => (
-                    <div key={item.channelId}>
-                      <div className="mb-2 flex items-center justify-between gap-4">
-                        <Space>
-                          <Tag color={item.rank <= 3 ? "blue" : "default"}>{item.rank}</Tag>
-                          <span className="font-medium text-[#172033]">{item.channelName}</span>
-                        </Space>
-                        <span className="text-sm text-[#667085]">{item.storeName}</span>
+          <Row gutter={[16, 16]}>
+            <Col xs={24} xl={8}>
+              <Card className="h-full" title="渠道 ROI 排行">
+                {overview.roiRanking.length ? (
+                  <div className="space-y-4">
+                    {overview.roiRanking.map((item) => (
+                      <div key={item.channelId}>
+                        <div className="mb-2 flex items-center justify-between gap-4">
+                          <Space>
+                            <Tag color={item.rank <= 3 ? "blue" : "default"}>{item.rank}</Tag>
+                            <span className="font-medium text-[var(--foreground)]">{item.channelName}</span>
+                          </Space>
+                          <span className="text-sm text-[var(--muted)]">{item.storeName}</span>
+                        </div>
+                        <Progress percent={Math.min((item.roi ?? 0) * 10, 100)} showInfo={false} strokeColor="var(--chart-blue)" trailColor="var(--soft-bg)" />
+                        <div className="mt-1 flex justify-between text-xs text-[var(--muted)]">
+                          <span>{moneyFormatter(item.salesAmount)} / 广告 {moneyFormatter(item.adSpend)}</span>
+                          <span>ROI {ratioFormatter(item.roi)}</span>
+                        </div>
                       </div>
-                      <Progress percent={Math.min((item.roi ?? 0) * 10, 100)} showInfo={false} strokeColor="#1677ff" />
-                      <div className="mt-1 flex justify-between text-xs text-[#667085]">
-                        <span>{moneyFormatter(item.salesAmount)} / 广告 {moneyFormatter(item.adSpend)}</span>
-                        <span>ROI {ratioFormatter(item.roi)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : <Empty description="暂无有广告费渠道" />}
-            </Card>
-          </Col>
+                    ))}
+                  </div>
+                ) : <Empty description="暂无有广告费渠道" />}
+              </Card>
+            </Col>
 
-          <Col xs={24} xl={16}>
-            <Card title="销售额与广告费对比">
-              <TrendBarChart data={overview.weeklyTrend} />
-            </Card>
-          </Col>
-        </Row>
+            <Col xs={24} xl={16}>
+              <Card className="dashboard-chart-card h-full" title="销售额与广告费对比">
+                <TrendBarChart data={overview.weeklyTrend} />
+              </Card>
+            </Col>
+          </Row>
 
-        <Card
-          className="mt-4"
-          title="渠道周报表格"
-          extra={<Link href="/channel-data">查看全部</Link>}
-        >
-          <Table columns={columns} dataSource={overview.weeklyTable} rowKey={(row) => String(row.channelId)} pagination={false} scroll={{ x: 1650 }} size="middle" locale={{ emptyText: <Empty description="暂无周报数据" /> }} />
-        </Card>
+          <Card
+            title="渠道周报表格"
+            extra={<Link href="/channel-data">查看全部</Link>}
+          >
+            <Table columns={columns} dataSource={overview.weeklyTable} rowKey={(row) => String(row.channelId)} pagination={false} scroll={{ x: 1650 }} size="middle" locale={{ emptyText: <Empty description="暂无周报数据" /> }} />
+          </Card>
+        </div>
       </Spin>
 
       <Spin spinning={businessBlocksLoading}>
-        <Card
-          className="mt-4"
-          title="四板块经营"
-          extra={<Tag color={businessBlocks.visibility.canViewGlobal ? "green" : "orange"}>{businessBlocks.visibility.canViewGlobal ? "全局视角" : "已按角色脱敏"}</Tag>}
-        >
-          {businessBlocks.message ? <Alert type="info" showIcon message={businessBlocks.message} className="mb-4" /> : null}
-          {businessBlocks.visibility.canViewGlobal ? (
-            <>
-              <Row gutter={[12, 12]} className="mb-4">
-                <Col xs={24} md={6}><Card size="small"><Statistic title="销售额" value={moneyFormatter(businessBlocks.totals?.salesAmount ?? 0)} /></Card></Col>
-                <Col xs={24} md={6}><Card size="small"><Statistic title="广告投入" value={moneyFormatter(businessBlocks.totals?.adSpend ?? 0)} /></Card></Col>
-                <Col xs={24} md={6}><Card size="small"><Statistic title="经营毛利" value={moneyFormatter(businessBlocks.totals?.grossProfit ?? 0)} valueStyle={{ color: (businessBlocks.totals?.grossProfit ?? 0) < 0 ? "#cf1322" : "#172033" }} /></Card></Col>
-                <Col xs={24} md={6}><Card size="small"><Statistic title="整体毛利率" value={percentFormatter(businessBlocks.totals?.grossMargin ?? null)} /></Card></Col>
-              </Row>
-              <Table columns={blockColumns} dataSource={businessBlocks.blockPerformance} rowKey={(row) => row.businessBlock} pagination={false} scroll={{ x: 1390 }} locale={{ emptyText: <Empty description="暂无四板块经营数据" /> }} />
-            </>
-          ) : (
-            <Empty description="当前角色不能查看公司整体经营毛利、预算建议和全局经营表现" />
-          )}
-        </Card>
+        <div className="flex flex-col gap-6">
+          <Card
+            title={
+              <Space size={6}>
+                <span>四板块经营</span>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<QuestionCircleOutlined />}
+                  onClick={() => setDefinitionOpen(true)}
+                  title="查看字段口径说明"
+                />
+              </Space>
+            }
+            extra={<Tag color={businessBlocks.visibility.canViewGlobal ? "green" : "orange"}>{businessBlocks.visibility.canViewGlobal ? "全局视角" : "已按角色脱敏"}</Tag>}
+          >
+            {businessBlocks.message ? <Alert type="info" showIcon message={businessBlocks.message} className="mb-4" /> : null}
+            {businessBlocks.visibility.canViewGlobal ? (
+              <>
+                <Row gutter={[16, 16]} className="mb-4">
+                  <Col xs={24} md={6}><Card className="h-full" size="small"><Statistic title="销售额" value={moneyFormatter(businessBlocks.totals?.salesAmount ?? 0)} /></Card></Col>
+                  <Col xs={24} md={6}><Card className="h-full" size="small"><Statistic title="广告投入" value={moneyFormatter(businessBlocks.totals?.adSpend ?? 0)} /></Card></Col>
+                  <Col xs={24} md={6}><Card className="h-full" size="small"><Statistic title="经营毛利" value={moneyFormatter(businessBlocks.totals?.grossProfit ?? 0)} valueStyle={{ color: (businessBlocks.totals?.grossProfit ?? 0) < 0 ? "var(--danger)" : "var(--foreground)" }} /></Card></Col>
+                  <Col xs={24} md={6}><Card className="h-full" size="small"><Statistic title="整体毛利率" value={percentFormatter(businessBlocks.totals?.grossMargin ?? null)} /></Card></Col>
+                </Row>
+                {businessBlocks.blockPerformance.length ? (
+                  <div className="overflow-x-auto">
+                    <div className="grid min-w-[1060px] grid-cols-4 gap-4">
+                      {businessBlocks.blockPerformance.map((block) => (
+                        <div key={block.businessBlock} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
+                          <div className="mb-4 flex items-start justify-between gap-3">
+                            <div>
+                              <Typography.Text strong>{block.blockName}</Typography.Text>
+                              <div className="mt-1 text-xs text-[var(--muted)]">AI 状态：{block.aiAnalysisStatus || "待分析"}</div>
+                            </div>
+                            <Tag color={block.rating.source === "none" ? "default" : "purple"}>{block.rating.label}</Tag>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <BusinessBlockMetric title="销售额">{moneyFormatter(block.salesAmount)}</BusinessBlockMetric>
+                            <BusinessBlockMetric title="销售占比">{percentFormatter(block.salesShare)}</BusinessBlockMetric>
+                            <BusinessBlockMetric title="广告投入">{moneyFormatter(block.adSpend)}</BusinessBlockMetric>
+                            <BusinessBlockMetric title="经营毛利">
+                              <span className={block.grossProfit < 0 ? "text-red-500" : undefined}>{moneyFormatter(block.grossProfit)}</span>
+                            </BusinessBlockMetric>
+                            <BusinessBlockMetric title="毛利率">
+                              <Tag color={rateColor(block.grossMargin)}>{percentFormatter(block.grossMargin)}</Tag>
+                            </BusinessBlockMetric>
+                            <BusinessBlockMetric title="ROI">
+                              <Tag color={roiColor(block.roi)}>{ratioFormatter(block.roi)}</Tag>
+                            </BusinessBlockMetric>
+                            <BusinessBlockMetric title="环比上月">
+                              <Tag color={block.monthOverMonth === null ? "default" : block.monthOverMonth >= 0 ? "green" : "red"}>
+                                {percentFormatter(block.monthOverMonth)}
+                              </Tag>
+                            </BusinessBlockMetric>
+                            <BusinessBlockMetric title="其他成本">{moneyFormatter(block.otherCost)}</BusinessBlockMetric>
+                          </div>
+                          <div className="mt-4 rounded-lg bg-[var(--soft-bg)] p-3 text-sm text-[var(--menu-text)]">
+                            关键动作：{block.keyAction || "待填写 / 待 AI 分析"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <Empty description="暂无四板块经营数据" />
+                )}
+              </>
+            ) : (
+              <Empty description="当前角色不能查看公司整体经营毛利、预算建议和全局经营表现" />
+            )}
+          </Card>
 
-        <Card className="mt-4" title="预警与动作">
-          {businessBlocks.visibility.canViewGlobal ? (
-            <Table columns={warningColumns} dataSource={businessBlocks.warnings} rowKey={(row) => `${row.channelId}-${row.warningType}`} pagination={false} scroll={{ x: 1500 }} locale={{ emptyText: <Empty description="暂无预警，待 AI 分析或手动填写" /> }} />
-          ) : (
-            <Empty description="当前角色仅显示自己负责范围，暂不展示全局预警" />
-          )}
-        </Card>
+          <Card title="预警与动作">
+            {businessBlocks.visibility.canViewGlobal ? (
+              <Table columns={warningColumns} dataSource={businessBlocks.warnings} rowKey={(row) => `${row.channelId}-${row.warningType}`} pagination={false} scroll={{ x: 1500 }} locale={{ emptyText: <Empty description="暂无预警，待 AI 分析或手动填写" /> }} />
+            ) : (
+              <Empty description="当前角色仅显示自己负责范围，暂不展示全局预警" />
+            )}
+          </Card>
 
-        <Card className="mt-4" title="预算建议">
-          {businessBlocks.visibility.canViewBudget ? (
-            <Table columns={budgetColumns} dataSource={businessBlocks.budgetSuggestions} rowKey={(row) => row.businessBlock} pagination={false} scroll={{ x: 900 }} locale={{ emptyText: <Empty description="暂无预算建议，待填写 / 待 AI 分析" /> }} />
-          ) : (
-            <Alert type="info" showIcon message="预算建议属于管理员经营视角，当前角色不可查看。" />
-          )}
-        </Card>
-
-        <Card className="mt-4" title="字段口径说明">
-          <Table
-            size="small"
-            rowKey={(row) => row.field}
-            columns={[
-              { title: "字段", dataIndex: "field", width: 150 },
-              { title: "口径说明", dataIndex: "description" },
-            ]}
-            dataSource={businessBlocks.fieldDefinitions}
-            pagination={false}
-          />
-        </Card>
+          <Card title="预算建议">
+            {businessBlocks.visibility.canViewBudget ? (
+              <Table columns={budgetColumns} dataSource={businessBlocks.budgetSuggestions} rowKey={(row) => row.businessBlock} pagination={false} scroll={{ x: 900 }} locale={{ emptyText: <Empty description="暂无预算建议，待填写 / 待 AI 分析" /> }} />
+            ) : (
+              <Alert type="info" showIcon message="预算建议属于管理员经营视角，当前角色不可查看。" />
+            )}
+          </Card>
+        </div>
       </Spin>
+
+      <Modal
+        title="字段口径说明"
+        open={definitionOpen}
+        footer={null}
+        width={760}
+        onCancel={() => setDefinitionOpen(false)}
+      >
+        <Table
+          size="small"
+          rowKey={(row) => row.field}
+          columns={[
+            { title: "字段", dataIndex: "field", width: 150 },
+            { title: "口径说明", dataIndex: "description" },
+          ]}
+          dataSource={businessBlocks.fieldDefinitions}
+          pagination={false}
+          locale={{ emptyText: <Empty description="暂无字段口径说明" /> }}
+        />
+      </Modal>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
           <Card>
             <Typography.Text type="secondary">近期询盘</Typography.Text>
-            <div className="mt-3 text-2xl font-semibold text-[#172033]">待接入</div>
-            <div className="mt-2 text-sm text-[#667085]">询盘报价模块上线后接入</div>
+            <div className="mt-3 text-2xl font-semibold text-[var(--foreground)]">待接入</div>
+            <div className="mt-2 text-sm text-[var(--muted)]">询盘报价模块上线后接入</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} xl={6}>
@@ -651,17 +707,17 @@ export default function DashboardOverview() {
           >
             <Spin spinning={followupLoading}>
               <div className="mb-3 grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-lg bg-[#fff7e6] p-2">
+                <div className="rounded-lg bg-[var(--chart-amber-soft)] p-2">
                   <div className="text-lg font-semibold text-orange-500">{followupCustomers.todayCount}</div>
-                  <div className="text-xs text-[#667085]">今日</div>
+                  <div className="text-xs text-[var(--muted)]">今日</div>
                 </div>
-                <div className="rounded-lg bg-[#fff1f0] p-2">
+                <div className="rounded-lg bg-[var(--chart-red-soft)] p-2">
                   <div className="text-lg font-semibold text-red-500">{followupCustomers.overdueCount}</div>
-                  <div className="text-xs text-[#667085]">逾期</div>
+                  <div className="text-xs text-[var(--muted)]">逾期</div>
                 </div>
-                <div className="rounded-lg bg-[#e6f4ff] p-2">
-                  <div className="text-lg font-semibold text-[#1677ff]">{followupCustomers.next7DaysCount}</div>
-                  <div className="text-xs text-[#667085]">7天</div>
+                <div className="rounded-lg bg-[var(--chart-blue-soft)] p-2">
+                  <div className="text-lg font-semibold text-[var(--chart-blue)]">{followupCustomers.next7DaysCount}</div>
+                  <div className="text-xs text-[var(--muted)]">7天</div>
                 </div>
               </div>
               {followupCustomers.items.length ? (
@@ -671,11 +727,11 @@ export default function DashboardOverview() {
                   renderItem={(item) => (
                     <List.Item className="!px-0">
                       <List.Item.Meta
-                        avatar={<UserOutlined className={item.overdue ? "text-red-500" : "text-[#1677ff]"} />}
+                        avatar={<UserOutlined className={item.overdue ? "text-red-500" : "text-[var(--chart-blue)]"} />}
                         title={<Link href={`/crm/customers/${item.id}`}>{item.name}</Link>}
                         description={`${item.countryCode ?? "-"} · ${customerStatusLabels[item.status] ?? item.status} · ${item.owner?.name ?? "-"}`}
                       />
-                      <span className={item.overdue ? "text-xs text-red-500" : "text-xs text-[#667085]"}>{formatDateTime(item.nextFollowupAt)}</span>
+                      <span className={item.overdue ? "text-xs text-red-500" : "text-xs text-[var(--muted)]"}>{formatDateTime(item.nextFollowupAt)}</span>
                     </List.Item>
                   )}
                 />
@@ -691,17 +747,17 @@ export default function DashboardOverview() {
           >
             <Spin spinning={pendingPaymentsLoading}>
               <div className="mb-3 grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-lg bg-[#fff7e6] p-2">
+                <div className="rounded-lg bg-[var(--chart-amber-soft)] p-2">
                   <div className="text-lg font-semibold text-orange-500">{pendingPayments.pendingOrderCount}</div>
-                  <div className="text-xs text-[#667085]">待回款</div>
+                  <div className="text-xs text-[var(--muted)]">待回款</div>
                 </div>
-                <div className="rounded-lg bg-[#fff1f0] p-2">
+                <div className="rounded-lg bg-[var(--chart-red-soft)] p-2">
                   <div className="text-lg font-semibold text-red-500">{pendingPayments.overdueOrderCount}</div>
-                  <div className="text-xs text-[#667085]">逾期</div>
+                  <div className="text-xs text-[var(--muted)]">逾期</div>
                 </div>
-                <div className="rounded-lg bg-[#e6f4ff] p-2">
-                  <div className="text-lg font-semibold text-[#1677ff]">{shortMoney(pendingPayments.pendingAmount)}</div>
-                  <div className="text-xs text-[#667085]">未收金额</div>
+                <div className="rounded-lg bg-[var(--chart-blue-soft)] p-2">
+                  <div className="text-lg font-semibold text-[var(--chart-blue)]">{shortMoney(pendingPayments.pendingAmount)}</div>
+                  <div className="text-xs text-[var(--muted)]">未收金额</div>
                 </div>
               </div>
               {pendingPayments.items.length ? (
@@ -711,11 +767,11 @@ export default function DashboardOverview() {
                   renderItem={(item) => (
                     <List.Item className="!px-0">
                       <List.Item.Meta
-                        avatar={<DollarOutlined className={item.overdue ? "text-red-500" : "text-[#1677ff]"} />}
+                        avatar={<DollarOutlined className={item.overdue ? "text-red-500" : "text-[var(--chart-blue)]"} />}
                         title={<Link href={`/orders/${item.id}`}>{item.orderNo}</Link>}
                         description={`${item.customerName} · ${item.countryCode ?? "-"} · 未收 ${moneyFormatter(item.unpaidAmount)}`}
                       />
-                      <span className={item.overdue ? "text-xs text-red-500" : "text-xs text-[#667085]"}>{formatDateTime(item.dueDate)}</span>
+                      <span className={item.overdue ? "text-xs text-red-500" : "text-xs text-[var(--muted)]"}>{formatDateTime(item.dueDate)}</span>
                     </List.Item>
                   )}
                 />
@@ -727,8 +783,8 @@ export default function DashboardOverview() {
           <Col xs={24} sm={12} xl={6} key={item.title}>
             <Card>
               <Typography.Text type="secondary">{item.title}</Typography.Text>
-              <div className="mt-3 text-2xl font-semibold text-[#172033]">待接入</div>
-              <div className="mt-2 text-sm text-[#667085]">{item.description}</div>
+              <div className="mt-3 text-2xl font-semibold text-[var(--foreground)]">待接入</div>
+              <div className="mt-2 text-sm text-[var(--muted)]">{item.description}</div>
             </Card>
           </Col>
         ))}

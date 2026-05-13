@@ -106,11 +106,11 @@ export default function CustomerDetailPage({ customerId }: Props) {
             <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <Space className="mb-2" wrap>
-                  <Typography.Title level={3} className="!mb-0 !text-[#172033]">{customer.name}</Typography.Title>
+                  <Typography.Title level={3} className="!mb-0 !text-[var(--foreground)]">{customer.name}</Typography.Title>
                   <LevelTag level={customer.level} />
                   <StatusTag status={customer.status} />
                 </Space>
-                <div className="text-sm text-[#667085]">{customer.companyName || "未填写公司名称"}</div>
+                <div className="text-sm text-[var(--muted)]">{customer.companyName || "未填写公司名称"}</div>
               </div>
               <Space>
                 <Button icon={<ArrowLeftOutlined />} onClick={() => router.push("/crm/customers")}>返回</Button>

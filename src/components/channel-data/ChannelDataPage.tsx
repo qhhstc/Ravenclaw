@@ -170,10 +170,10 @@ export default function ChannelDataPage() {
   }
 
   return (
-    <div className="channel-data-page max-w-full overflow-hidden">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div className="channel-data-page page-stack">
+      <div className="page-section-header">
         <div>
-          <Typography.Title level={3} className="!mb-1 !text-[#172033]">渠道数据</Typography.Title>
+          <Typography.Title level={3} className="!mb-1 !text-[var(--foreground)]">渠道数据</Typography.Title>
           <Typography.Text type="secondary">按周录入销售额和广告费，自动形成月度与季度经营效率汇总。</Typography.Text>
         </div>
       </div>
@@ -196,7 +196,7 @@ export default function ChannelDataPage() {
 
       <ChannelKpiCards {...monthlyTotals} />
 
-      <Card className="mb-4" styles={{ body: { padding: 16 } }}>
+      <Card styles={{ body: { padding: 16 } }}>
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <Typography.Title level={4} className="!mb-1">渠道周报录入</Typography.Title>
@@ -206,7 +206,7 @@ export default function ChannelDataPage() {
         {rows.length ? <WeeklyMetricTable rows={rows} loading={loading} onChange={setRows} /> : <Empty description="暂无渠道数据" />}
       </Card>
 
-      <Card className="mb-4" styles={{ body: { padding: 16 } }}>
+      <Card styles={{ body: { padding: 16 } }}>
         <div className="mb-3">
           <Typography.Title level={4} className="!mb-1">月度汇总</Typography.Title>
           <Typography.Text type="secondary">由 W1-W5 自动汇总，支持按销售额、广告费、ROI 排序。</Typography.Text>

@@ -137,8 +137,8 @@ export default function VendorManager({ onChanged }: { onChanged?: () => void })
   ];
 
   return (
-    <div>
-      <Card className="mb-4" styles={{ body: { padding: 16 } }}>
+    <div className="page-stack">
+      <Card styles={{ body: { padding: 16 } }}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Space wrap>
             <Input allowClear prefix={<SearchOutlined />} placeholder="搜索供应商/联系人/邮箱" value={filters.keyword} style={{ width: 260 }} onChange={(event) => setFilters((current) => ({ ...current, keyword: event.target.value || undefined }))} />
@@ -149,7 +149,9 @@ export default function VendorManager({ onChanged }: { onChanged?: () => void })
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); form.setFieldsValue({ vendorType: "supplier", status: "active" }); setModalOpen(true); }}>新增供应商</Button>
         </div>
       </Card>
-      <Table<VendorRecord> rowKey="id" size="middle" loading={loading} columns={columns} dataSource={items} pagination={false} scroll={{ x: 1460 }} locale={{ emptyText: <Empty description="暂无供应商" /> }} />
+      <Card styles={{ body: { padding: 0 } }}>
+        <Table<VendorRecord> rowKey="id" size="middle" loading={loading} columns={columns} dataSource={items} pagination={false} scroll={{ x: 1460 }} locale={{ emptyText: <Empty description="暂无供应商" /> }} />
+      </Card>
 
       <Modal title={editing ? "编辑供应商" : "新增供应商"} open={modalOpen} width={780} confirmLoading={saving} onCancel={() => setModalOpen(false)} onOk={saveVendor} destroyOnHidden>
         <Form form={form} layout="vertical" initialValues={{ vendorType: "supplier", status: "active" }}>

@@ -245,13 +245,13 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
         <Divider titlePlacement="start">利润计算结果</Divider>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           {[
-            { title: "销售总金额", value: `${currency} ${computed.salesAmount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "#1677ff" },
-            { title: "全部成本合计", value: `${currency} ${computed.totalCost.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "#667085" },
-            { title: "订单毛利", value: `${currency} ${computed.grossProfit.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: computed.grossProfit < 0 ? "#ff4d4f" : "#16a34a" },
+            { title: "销售总金额", value: `${currency} ${computed.salesAmount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "var(--chart-blue)" },
+            { title: "全部成本合计", value: `${currency} ${computed.totalCost.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "var(--muted)" },
+            { title: "订单毛利", value: `${currency} ${computed.grossProfit.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: computed.grossProfit < 0 ? "var(--danger)" : "var(--success)" },
             { title: "毛利率", value: percentText(computed.grossMargin), color: marginColor(computed.grossMargin, computed.grossProfit) },
           ].map((card) => (
-            <div key={card.title} className="flex min-h-[112px] flex-col justify-between rounded-xl border border-[#edf0f5] bg-white p-4 shadow-sm">
-              <div className="text-sm text-[#667085]">{card.title}</div>
+            <div key={card.title} className="flex min-h-[112px] flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
+              <div className="text-sm text-[var(--muted)]">{card.title}</div>
               <div className="text-2xl font-semibold leading-8" style={{ color: card.color }}>{card.value}</div>
             </div>
           ))}

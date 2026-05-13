@@ -202,12 +202,12 @@ export default function OrderDetailPage({ orderId }: Props) {
             <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <Space className="mb-2" wrap>
-                  <Typography.Title level={3} className="!mb-0 !text-[#172033]">{order.orderNo}</Typography.Title>
+                  <Typography.Title level={3} className="!mb-0 !text-[var(--foreground)]">{order.orderNo}</Typography.Title>
                   <StatusTag type="order" value={order.orderStatus} />
                   <StatusTag type="payment" value={order.paymentStatus} />
                   <StatusTag type="shipping" value={order.shippingStatus} />
                 </Space>
-                <div className="text-sm text-[#667085]">{optionLabel(orderSourceOptions, order.orderSource)} · {order.customerName || order.customer?.name || "散客/平台订单"}</div>
+                <div className="text-sm text-[var(--muted)]">{optionLabel(orderSourceOptions, order.orderSource)} · {order.customerName || order.customer?.name || "散客/平台订单"}</div>
               </div>
               <Space>
                 <Button icon={<ArrowLeftOutlined />} onClick={() => router.push("/orders")}>返回</Button>
@@ -222,7 +222,7 @@ export default function OrderDetailPage({ orderId }: Props) {
               <Descriptions.Item label="下单日期">{formatDate(order.orderDate)}</Descriptions.Item>
               <Descriptions.Item label="销售总金额">{moneyText(order.salesAmount, order.currency)}</Descriptions.Item>
               <Descriptions.Item label="总成本">{moneyText(order.totalCost, order.currency)}</Descriptions.Item>
-              <Descriptions.Item label="毛利"><span className={Number(order.grossProfit) < 0 ? "font-semibold text-red-500" : "font-semibold text-[#1677ff]"}>{moneyText(order.grossProfit, order.currency)}</span></Descriptions.Item>
+              <Descriptions.Item label="毛利"><span className={Number(order.grossProfit) < 0 ? "font-semibold text-red-500" : "font-semibold text-[var(--chart-blue)]"}>{moneyText(order.grossProfit, order.currency)}</span></Descriptions.Item>
               <Descriptions.Item label="毛利率"><MarginTag value={order.grossMargin} /></Descriptions.Item>
               <Descriptions.Item label="已收金额">{moneyText(order.paidAmount, order.currency)}</Descriptions.Item>
               <Descriptions.Item label="未收金额"><span className={Number(order.unpaidAmount) > 0 ? "font-semibold text-orange-500" : ""}>{moneyText(order.unpaidAmount, order.currency)}</span></Descriptions.Item>
@@ -234,12 +234,12 @@ export default function OrderDetailPage({ orderId }: Props) {
 
           <Row gutter={[12, 12]} className="mb-4">
             {[
-              ["销售总金额", order.salesAmount, "#1677ff"],
-              ["总成本", order.totalCost, "#667085"],
-              ["订单毛利", order.grossProfit, Number(order.grossProfit) < 0 ? "#ff4d4f" : "#16a34a"],
+              ["销售总金额", order.salesAmount, "var(--chart-blue)"],
+              ["总成本", order.totalCost, "var(--muted)"],
+              ["订单毛利", order.grossProfit, Number(order.grossProfit) < 0 ? "var(--danger)" : "var(--success)"],
               ["毛利率", order.grossMargin == null ? "—" : `${(Number(order.grossMargin) * 100).toFixed(2)}%`, marginColor(Number(order.grossMargin), Number(order.grossProfit))],
-              ["已收金额", order.paidAmount, "#16a34a"],
-              ["未收金额", order.unpaidAmount, Number(order.unpaidAmount) > 0 ? "#fa8c16" : "#667085"],
+              ["已收金额", order.paidAmount, "var(--success)"],
+              ["未收金额", order.unpaidAmount, Number(order.unpaidAmount) > 0 ? "var(--warning)" : "var(--muted)"],
             ].map(([title, value, color]) => (
               <Col xs={24} sm={12} lg={8} xl={4} key={String(title)}>
                 <Card styles={{ body: { padding: 16 } }}>

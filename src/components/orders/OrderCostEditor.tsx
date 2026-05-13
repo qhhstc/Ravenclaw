@@ -41,8 +41,8 @@ export default function OrderCostEditor({ form, currency }: Props) {
       {rows.map((row, index) => {
         const option = costTypeOptions[index];
         return (
-          <div key={option.value} className="rounded-lg border border-[#edf0f5] bg-[#fafcff] p-3">
-            <div className="mb-2 text-sm font-medium text-[#172033]">{option.label}</div>
+          <div key={option.value} className="rounded-lg border border-[var(--border)] bg-[var(--soft-bg)] p-3">
+            <div className="mb-2 text-sm font-medium text-[var(--foreground)]">{option.label}</div>
             <Form.Item name={["costs", index, "costType"]} initialValue={option.value} hidden><Input /></Form.Item>
             <Form.Item name={["costs", index, "currency"]} initialValue={row.currency} hidden><Input /></Form.Item>
             <Form.Item name={["costs", index, "exchangeRate"]} initialValue={row.exchangeRate} hidden><InputNumber /></Form.Item>

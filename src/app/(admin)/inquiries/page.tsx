@@ -148,9 +148,9 @@ export default function InquiriesPage() {
   ];
 
   return (
-    <div className="max-w-full overflow-hidden">
-      <div className="mb-4">
-        <Typography.Title level={3} className="!mb-1 !text-[#172033]">询盘报价</Typography.Title>
+    <div className="page-stack">
+      <div>
+        <Typography.Title level={3} className="!mb-1 !text-[var(--foreground)]">询盘报价</Typography.Title>
         <Typography.Text type="secondary">第一版先展示报价单，并支持报价转订单；完整询盘报价工作台后续扩展。</Typography.Text>
       </div>
       <Card styles={{ body: { padding: 0 } }}>

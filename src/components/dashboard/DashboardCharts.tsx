@@ -16,8 +16,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useThemeMode } from "@/hooks/useThemeMode";
 
-const chartColors = ["#1677ff", "#13c2c2", "#52c41a", "#faad14", "#eb2f96", "#722ed1", "#08979c", "#fa541c"];
 const chartInitialDimension = { width: 560, height: 300 };
 
 type TrendRow = { weekNumber: number; week: string; salesAmount: number; adSpend: number };
@@ -37,19 +37,53 @@ function percentFormatter(value: number | null) {
   return value === null || !Number.isFinite(value) ? "—" : `${(value * 100).toFixed(1)}%`;
 }
 
+function useChartPalette() {
+  const mode = useThemeMode();
+  return mode === "dark"
+    ? {
+        axis: "#b4b4b4",
+        grid: "rgba(255,255,255,0.08)",
+        tooltipBg: "#2f2f2f",
+        tooltipBorder: "#3a3a3a",
+        tooltipText: "#ececec",
+        sales: "#3b82f6",
+        adSpend: "#22c55e",
+        profit: "#f59e0b",
+        cost: "#ef4444",
+        accent: ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316"],
+      }
+    : {
+        axis: "#667085",
+        grid: "#edf0f5",
+        tooltipBg: "#ffffff",
+        tooltipBorder: "#edf0f5",
+        tooltipText: "#172033",
+        sales: "#1677ff",
+        adSpend: "#16a34a",
+        profit: "#f59e0b",
+        cost: "#ef4444",
+        accent: ["#1677ff", "#16a34a", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316"],
+      };
+}
+
 export function TrendComposedChart({ data }: { data: TrendRow[] }) {
+  const palette = useChartPalette();
   if (!data.some((item) => item.salesAmount > 0 || item.adSpend > 0)) return <Empty description="暂无趋势数据" />;
   return (
-    <div className="h-[300px] min-h-[300px] min-w-0">
+    <div className="h-[300px] min-h-[300px] w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300} initialDimension={chartInitialDimension}>
         <ComposedChart data={data} margin={{ left: 12, right: 12 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#edf0f5" />
-          <XAxis dataKey="week" />
-          <YAxis tickFormatter={(value) => shortMoney(Number(value))} />
-          <Tooltip formatter={(value) => moneyFormatter(Number(value))} />
-          <Legend />
-          <Bar dataKey="adSpend" name="广告费" fill="#91caff" radius={[4, 4, 0, 0]} />
-          <Line type="monotone" dataKey="salesAmount" name="销售额" stroke="#1677ff" strokeWidth={3} dot={{ r: 4 }} />
+          <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
+          <XAxis dataKey="week" tick={{ fill: palette.axis }} axisLine={{ stroke: palette.grid }} tickLine={{ stroke: palette.grid }} />
+          <YAxis tick={{ fill: palette.axis }} axisLine={{ stroke: palette.grid }} tickLine={{ stroke: palette.grid }} tickFormatter={(value) => shortMoney(Number(value))} />
+          <Tooltip
+            contentStyle={{ background: palette.tooltipBg, borderColor: palette.tooltipBorder, color: palette.tooltipText, borderRadius: 10 }}
+            labelStyle={{ color: palette.tooltipText }}
+            formatter={(value) => moneyFormatter(Number(value))}
+          />
+          <Legend wrapperStyle={{ color: palette.axis }} />
+          <Bar dataKey="adSpend" name="广告费" fill={palette.adSpend} radius={[4, 4, 0, 0]} />
+          <Line type="monotone" dataKey="salesAmount" name="销售额" stroke={palette.sales} strokeWidth={3} dot={{ r: 4, fill: palette.sales }} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -57,9 +91,10 @@ export function TrendComposedChart({ data }: { data: TrendRow[] }) {
 }
 
 export function BusinessLinePieChart({ data }: { data: ShareRow[] }) {
+  const palette = useChartPalette();
   if (!data.length) return <Empty description="暂无占比数据" />;
   return (
-    <div className="h-[300px] min-h-[300px] min-w-0">
+    <div className="h-[300px] min-h-[300px] w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300} initialDimension={chartInitialDimension}>
         <PieChart>
           <Pie
@@ -74,10 +109,14 @@ export function BusinessLinePieChart({ data }: { data: ShareRow[] }) {
               return `${entry.name ?? ""} ${percentFormatter(entry.ratio ?? null)}`;
             }}
           >
-            {data.map((entry, index) => <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />)}
+            {data.map((entry, index) => <Cell key={entry.name} fill={palette.accent[index % palette.accent.length]} />)}
           </Pie>
-          <Tooltip formatter={(value) => moneyFormatter(Number(value))} />
-          <Legend />
+          <Tooltip
+            contentStyle={{ background: palette.tooltipBg, borderColor: palette.tooltipBorder, color: palette.tooltipText, borderRadius: 10 }}
+            labelStyle={{ color: palette.tooltipText }}
+            formatter={(value) => moneyFormatter(Number(value))}
+          />
+          <Legend wrapperStyle={{ color: palette.axis }} />
         </PieChart>
       </ResponsiveContainer>
     </div>
@@ -85,18 +124,23 @@ export function BusinessLinePieChart({ data }: { data: ShareRow[] }) {
 }
 
 export function TrendBarChart({ data }: { data: TrendRow[] }) {
+  const palette = useChartPalette();
   if (!data.some((item) => item.salesAmount > 0 || item.adSpend > 0)) return <Empty description="暂无对比数据" />;
   return (
-    <div className="h-[300px] min-h-[300px] min-w-0">
+    <div className="h-[300px] min-h-[300px] w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300} initialDimension={chartInitialDimension}>
         <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#edf0f5" />
-          <XAxis dataKey="week" />
-          <YAxis tickFormatter={(value) => shortMoney(Number(value))} />
-          <Tooltip formatter={(value) => moneyFormatter(Number(value))} />
-          <Legend />
-          <Bar dataKey="salesAmount" name="销售额" fill="#1677ff" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="adSpend" name="广告费" fill="#13c2c2" radius={[4, 4, 0, 0]} />
+          <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
+          <XAxis dataKey="week" tick={{ fill: palette.axis }} axisLine={{ stroke: palette.grid }} tickLine={{ stroke: palette.grid }} />
+          <YAxis tick={{ fill: palette.axis }} axisLine={{ stroke: palette.grid }} tickLine={{ stroke: palette.grid }} tickFormatter={(value) => shortMoney(Number(value))} />
+          <Tooltip
+            contentStyle={{ background: palette.tooltipBg, borderColor: palette.tooltipBorder, color: palette.tooltipText, borderRadius: 10 }}
+            labelStyle={{ color: palette.tooltipText }}
+            formatter={(value) => moneyFormatter(Number(value))}
+          />
+          <Legend wrapperStyle={{ color: palette.axis }} />
+          <Bar dataKey="salesAmount" name="销售额" fill={palette.sales} radius={[4, 4, 0, 0]} />
+          <Bar dataKey="adSpend" name="广告费" fill={palette.adSpend} radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

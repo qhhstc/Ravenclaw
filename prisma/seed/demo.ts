@@ -41,7 +41,7 @@ function orderGrossMargin(salesAmount: number, grossProfit: number) {
 function demoBlockMeta(businessBlock: string) {
   const meta: Record<string, { rating: string; action: string; owner: string; nextBudget: number; reason: string; productCostRatio: number; otherCostRatio: number; warningType?: string; warningLevel?: string }> = {
     amazon: { rating: "A", action: "继续放量高 ROI 店铺，监控广告占销。", owner: "Admin", nextBudget: 185000, reason: "Amazon ROI 稳定，建议预算小幅上调。", productCostRatio: 0.34, otherCostRatio: 0.08 },
-    independent_site: { rating: "B", action: "优化 Shopify 落地页和 EDM 复购路径。", owner: "Sales 1", nextBudget: 112000, reason: "独立站销售下滑，预算先稳住并测试素材。", productCostRatio: 0.36, otherCostRatio: 0.09, warningType: "销售环比下滑", warningLevel: "yellow" },
+    independent_site: { rating: "B", action: "优化 Shopify 落地页和 EDM 复购路径。", owner: "Sales 1", nextBudget: 112000, reason: "独立站销售下滑，预算先稳住并测试素材。", productCostRatio: 0.36, otherCostRatio: 0.09, warningType: "销售环比下滑", warningLevel: "C" },
     tiktok: { rating: "B", action: "筛选达人内容，控制单量履约成本。", owner: "Sales 2", nextBudget: 42000, reason: "TikTok 有增量但波动大，保持测试预算。", productCostRatio: 0.32, otherCostRatio: 0.1 },
     b2b: { rating: "S", action: "B 端线索质量高，优先跟进大额询盘。", owner: "Admin", nextBudget: 18000, reason: "SEO 自然流量贡献高，广告只补关键词缺口。", productCostRatio: 0.43, otherCostRatio: 0.12 },
   };

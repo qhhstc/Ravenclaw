@@ -207,7 +207,7 @@ export default function UserAccountManager() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="page-stack">
       <Card styles={{ body: { padding: 20 } }}>
         <div className="mb-1 flex flex-wrap items-start justify-between gap-4">
           <div>

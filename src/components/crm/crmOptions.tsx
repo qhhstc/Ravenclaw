@@ -178,7 +178,7 @@ export function StatusTag({ status }: { status?: string | null }) {
 }
 
 export function FollowupTime({ value, status }: { value?: string | null; status?: string }) {
-  if (!value) return <span className="text-[#98a2b3]">无计划</span>;
-  const color = isOverdue(value, status) ? "text-red-600" : isToday(value) ? "text-orange-500" : "text-[#344054]";
+  if (!value) return <span className="text-[var(--muted-weak)]">无计划</span>;
+  const color = isOverdue(value, status) ? "text-red-600" : isToday(value) ? "text-orange-500" : "text-[var(--menu-text)]";
   return <span className={color}>{formatDateTime(value)}</span>;
 }

@@ -16,12 +16,12 @@ export default function ChannelKpiCards({ salesAmount, adSpend, channelCount, ad
   const adRatio = salesAmount > 0 ? adSpend / salesAmount : 0;
 
   const items = [
-    { title: "本月销售额", value: currencyMoney(salesAmount), icon: <DollarOutlined />, color: "#1677ff" },
-    { title: "本月广告费", value: currencyMoney(adSpend), icon: <BarChartOutlined />, color: "#722ed1" },
-    { title: "整体 ROI", value: ratio(roi), icon: <RiseOutlined />, color: "#16a34a" },
-    { title: "广告占比", value: percent(adRatio), icon: <PercentageOutlined />, color: "#fa8c16" },
-    { title: "渠道数量", value: channelCount, icon: <ShopOutlined />, color: "#08979c" },
-    { title: "有广告费渠道数", value: advertisedChannelCount, icon: <ThunderboltOutlined />, color: "#eb2f96" },
+    { title: "本月销售额", value: currencyMoney(salesAmount), icon: <DollarOutlined />, color: "var(--chart-blue)" },
+    { title: "本月广告费", value: currencyMoney(adSpend), icon: <BarChartOutlined />, color: "var(--ai)" },
+    { title: "整体 ROI", value: ratio(roi), icon: <RiseOutlined />, color: "var(--success)" },
+    { title: "广告占比", value: percent(adRatio), icon: <PercentageOutlined />, color: "var(--warning)" },
+    { title: "渠道数量", value: channelCount, icon: <ShopOutlined />, color: "var(--chart-teal)" },
+    { title: "有广告费渠道数", value: advertisedChannelCount, icon: <ThunderboltOutlined />, color: "var(--chart-orange)" },
   ];
 
   return (
@@ -30,7 +30,7 @@ export default function ChannelKpiCards({ salesAmount, adSpend, channelCount, ad
         <Col xs={24} sm={12} lg={8} xl={4} key={item.title}>
           <Card className="h-full" styles={{ body: { padding: 16 } }}>
             <div className="flex items-center justify-between gap-3">
-              <Statistic title={item.title} value={item.value} valueStyle={{ fontSize: 20, color: "#172033" }} />
+              <Statistic title={item.title} value={item.value} valueStyle={{ fontSize: 20, color: "var(--foreground)" }} />
               <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-lg" style={{ color: item.color, background: `${item.color}14` }}>
                 {item.icon}
               </div>

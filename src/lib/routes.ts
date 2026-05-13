@@ -20,9 +20,24 @@ export const appRoutes: AppRoute[] = [
 ];
 
 export function getRouteTitle(pathname: string) {
-  return appRoutes.find((route) => pathname === route.path || pathname.startsWith(`${route.path}/`))?.title ?? "跨境经营数据中心";
+  return appRoutes.find((route) => isRouteSelected(pathname, route.path))?.title ?? "经营管理系统";
 }
 
 export function getSelectedRoute(pathname: string) {
-  return appRoutes.find((route) => pathname === route.path || pathname.startsWith(`${route.path}/`))?.path ?? "/dashboard";
+  if (pathname === "/settings/users" || pathname.startsWith("/settings/users/") || pathname === "/users" || pathname.startsWith("/users/")) {
+    return "/settings/system";
+  }
+  if (pathname === "/influencer" || pathname.startsWith("/influencer/")) return "/influencers";
+  return appRoutes.find((route) => isRouteSelected(pathname, route.path))?.path ?? "/dashboard";
+}
+
+export function isRouteSelected(pathname: string, routePath: string) {
+  if (pathname === routePath || pathname.startsWith(`${routePath}/`)) return true;
+  if (routePath === "/settings/system") {
+    return pathname === "/settings/users" || pathname.startsWith("/settings/users/") || pathname === "/users" || pathname.startsWith("/users/");
+  }
+  if (routePath === "/influencers") {
+    return pathname === "/influencer" || pathname.startsWith("/influencer/");
+  }
+  return false;
 }

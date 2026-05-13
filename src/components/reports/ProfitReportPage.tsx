@@ -148,10 +148,10 @@ export default function ProfitReportPage() {
   }
 
   return (
-    <div className="max-w-full overflow-hidden">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div className="page-stack">
+      <div className="page-section-header">
         <div>
-          <Typography.Title level={3} className="!mb-1 !text-[#172033]">利润报表</Typography.Title>
+          <Typography.Title level={3} className="!mb-1 !text-[var(--foreground)]">利润报表</Typography.Title>
           <Typography.Text type="secondary">按订单、客户与产品汇总外贸业务毛利表现。</Typography.Text>
         </div>
         <Space wrap>
@@ -166,7 +166,7 @@ export default function ProfitReportPage() {
         </Space>
       </div>
 
-      <Card className="mb-4" styles={{ body: { padding: 16 } }}>
+      <Card styles={{ body: { padding: 16 } }}>
         <Space wrap>
           <Select value={filters.year} style={{ width: 120 }} options={[2025, 2026, 2027].map((value) => ({ label: `${value}年`, value }))} onChange={(year) => setFilters((current) => ({ ...current, year }))} />
           <Select allowClear value={filters.month} style={{ width: 120 }} placeholder="月份" options={Array.from({ length: 12 }, (_, index) => ({ label: `${index + 1}月`, value: index + 1 }))} onChange={(month) => setFilters((current) => ({ ...current, month }))} />
@@ -178,7 +178,7 @@ export default function ProfitReportPage() {
         </Space>
       </Card>
 
-      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
         <Card><Statistic title="总订单数" value={report.summary.orderCount} /></Card>
         <Card><Statistic title="总销售额" value={compactMoneyText(report.summary.salesAmount)} /></Card>
         <Card><Statistic title="总成本" value={compactMoneyText(report.summary.totalCost)} /></Card>

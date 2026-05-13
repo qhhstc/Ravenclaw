@@ -213,16 +213,16 @@ export default function CustomerListPage() {
   };
 
   return (
-    <div className="max-w-full overflow-hidden">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div className="page-stack">
+      <div className="page-section-header">
         <div>
-          <Typography.Title level={3} className="!mb-1 !text-[#172033]">客户 CRM</Typography.Title>
+          <Typography.Title level={3} className="!mb-1 !text-[var(--foreground)]">客户 CRM</Typography.Title>
           <Typography.Text type="secondary">管理客户档案、来源渠道、负责人、联系人与跟进计划。</Typography.Text>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setModalOpen(true); }}>新增客户</Button>
       </div>
 
-      <Card className="mb-4" styles={{ body: { padding: 16 } }}>
+      <Card styles={{ body: { padding: 16 } }}>
         <div className="flex flex-wrap items-center gap-3">
           <Input allowClear prefix={<SearchOutlined />} placeholder="搜索客户/公司/邮箱/WhatsApp/网站" value={filters.keyword} onChange={(event) => updateFilter({ keyword: event.target.value || undefined })} style={{ width: 280 }} />
           <Select allowClear placeholder="客户类型" value={filters.customerType} options={customerTypeOptions} onChange={(value) => updateFilter({ customerType: value })} style={{ width: 130 }} />

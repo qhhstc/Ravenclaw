@@ -72,14 +72,14 @@ export function actionText(row: ChannelDataRow) {
 }
 
 export function RoiTag({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-[#9ca3af]">—</span>;
+  if (value === null) return <span className="text-[var(--muted-weak)]">—</span>;
   if (value >= 5) return <Tag color="green">{ratio(value)}</Tag>;
   if (value > 0 && value < 3) return <Tag color="orange">{ratio(value)}</Tag>;
   return <Tag color="blue">{ratio(value)}</Tag>;
 }
 
 export function PercentText({ value }: { value: number }) {
-  const color = value >= 0.25 ? "#cf1322" : value > 0 ? "#1677ff" : "#9ca3af";
+  const color = value >= 0.25 ? "var(--danger)" : value > 0 ? "var(--chart-blue)" : "var(--muted-weak)";
   return <span style={{ color }}>{percent(value)}</span>;
 }
 

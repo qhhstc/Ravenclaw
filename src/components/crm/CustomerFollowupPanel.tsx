@@ -64,7 +64,7 @@ export default function CustomerFollowupPanel({ customerId, followups, onReload 
           items={followups.map((item) => ({
             color: item.nextFollowupAt ? "blue" : "gray",
             children: (
-              <div className="rounded-xl border border-[#edf0f5] bg-white p-4">
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <Space>
                     <Typography.Text strong>{optionLabel(followupTypeOptions, item.followupType)}</Typography.Text>
@@ -75,9 +75,9 @@ export default function CustomerFollowupPanel({ customerId, followups, onReload 
                     <Button danger type="link" size="small" icon={<DeleteOutlined />}>删除</Button>
                   </Popconfirm>
                 </div>
-                <div className="whitespace-pre-wrap text-[#344054]">{item.content}</div>
-                {item.result ? <div className="mt-2 rounded-lg bg-[#f8fafc] p-3 text-[#667085]">结果：{item.result}</div> : null}
-                <div className="mt-2 text-sm text-[#667085]">下次跟进：{formatDateTime(item.nextFollowupAt)}</div>
+                <div className="whitespace-pre-wrap text-[var(--menu-text)]">{item.content}</div>
+                {item.result ? <div className="mt-2 rounded-lg bg-[var(--soft-bg)] p-3 text-[var(--muted)]">结果：{item.result}</div> : null}
+                <div className="mt-2 text-sm text-[var(--muted)]">下次跟进：{formatDateTime(item.nextFollowupAt)}</div>
               </div>
             ),
           }))}

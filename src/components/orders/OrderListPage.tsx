@@ -326,10 +326,10 @@ export default function OrderListPage() {
   };
 
   return (
-    <div className="max-w-full overflow-hidden">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div className="page-stack">
+      <div className="page-section-header">
         <div>
-          <Typography.Title level={3} className="!mb-1 !text-[#172033]">订单中心</Typography.Title>
+          <Typography.Title level={3} className="!mb-1 !text-[var(--foreground)]">订单中心</Typography.Title>
           <Typography.Text type="secondary">外贸订单录入、成本分项与毛利核算主工作台。</Typography.Text>
         </div>
         <Space>
@@ -338,11 +338,11 @@ export default function OrderListPage() {
         </Space>
       </div>
 
-      <div className="mb-4 opacity-100">
+      <div className="opacity-100">
         <OrderStatsCards stats={statsLoading ? emptyStats : stats} />
       </div>
 
-      <Card className="mb-4" styles={{ body: { padding: 16 } }}>
+      <Card styles={{ body: { padding: 16 } }}>
         <Space size={10} wrap>
           <Input allowClear prefix={<SearchOutlined />} placeholder="订单号 / 客户 / 产品" value={filters.keyword} style={{ width: 220 }} onChange={(event) => updateFilter({ keyword: event.target.value })} />
           <Select allowClear placeholder="订单来源" value={filters.orderSource} style={{ width: 150 }} options={orderSourceOptions} onChange={(value) => updateFilter({ orderSource: value })} />

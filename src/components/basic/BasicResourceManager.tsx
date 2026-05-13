@@ -243,21 +243,24 @@ export default function BasicResourceManager<T extends BasicRecord>({ config }: 
           </Typography.Title>
           <Typography.Text type="secondary">{config.description}</Typography.Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingRecord(null);
-            form.resetFields();
-            form.setFieldsValue(config.initialValues ?? { status: "active" });
-            setModalOpen(true);
-          }}
-        >
-          新增
-        </Button>
+        <Space wrap>
+          {config.extraActions?.({ refresh: fetchList, loading })}
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingRecord(null);
+              form.resetFields();
+              form.setFieldsValue(config.initialValues ?? { status: "active" });
+              setModalOpen(true);
+            }}
+          >
+            新增
+          </Button>
+        </Space>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-5 flex flex-wrap items-center gap-3">
         <Input.Search
           allowClear
           placeholder={config.searchPlaceholder ?? "搜索名称/code"}

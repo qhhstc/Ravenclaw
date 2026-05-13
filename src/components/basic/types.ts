@@ -47,4 +47,5 @@ export type BasicManagerConfig<T extends BasicRecord = BasicRecord> = {
   fields: BasicFieldConfig[];
   extraFilters?: ExtraFilterConfig[];
   initialValues?: Record<string, unknown>;
+  extraActions?: (helpers: { refresh: () => void; loading: boolean }) => React.ReactNode;
 };

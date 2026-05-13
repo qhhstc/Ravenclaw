@@ -86,6 +86,11 @@ function firstText(...values: Array<string | null | undefined>) {
   return values.find((value) => value && value.trim())?.trim() ?? "";
 }
 
+function warningLevelValue(value?: string | null) {
+  const level = value?.trim().toUpperCase();
+  return level === "A" || level === "B" || level === "C" || level === "D" ? level : "";
+}
+
 function aggregateByBlock(metrics: MetricWithChannel[], previousSalesByBlock: Map<string, number>) {
   const totalSales = metrics.reduce((sum, metric) => sum + toNumber(metric.salesAmountBase), 0);
   const grouped = new Map<string, MetricWithChannel[]>();
@@ -139,7 +144,7 @@ function buildWarnings(metrics: MetricWithChannel[]) {
       const grossProfit = salesAmount - adSpend - productCost - otherCost;
       const roiValue = ratio(salesAmount, adSpend);
       const warningType = firstText(firstMetric.warningType, grossProfit < 0 ? "经营毛利为负" : null, roiValue !== null && roiValue < 1 ? "ROI 偏低" : null);
-      const warningLevel = firstText(firstMetric.warningLevel, grossProfit < 0 ? "red" : roiValue !== null && roiValue < 1 ? "yellow" : null);
+      const warningLevel = firstText(warningLevelValue(firstMetric.warningLevel), grossProfit < 0 ? "D" : roiValue !== null && roiValue < 1 ? "C" : null);
       if (!warningType && !warningLevel && !firstMetric.manualActionSuggestion && !firstMetric.aiActionSuggestion) return null;
 
       return {
@@ -153,7 +158,7 @@ function buildWarnings(metrics: MetricWithChannel[]) {
         suggestedAction: displayAction({ aiActionSuggestion: firstMetric.aiActionSuggestion, manualActionSuggestion: firstMetric.manualActionSuggestion }),
         decisionOwner: firstMetric.decisionOwner || "-",
         decisionDeadline: firstMetric.decisionDeadline?.toISOString() ?? null,
-        warningLevel: warningLevel || "info",
+        warningLevel: warningLevel || "B",
         remark: firstMetric.remark || "",
       };
     })

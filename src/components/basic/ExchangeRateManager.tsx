@@ -1,6 +1,9 @@
 "use client";
 
+import { SyncOutlined } from "@ant-design/icons";
+import { Button, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { useState } from "react";
 import BasicResourceManager from "./BasicResourceManager";
 import { formatDate, formatDateTime } from "./basicUtils";
 import type { BasicOptionState, BasicRecord } from "./types";
@@ -14,6 +17,23 @@ type ExchangeRateRecord = BasicRecord & {
 };
 
 export default function ExchangeRateManager({ options }: { options: BasicOptionState }) {
+  const [syncing, setSyncing] = useState(false);
+
+  async function syncExchangeRates(refresh: () => void) {
+    setSyncing(true);
+    try {
+      const response = await fetch("/api/basic/exchange-rates/sync", { method: "POST" });
+      const data = (await response.json()) as { updated?: number; failed?: number; message?: string };
+      if (!response.ok) throw new Error(data.message || "汇率更新失败");
+      message.success(`汇率更新完成：成功 ${data.updated ?? 0} 条，失败 ${data.failed ?? 0} 条`);
+      refresh();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "汇率更新失败");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const columns: ColumnsType<ExchangeRateRecord> = [
     { title: "基准币种", dataIndex: "baseCurrency", width: 120 },
     { title: "目标币种", dataIndex: "targetCurrency", width: 120 },
@@ -36,6 +56,11 @@ export default function ExchangeRateManager({ options }: { options: BasicOptionS
           { name: "rate", label: "汇率", required: true },
           { name: "rateDate", label: "汇率日期", type: "date", required: true },
         ],
+        extraActions: ({ refresh, loading }) => (
+          <Button icon={<SyncOutlined />} loading={syncing} disabled={loading} onClick={() => syncExchangeRates(refresh)}>
+            一键更新汇率
+          </Button>
+        ),
       }}
     />
   );

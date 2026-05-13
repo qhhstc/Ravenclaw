@@ -270,12 +270,12 @@ export function MarginTag({ value }: { value?: number | null }) {
 }
 
 export function marginColor(value?: number | null, grossProfit?: number | null) {
-  if ((grossProfit ?? 0) < 0) return "#ff4d4f";
-  if (value === null || value === undefined) return "#667085";
-  if (value >= 0.3) return "#16a34a";
-  if (value >= 0.2) return "#1677ff";
-  if (value >= 0.1) return "#fa8c16";
-  return "#ff4d4f";
+  if ((grossProfit ?? 0) < 0) return "var(--danger)";
+  if (value === null || value === undefined) return "var(--muted)";
+  if (value >= 0.3) return "var(--success)";
+  if (value >= 0.2) return "var(--chart-blue)";
+  if (value >= 0.1) return "var(--warning)";
+  return "var(--danger)";
 }
 
 export function PaymentDueText({ value, unpaidAmount, orderStatus }: { value?: string | null; unpaidAmount?: number; orderStatus?: string }) {

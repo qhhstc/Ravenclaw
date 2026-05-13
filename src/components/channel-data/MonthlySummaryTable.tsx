@@ -22,7 +22,7 @@ export default function MonthlySummaryTable({ rows, loading }: MonthlySummaryTab
       title: "渠道名称",
       dataIndex: "channelName",
       width: 180,
-      render: (value, row) => <span>{value} <span className="text-xs text-[#8a94a6]">/ {channelTypeLabel(row.channelType)}</span></span>,
+      render: (value, row) => <span>{value} <span className="text-xs text-[var(--muted)]">/ {channelTypeLabel(row.channelType)}</span></span>,
     },
     { title: "月销售", key: "sales", width: 140, align: "right", sorter: (a, b) => rowSales(a) - rowSales(b), render: (_, row) => currencyMoney(rowSales(row)) },
     { title: "月广告", key: "ad", width: 140, align: "right", sorter: (a, b) => rowAdSpend(a) - rowAdSpend(b), render: (_, row) => currencyMoney(rowAdSpend(row)) },

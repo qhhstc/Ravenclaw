@@ -57,7 +57,7 @@ export default function ChannelFilters({
   }
 
   return (
-    <Card className="mb-4" styles={{ body: { padding: 16 } }}>
+    <Card styles={{ body: { padding: 16 } }}>
       <Form
         form={form}
         layout="inline"

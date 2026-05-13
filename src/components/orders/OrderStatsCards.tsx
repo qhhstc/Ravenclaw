@@ -38,7 +38,7 @@ export default function OrderStatsCards({ stats }: { stats: OrderStatsData }) {
       {cards.map((card) => (
         <Col xs={24} sm={12} lg={8} xl={4} key={card.title}>
           <Card styles={{ body: { padding: 16 } }}>
-            <Statistic title={card.title} value={card.value} styles={{ content: { color: "#172033", fontSize: 22 } }} />
+            <Statistic title={card.title} value={card.value} styles={{ content: { color: "var(--foreground)", fontSize: 22 } }} />
             <div className="mt-3"><Tag color={card.color}>{card.tag}</Tag></div>
           </Card>
         </Col>

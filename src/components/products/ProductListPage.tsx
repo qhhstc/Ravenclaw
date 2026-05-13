@@ -227,10 +227,10 @@ export default function ProductListPage() {
   };
 
   const productList = (
-    <>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div className="page-stack">
+      <div className="page-section-header">
         <div>
-          <Typography.Title level={3} className="!mb-1 !text-[#172033]">产品库</Typography.Title>
+          <Typography.Title level={3} className="!mb-1 !text-[var(--foreground)]">产品库</Typography.Title>
           <Typography.Text type="secondary">维护 SKU、规格、默认供应商、采购单价和包装成本，为订单利润核算自动带出成本。</Typography.Text>
         </div>
         <Space wrap>
@@ -241,7 +241,7 @@ export default function ProductListPage() {
         </Space>
       </div>
 
-      <Card className="mb-4" styles={{ body: { padding: 16 } }}>
+      <Card styles={{ body: { padding: 16 } }}>
         <Space wrap>
           <Input allowClear prefix={<SearchOutlined />} placeholder="搜索 SKU / 名称 / 规格" value={filters.keyword} style={{ width: 260 }} onChange={(event) => updateFilter({ keyword: event.target.value })} />
           <Select allowClear placeholder="状态" value={filters.status} style={{ width: 120 }} options={[{ label: "启用", value: "active" }, { label: "停用", value: "inactive" }]} onChange={(value) => updateFilter({ status: value })} />
@@ -253,12 +253,13 @@ export default function ProductListPage() {
       <Card styles={{ body: { padding: 0 } }}>
         <Table<ProductRecord> rowKey="id" size="middle" loading={loading} columns={columns} dataSource={items} pagination={pagination} scroll={{ x: 1670 }} locale={{ emptyText: <Empty description="暂无产品数据" /> }} />
       </Card>
-    </>
+    </div>
   );
 
   return (
-    <div className="max-w-full overflow-hidden">
+    <div className="page-stack">
       <Tabs
+        className="content-tabs"
         defaultActiveKey="products"
         items={[
           { key: "products", label: "产品列表", children: productList },

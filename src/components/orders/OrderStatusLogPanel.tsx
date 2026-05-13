@@ -73,7 +73,7 @@ function StatusLogAttachments({ logId, canWrite }: { logId: number; canWrite: bo
   }
 
   return (
-    <div className="mt-3 rounded-xl border border-[#edf0f5] bg-white p-3">
+    <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
       {canWrite ? (
         <Space className="mb-3" wrap>
           <Select value={attachmentType} options={attachmentTypeOptions} style={{ width: 150 }} onChange={setAttachmentType} />
@@ -153,12 +153,12 @@ export default function OrderStatusLogPanel({ orderId, currentStatus, logs, canW
           items={logs.map((log) => ({
             children: (
               <div>
-                <div className="font-medium text-[#172033]">
+                <div className="font-medium text-[var(--foreground)]">
                   {log.fromStatus ? `${optionLabel(orderStatusOptions, log.fromStatus)} → ` : ""}
                   {optionLabel(orderStatusOptions, log.toStatus)}
                 </div>
-                <div className="text-sm text-[#667085]">{formatDateTime(log.createdAt)} · {log.creator?.name ?? "系统"}</div>
-                {log.remark ? <Typography.Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap rounded-lg bg-[#fafcff] p-3">{log.remark}</Typography.Paragraph> : null}
+                <div className="text-sm text-[var(--muted)]">{formatDateTime(log.createdAt)} · {log.creator?.name ?? "系统"}</div>
+                {log.remark ? <Typography.Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap rounded-lg bg-[var(--soft-bg)] p-3">{log.remark}</Typography.Paragraph> : null}
                 <StatusLogAttachments logId={log.id} canWrite={canWrite} />
               </div>
             ),

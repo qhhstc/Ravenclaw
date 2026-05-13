@@ -71,14 +71,26 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
     { title: "板块", dataIndex: "businessBlock", fixed: "left", width: 108, render: (value) => <Tag color="blue">{blockLabel(value)}</Tag> },
     { title: "二级", dataIndex: "businessLine", fixed: "left", width: 130, render: (value) => <Typography.Text strong>{value}</Typography.Text> },
     {
+      title: "店铺/站点",
+      dataIndex: ["store", "name"],
+      fixed: "left",
+      width: 150,
+      render: (value, row) => (
+        <div>
+          <div className="font-medium text-[var(--foreground)]">{value || "-"}</div>
+          <div className="text-xs text-[var(--muted)]">{row.platform?.name || row.store?.defaultCurrency || "-"}</div>
+        </div>
+      ),
+    },
+    {
       title: "渠道",
       dataIndex: "channelName",
       fixed: "left",
       width: 140,
       render: (value, row) => (
         <div>
-          <div className="font-medium text-[#172033]">{value}</div>
-          <div className="text-xs text-[#8a94a6]">{row.channelGroup || "-"}</div>
+          <div className="font-medium text-[var(--foreground)]">{value}</div>
+          <div className="text-xs text-[var(--muted)]">{row.channelGroup || "-"}</div>
         </div>
       ),
     },
@@ -170,40 +182,40 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
       dataSource={rows}
       loading={loading}
       pagination={false}
-      scroll={{ x: 3700 }}
+      scroll={{ x: 3850 }}
       summary={() => (
         <Table.Summary fixed>
           <Table.Summary.Row>
-            <Table.Summary.Cell index={0} colSpan={4}>
+            <Table.Summary.Cell index={0} colSpan={5}>
               <Typography.Text strong>合计</Typography.Text>
             </Table.Summary.Cell>
             {weekNumbers.flatMap((weekNumber, index) => {
               const sales = rows.reduce((total, row) => total + getWeek(row, weekNumber).salesAmountOriginal, 0);
               const adSpend = rows.reduce((total, row) => total + getWeek(row, weekNumber).adSpendOriginal, 0);
               return [
-                <Table.Summary.Cell index={4 + index * 2} key={`sales-${weekNumber}`} align="right">
+                <Table.Summary.Cell index={5 + index * 2} key={`sales-${weekNumber}`} align="right">
                   {money(sales)}
                 </Table.Summary.Cell>,
-                <Table.Summary.Cell index={5 + index * 2} key={`ad-${weekNumber}`} align="right">
+                <Table.Summary.Cell index={6 + index * 2} key={`ad-${weekNumber}`} align="right">
                   {money(adSpend)}
                 </Table.Summary.Cell>,
               ];
             })}
-            <Table.Summary.Cell index={14} align="right"><Typography.Text strong>{currencyMoney(totalSales)}</Typography.Text></Table.Summary.Cell>
-            <Table.Summary.Cell index={15} align="right"><Typography.Text strong>{currencyMoney(totalAdSpend)}</Typography.Text></Table.Summary.Cell>
-            <Table.Summary.Cell index={16} align="right"><RoiTag value={totalRoi} /></Table.Summary.Cell>
-            <Table.Summary.Cell index={17} align="right"><PercentText value={totalAdRatio} /></Table.Summary.Cell>
-            <Table.Summary.Cell index={18} align="right">{percent(1)}</Table.Summary.Cell>
-            <Table.Summary.Cell index={19} align="right"><Typography.Text strong>{currencyMoney(totalQuarterSales)}</Typography.Text></Table.Summary.Cell>
-            <Table.Summary.Cell index={20} align="right"><Typography.Text strong>{currencyMoney(totalQuarterAdSpend)}</Typography.Text></Table.Summary.Cell>
-            <Table.Summary.Cell index={21} align="right"><RoiTag value={safeRatio(totalQuarterSales, totalQuarterAdSpend)} /></Table.Summary.Cell>
-            <Table.Summary.Cell index={22} align="right"><PercentText value={totalQuarterSales > 0 ? totalQuarterAdSpend / totalQuarterSales : 0} /></Table.Summary.Cell>
-            <Table.Summary.Cell index={23} align="right">100.0%</Table.Summary.Cell>
-            <Table.Summary.Cell index={24} />
+            <Table.Summary.Cell index={15} align="right"><Typography.Text strong>{currencyMoney(totalSales)}</Typography.Text></Table.Summary.Cell>
+            <Table.Summary.Cell index={16} align="right"><Typography.Text strong>{currencyMoney(totalAdSpend)}</Typography.Text></Table.Summary.Cell>
+            <Table.Summary.Cell index={17} align="right"><RoiTag value={totalRoi} /></Table.Summary.Cell>
+            <Table.Summary.Cell index={18} align="right"><PercentText value={totalAdRatio} /></Table.Summary.Cell>
+            <Table.Summary.Cell index={19} align="right">{percent(1)}</Table.Summary.Cell>
+            <Table.Summary.Cell index={20} align="right"><Typography.Text strong>{currencyMoney(totalQuarterSales)}</Typography.Text></Table.Summary.Cell>
+            <Table.Summary.Cell index={21} align="right"><Typography.Text strong>{currencyMoney(totalQuarterAdSpend)}</Typography.Text></Table.Summary.Cell>
+            <Table.Summary.Cell index={22} align="right"><RoiTag value={safeRatio(totalQuarterSales, totalQuarterAdSpend)} /></Table.Summary.Cell>
+            <Table.Summary.Cell index={23} align="right"><PercentText value={totalQuarterSales > 0 ? totalQuarterAdSpend / totalQuarterSales : 0} /></Table.Summary.Cell>
+            <Table.Summary.Cell index={24} align="right">100.0%</Table.Summary.Cell>
             <Table.Summary.Cell index={25} />
             <Table.Summary.Cell index={26} />
             <Table.Summary.Cell index={27} />
             <Table.Summary.Cell index={28} />
+            <Table.Summary.Cell index={29} />
           </Table.Summary.Row>
         </Table.Summary>
       )}
