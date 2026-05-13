@@ -1,20 +1,20 @@
-import { Card, Skeleton } from "antd";
-
 export default function PageLoading() {
   return (
     <div className="space-y-4">
       <div>
-        <Skeleton.Input active size="large" style={{ width: 220 }} />
-        <div className="mt-2">
-          <Skeleton.Input active size="small" style={{ width: 360 }} />
-        </div>
+        <div className="h-8 w-[220px] animate-pulse rounded-md bg-[#e8edf5]" />
+        <div className="mt-2 h-5 w-[360px] max-w-full animate-pulse rounded-md bg-[#eef2f7]" />
       </div>
-      <Card>
-        <Skeleton active paragraph={{ rows: 2 }} />
-      </Card>
-      <Card>
-        <Skeleton active paragraph={{ rows: 8 }} />
-      </Card>
+      <div className="rounded-lg border border-[#e8edf5] bg-white p-6">
+        <div className="h-5 w-1/3 animate-pulse rounded-md bg-[#e8edf5]" />
+        <div className="mt-4 h-4 w-full animate-pulse rounded-md bg-[#eef2f7]" />
+        <div className="mt-3 h-4 w-3/4 animate-pulse rounded-md bg-[#eef2f7]" />
+      </div>
+      <div className="rounded-lg border border-[#e8edf5] bg-white p-6">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div key={index} className="mb-3 h-4 animate-pulse rounded-md bg-[#eef2f7]" style={{ width: `${index % 3 === 0 ? 92 : index % 3 === 1 ? 78 : 86}%` }} />
+        ))}
+      </div>
     </div>
   );
 }
