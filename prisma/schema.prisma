@@ -168,6 +168,7 @@ model Product {
   @@index([brandId])
   @@index([status])
   @@index([category])
+  @@index([name])
 }
 
 model Country {
@@ -268,6 +269,8 @@ model ChannelMetricPeriod {
   @@unique([year, month, periodType, weekNumber, channelId], map: "cmp_week_channel_unique")
   @@index([year, month])
   @@index([year, quarter])
+  @@index([periodType])
+  @@index([weekNumber])
   @@index([brandId])
   @@index([platformId])
   @@index([storeId])
@@ -324,6 +327,8 @@ model Customer {
   @@index([sourceChannelId])
   @@index([brandId])
   @@index([ownerId])
+  @@index([name])
+  @@index([email])
   @@index([countryCode])
   @@index([status])
   @@index([level])
@@ -389,6 +394,9 @@ model Inquiry {
   orders          Order[]
 
   @@index([customerId])
+  @@index([inquiryNo])
+  @@index([status])
+  @@index([createdAt])
   @@index([brandId])
   @@index([platformId])
   @@index([storeId])
@@ -509,8 +517,10 @@ model Order {
   statusLogs      OrderStatusLog[]
 
   @@index([orderSource])
+  @@index([orderNo])
   @@index([customerId])
   @@index([customerName])
+  @@index([createdBy])
   @@index([salespersonId])
   @@index([inquiryId])
   @@index([brandId])
@@ -588,6 +598,7 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@index([sku])
+  @@index([productName])
 }
 
 model OrderCost {

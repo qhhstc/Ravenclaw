@@ -233,7 +233,7 @@ export default function CustomerListPage() {
           <Select allowClear showSearch optionFilterProp="label" placeholder="国家" value={filters.countryCode} options={countries.map((item) => ({ label: `${item.name} (${item.code})`, value: item.code }))} onChange={(value) => updateFilter({ countryCode: value })} style={{ width: 150 }} />
           <Select allowClear showSearch optionFilterProp="label" placeholder="负责人" value={filters.ownerId} options={users.map((item) => ({ label: item.name, value: item.id }))} onChange={(value) => updateFilter({ ownerId: value })} style={{ width: 130 }} />
           <Select placeholder="待跟进" value={filters.followupStatus ?? ""} options={followupStatusOptions} onChange={(value) => updateFilter({ followupStatus: value || undefined })} style={{ width: 140 }} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setFilters(defaultFilters); setPage(1); }}>重置</Button>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => { setFilters(defaultFilters); setPage(1); }}>重置</Button>
         </div>
       </Card>
 

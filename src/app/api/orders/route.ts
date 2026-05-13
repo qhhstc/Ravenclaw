@@ -1,14 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logApiDuration } from "@/lib/api-logger";
 import { apiError, buildOrderWhere, nextOrderNo, normalizeOrderInput, orderInclude, parsePositiveInt } from "@/lib/orders";
 import { canCreateOrder, forbidden, requireApiSession } from "@/lib/permissions";
 
 export async function GET(request: NextRequest) {
+  const startedAt = performance.now();
   try {
     const session = await requireApiSession();
     const params = request.nextUrl.searchParams;
     const page = parsePositiveInt(params.get("page"), 1);
-    const pageSize = Math.min(parsePositiveInt(params.get("pageSize"), 10), 100);
+    const pageSize = Math.min(parsePositiveInt(params.get("pageSize"), 10), 20);
     const where = buildOrderWhere(params, session);
     const [items, total] = await Promise.all([
       prisma.order.findMany({ where, include: orderInclude, orderBy: [{ orderDate: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
@@ -17,6 +19,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ items, total, page, pageSize });
   } catch (error) {
     return apiError(error, "订单列表加载失败");
+  } finally {
+    logApiDuration("/api/orders", startedAt);
   }
 }
 

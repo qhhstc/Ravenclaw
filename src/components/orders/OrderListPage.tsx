@@ -361,7 +361,7 @@ export default function OrderListPage() {
             onChange={(values) => updateFilter({ dateFrom: values?.[0]?.toISOString(), dateTo: values?.[1]?.endOf("day").toISOString() })}
           />
           <Select allowClear placeholder="回款状态" value={filters.paymentDue} style={{ width: 140 }} options={paymentDueOptions.filter((item) => item.value)} onChange={(value) => updateFilter({ paymentDue: value })} />
-          <Button icon={<ReloadOutlined />} onClick={resetFilters}>重置</Button>
+          <Button icon={<ReloadOutlined />} loading={loading || statsLoading} onClick={resetFilters}>重置</Button>
         </Space>
       </Card>
 

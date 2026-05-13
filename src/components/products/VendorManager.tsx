@@ -144,7 +144,7 @@ export default function VendorManager({ onChanged }: { onChanged?: () => void })
             <Input allowClear prefix={<SearchOutlined />} placeholder="搜索供应商/联系人/邮箱" value={filters.keyword} style={{ width: 260 }} onChange={(event) => setFilters((current) => ({ ...current, keyword: event.target.value || undefined }))} />
             <Select allowClear placeholder="类型" value={filters.vendorType} style={{ width: 130 }} options={vendorTypeOptions} onChange={(value) => setFilters((current) => ({ ...current, vendorType: value }))} />
             <Select allowClear placeholder="状态" value={filters.status} style={{ width: 120 }} options={[{ label: "启用", value: "active" }, { label: "停用", value: "inactive" }]} onChange={(value) => setFilters((current) => ({ ...current, status: value }))} />
-            <Button icon={<ReloadOutlined />} onClick={() => setFilters({})}>重置</Button>
+            <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setFilters({})}>重置</Button>
           </Space>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); form.setFieldsValue({ vendorType: "supplier", status: "active" }); setModalOpen(true); }}>新增供应商</Button>
         </div>

@@ -96,6 +96,7 @@ const orderColumns: ColumnsType<OrderProfitRow> = [
 export default function ProfitReportPage() {
   const [filters, setFilters] = useState<Filters>({ year: 2026, month: 5 });
   const [loading, setLoading] = useState(false);
+  const [exportingType, setExportingType] = useState<string | null>(null);
   const [report, setReport] = useState<ReportData>(emptyReport);
 
   const loadReport = useCallback(async () => {
@@ -114,8 +115,36 @@ export default function ProfitReportPage() {
     queueMicrotask(loadReport);
   }, [loadReport]);
 
-  function exportReport(type: string) {
-    window.location.href = `/api/reports/profit/export?${query(filters, { type })}`;
+  function filenameFromDisposition(disposition: string | null, fallback: string) {
+    const utf8Match = disposition?.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+    const fallbackMatch = disposition?.match(/filename="?([^";]+)"?/i);
+    return fallbackMatch?.[1] ?? fallback;
+  }
+
+  async function exportReport(type: string) {
+    setExportingType(type);
+    try {
+      const response = await fetch(`/api/reports/profit/export?${query(filters, { type })}`);
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || "导出失败");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filenameFromDisposition(response.headers.get("Content-Disposition"), "利润报表.xlsx");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      message.success("利润报表 Excel 已开始下载");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "导出失败");
+    } finally {
+      setExportingType(null);
+    }
   }
 
   return (
@@ -126,14 +155,14 @@ export default function ProfitReportPage() {
           <Typography.Text type="secondary">按订单、客户与产品汇总外贸业务毛利表现。</Typography.Text>
         </div>
         <Space wrap>
-          <Button icon={<DownloadOutlined />} onClick={() => exportReport("daily")}>导出日报</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => exportReport("weekly")}>导出周报</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => exportReport("monthly")}>导出月报</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => exportReport("yearly")}>导出年报</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => exportReport("costs")}>导出成本构成</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => exportReport("orders")}>导出订单利润明细</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => exportReport("customers")}>导出客户排行</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => exportReport("products")}>导出产品排行</Button>
+          <Button loading={exportingType === "daily"} icon={<DownloadOutlined />} onClick={() => exportReport("daily")}>导出日报</Button>
+          <Button loading={exportingType === "weekly"} icon={<DownloadOutlined />} onClick={() => exportReport("weekly")}>导出周报</Button>
+          <Button loading={exportingType === "monthly"} icon={<DownloadOutlined />} onClick={() => exportReport("monthly")}>导出月报</Button>
+          <Button loading={exportingType === "yearly"} icon={<DownloadOutlined />} onClick={() => exportReport("yearly")}>导出年报</Button>
+          <Button loading={exportingType === "costs"} icon={<DownloadOutlined />} onClick={() => exportReport("costs")}>导出成本构成</Button>
+          <Button loading={exportingType === "orders"} icon={<DownloadOutlined />} onClick={() => exportReport("orders")}>导出订单利润明细</Button>
+          <Button loading={exportingType === "customers"} icon={<DownloadOutlined />} onClick={() => exportReport("customers")}>导出客户排行</Button>
+          <Button loading={exportingType === "products"} icon={<DownloadOutlined />} onClick={() => exportReport("products")}>导出产品排行</Button>
         </Space>
       </div>
 
@@ -145,7 +174,7 @@ export default function ProfitReportPage() {
             value={filters.dateFrom && filters.dateTo ? [dayjs(filters.dateFrom), dayjs(filters.dateTo)] : null}
             onChange={(values) => setFilters((current) => ({ ...current, dateFrom: values?.[0]?.toISOString(), dateTo: values?.[1]?.endOf("day").toISOString() }))}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => setFilters({ year: 2026, month: 5 })}>重置</Button>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setFilters({ year: 2026, month: 5 })}>重置</Button>
         </Space>
       </Card>
 

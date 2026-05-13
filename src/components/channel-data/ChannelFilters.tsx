@@ -10,6 +10,7 @@ type ChannelFiltersProps = {
   filters: ChannelDataFilters;
   options: ChannelDataOptionState;
   loading: boolean;
+  exporting: boolean;
   saving: boolean;
   onSearch: (filters: ChannelDataFilters) => void;
   onReset: () => void;
@@ -32,6 +33,7 @@ export default function ChannelFilters({
   filters,
   options,
   loading,
+  exporting,
   saving,
   onSearch,
   onReset,
@@ -93,19 +95,19 @@ export default function ChannelFilters({
             <Button type="primary" htmlType="submit" icon={<SearchOutlined />} loading={loading}>
               查询
             </Button>
-            <Button icon={<ReloadOutlined />} onClick={() => { form.resetFields(); onReset(); }}>
+            <Button icon={<ReloadOutlined />} loading={loading} onClick={() => { form.resetFields(); onReset(); }}>
               重置
             </Button>
             <Button type="primary" ghost icon={<SaveOutlined />} loading={saving} onClick={onSave}>
               保存本月数据
             </Button>
-            <Button icon={<FileExcelOutlined />} onClick={onDownloadTemplate}>
+            <Button icon={<FileExcelOutlined />} loading={exporting} onClick={onDownloadTemplate}>
               下载导入模板
             </Button>
             <Button icon={<UploadOutlined />} onClick={onImport}>
               导入 Excel
             </Button>
-            <Button icon={<DownloadOutlined />} onClick={onExport}>
+            <Button icon={<DownloadOutlined />} loading={exporting} onClick={onExport}>
               导出 Excel
             </Button>
           </Space>

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   try {
     const params = request.nextUrl.searchParams;
     const page = parsePositiveInt(params.get("page"), 1);
-    const pageSize = Math.min(parsePositiveInt(params.get("pageSize"), 10), 100);
+    const pageSize = Math.min(parsePositiveInt(params.get("pageSize"), 10), 20);
     const keyword = params.get("keyword")?.trim();
     const where = keyword ? {
       OR: [

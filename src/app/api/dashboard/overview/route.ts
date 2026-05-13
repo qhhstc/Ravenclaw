@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { logApiDuration } from "@/lib/api-logger";
 import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, parseOptionalInt, parsePositiveInt, toNumber } from "@/lib/channel-data";
 import { prisma } from "@/lib/prisma";
 
@@ -38,6 +39,7 @@ function ratio(numerator: number, denominator: number) {
 }
 
 export async function GET(request: NextRequest) {
+  const startedAt = performance.now();
   try {
     const filters = parseFilters(request.nextUrl.searchParams);
     const channels = await prisma.channel.findMany({
@@ -180,5 +182,7 @@ export async function GET(request: NextRequest) {
       { message: error instanceof Error ? error.message : "获取经营看板数据失败" },
       { status: 400 },
     );
+  } finally {
+    logApiDuration("/api/dashboard/overview", startedAt);
   }
 }

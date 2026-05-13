@@ -235,7 +235,7 @@ export default function UserAccountManager() {
             />
             <Select allowClear placeholder="角色" value={filters.role} style={{ width: 150 }} options={roleOptions.map(({ label, value }) => ({ label, value }))} onChange={(value) => updateFilter({ role: value })} />
             <Select allowClear placeholder="状态" value={filters.status} style={{ width: 120 }} options={statusOptions.map(({ label, value }) => ({ label, value }))} onChange={(value) => updateFilter({ status: value })} />
-            <Button icon={<ReloadOutlined />} onClick={() => { setFilters({}); setPage(1); }}>
+            <Button icon={<ReloadOutlined />} loading={loading} onClick={() => { setFilters({}); setPage(1); }}>
               重置
             </Button>
           </Space>

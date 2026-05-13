@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
+import { logApiDuration } from "@/lib/api-logger";
 import {
   PERIOD_TYPE_WEEK,
   WEEK_NUMBERS,
@@ -25,12 +26,15 @@ function apiError(error: unknown) {
 }
 
 export async function GET(request: NextRequest) {
+  const startedAt = performance.now();
   try {
     const filters = parseChannelDataFilters(request.nextUrl.searchParams);
     const rows = await getMonthlyRows(filters);
     return NextResponse.json({ rows, filters });
   } catch (error) {
     return apiError(error);
+  } finally {
+    logApiDuration("/api/channel-data", startedAt);
   }
 }
 

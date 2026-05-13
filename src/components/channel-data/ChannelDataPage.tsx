@@ -49,6 +49,7 @@ export default function ChannelDataPage() {
   const [loading, setLoading] = useState(false);
   const [optionLoading, setOptionLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
   const monthlyTotals = useMemo(() => {
@@ -134,21 +135,38 @@ export default function ChannelDataPage() {
     }
   }
 
-  function triggerDownload(url: string) {
+  async function triggerDownload(url: string) {
+    setExporting(true);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || "下载失败");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const disposition = response.headers.get("Content-Disposition");
+      const utf8Match = disposition?.match(/filename\*=UTF-8''([^;]+)/i);
+      const fallbackMatch = disposition?.match(/filename="?([^";]+)"?/i);
+      const fileName = utf8Match?.[1] ? decodeURIComponent(utf8Match[1]) : fallbackMatch?.[1] ?? "渠道数据.xlsx";
     const link = document.createElement("a");
-    link.href = url;
-    link.download = "";
+      link.href = objectUrl;
+      link.download = fileName;
     document.body.appendChild(link);
     link.click();
     link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } finally {
+      setExporting(false);
+    }
   }
 
   function downloadTemplate() {
-    triggerDownload("/api/channel-data/import-template");
+    triggerDownload("/api/channel-data/import-template").catch((error) => message.error(error instanceof Error ? error.message : "模板下载失败"));
   }
 
   function exportExcel() {
-    triggerDownload(`/api/channel-data/export?${toQuery(filters)}`);
+    triggerDownload(`/api/channel-data/export?${toQuery(filters)}`).then(() => message.success("渠道数据 Excel 已开始下载")).catch((error) => message.error(error instanceof Error ? error.message : "导出失败"));
   }
 
   return (
@@ -165,6 +183,7 @@ export default function ChannelDataPage() {
           filters={filters}
           options={options}
           loading={loading}
+          exporting={exporting}
           saving={saving}
           onSearch={setFilters}
           onReset={() => setFilters(defaultFilters)}

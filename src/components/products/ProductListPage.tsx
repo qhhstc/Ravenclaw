@@ -49,6 +49,7 @@ export default function ProductListPage() {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<ProductRecord | null>(null);
@@ -137,8 +138,50 @@ export default function ProductListPage() {
     }
   }
 
-  function exportProducts() {
-    window.location.href = `/api/products/export?${toQuery(filters, page, pageSize)}`;
+  function filenameFromDisposition(disposition: string | null) {
+    const utf8Match = disposition?.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+    const fallbackMatch = disposition?.match(/filename="?([^";]+)"?/i);
+    return fallbackMatch?.[1] ?? "产品列表.xlsx";
+  }
+
+  async function downloadFile(url: string, fallbackName: string) {
+    setExporting(true);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || "下载失败");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filenameFromDisposition(response.headers.get("Content-Disposition")) || fallbackName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function exportProducts() {
+    try {
+      await downloadFile(`/api/products/export?${toQuery(filters, page, pageSize)}`, "产品列表.xlsx");
+      message.success("产品 Excel 已开始下载");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "导出失败");
+    }
+  }
+
+  async function downloadTemplate() {
+    try {
+      await downloadFile("/api/products/import-template", "产品导入模板.xlsx");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "模板下载失败");
+    }
   }
 
   const columns: ColumnsType<ProductRecord> = [
@@ -191,9 +234,9 @@ export default function ProductListPage() {
           <Typography.Text type="secondary">维护 SKU、规格、默认供应商、采购单价和包装成本，为订单利润核算自动带出成本。</Typography.Text>
         </div>
         <Space wrap>
-          {["admin", "finance"].includes(currentRole) ? <Button icon={<DownloadOutlined />} onClick={() => { window.location.href = "/api/products/import-template"; }}>下载导入模板</Button> : null}
+          {["admin", "finance"].includes(currentRole) ? <Button loading={exporting} icon={<DownloadOutlined />} onClick={downloadTemplate}>下载导入模板</Button> : null}
           {["admin", "finance"].includes(currentRole) ? <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入 Excel</Button> : null}
-          {["admin", "finance"].includes(currentRole) ? <Button icon={<DownloadOutlined />} onClick={exportProducts}>导出 Excel</Button> : null}
+          {["admin", "finance"].includes(currentRole) ? <Button loading={exporting} icon={<DownloadOutlined />} onClick={exportProducts}>导出 Excel</Button> : null}
           {["admin", "finance"].includes(currentRole) ? <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); form.setFieldsValue({ currency: "USD", status: "active", defaultPurchasePrice: 0, defaultPackagingCost: 0 }); setModalOpen(true); }}>新增产品</Button> : null}
         </Space>
       </div>
@@ -203,7 +246,7 @@ export default function ProductListPage() {
           <Input allowClear prefix={<SearchOutlined />} placeholder="搜索 SKU / 名称 / 规格" value={filters.keyword} style={{ width: 260 }} onChange={(event) => updateFilter({ keyword: event.target.value })} />
           <Select allowClear placeholder="状态" value={filters.status} style={{ width: 120 }} options={[{ label: "启用", value: "active" }, { label: "停用", value: "inactive" }]} onChange={(value) => updateFilter({ status: value })} />
           <Input allowClear placeholder="分类" value={filters.category} style={{ width: 140 }} onChange={(event) => updateFilter({ category: event.target.value })} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setPage(1); setFilters({}); }}>重置</Button>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => { setPage(1); setFilters({}); }}>重置</Button>
         </Space>
       </Card>
 

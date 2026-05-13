@@ -294,7 +294,7 @@ export default function BasicResourceManager<T extends BasicRecord>({ config }: 
             }}
           />
         ))}
-        <Button icon={<ReloadOutlined />} onClick={fetchList}>
+        <Button icon={<ReloadOutlined />} loading={loading} onClick={fetchList}>
           刷新
         </Button>
       </div>

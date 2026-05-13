@@ -41,14 +41,14 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
   }
 
   return (
-    <Layout className="min-h-screen">
+    <Layout className="admin-shell min-h-screen">
       <Sider
         width={siderWidth}
         collapsedWidth={collapsedSiderWidth}
         collapsible
         collapsed={collapsed}
         trigger={null}
-        className="fixed left-0 top-0 z-20 h-screen overflow-auto border-r border-[#e8edf5] !bg-white"
+        className="admin-shell-sider fixed left-0 top-0 z-20 h-screen overflow-auto border-r border-[#e8edf5] !bg-white"
       >
         <div className="flex h-16 items-center gap-3 border-b border-[#edf0f5] px-4">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#1677ff] text-white">
@@ -63,7 +63,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
         </div>
 
         <Menu
-          className="border-0 px-2 py-3"
+          className="admin-shell-menu border-0 px-2 py-3"
           mode="inline"
           selectedKeys={[selectedKey]}
           items={appRoutes
@@ -72,6 +72,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
               icon: route.icon,
               label: (
                 <Link
+                  className="admin-shell-menu-link"
                   href={route.path}
                   prefetch
                   onClick={() => {

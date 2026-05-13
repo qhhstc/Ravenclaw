@@ -36,6 +36,48 @@ a {
   background: var(--background);
 }
 
+.admin-shell-sider {
+  width: 208px;
+  min-width: 208px;
+  max-width: 208px;
+}
+
+.admin-shell-sider.ant-layout-sider-collapsed {
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+}
+
+.admin-shell-menu .ant-menu-item {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  line-height: 40px;
+  white-space: nowrap;
+}
+
+.admin-shell-menu .ant-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.admin-shell-menu .ant-menu-title-content {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-shell-menu-link {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ant-card {
   border-color: var(--border);
   border-radius: 8px;

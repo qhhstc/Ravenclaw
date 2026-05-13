@@ -4,24 +4,14 @@ import { DownloadOutlined, DollarOutlined, SettingOutlined, UserOutlined } from 
 import { Alert, Button, Card, Col, DatePicker, Empty, List, Progress, Row, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  Legend,
-  Line,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { todoCards } from "./dashboardData";
+
+const TrendComposedChart = dynamic(() => import("./DashboardCharts").then((module) => module.TrendComposedChart), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-[#f5f7fb]" /> });
+const BusinessLinePieChart = dynamic(() => import("./DashboardCharts").then((module) => module.BusinessLinePieChart), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-[#f5f7fb]" /> });
+const TrendBarChart = dynamic(() => import("./DashboardCharts").then((module) => module.TrendBarChart), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-[#f5f7fb]" /> });
 
 type FollowupCustomerData = {
   todayCount: number;
@@ -71,10 +61,7 @@ const customerStatusLabels: Record<string, string> = {
   invalid: "无效客户",
 };
 
-const chartColors = ["#1677ff", "#13c2c2", "#52c41a", "#faad14", "#eb2f96", "#722ed1", "#08979c", "#fa541c"];
-
 const defaultFilters = { year: 2026, month: 5 };
-const chartInitialDimension = { width: 560, height: 300 };
 
 type DashboardFilters = {
   year: number;
@@ -370,50 +357,13 @@ export default function DashboardOverview() {
         <Row gutter={[16, 16]} className="mt-4">
           <Col xs={24} xl={14}>
             <Card title="销售额 vs 广告费趋势">
-              {overview.weeklyTrend.some((item) => item.salesAmount > 0 || item.adSpend > 0) ? (
-                <div className="h-[300px] min-h-[300px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300} initialDimension={chartInitialDimension}>
-                    <ComposedChart data={overview.weeklyTrend} margin={{ left: 12, right: 12 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#edf0f5" />
-                      <XAxis dataKey="week" />
-                      <YAxis tickFormatter={(value) => shortMoney(Number(value))} />
-                      <Tooltip formatter={(value) => moneyFormatter(Number(value))} />
-                      <Legend />
-                      <Bar dataKey="adSpend" name="广告费" fill="#91caff" radius={[4, 4, 0, 0]} />
-                      <Line type="monotone" dataKey="salesAmount" name="销售额" stroke="#1677ff" strokeWidth={3} dot={{ r: 4 }} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : <Empty description="暂无趋势数据" />}
+              <TrendComposedChart data={overview.weeklyTrend} />
             </Card>
           </Col>
 
           <Col xs={24} xl={10}>
             <Card title="渠道销售占比">
-              {overview.businessLineShare.length ? (
-                <div className="h-[300px] min-h-[300px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300} initialDimension={chartInitialDimension}>
-                    <PieChart>
-                      <Pie
-                        data={overview.businessLineShare}
-                        dataKey="salesAmount"
-                        nameKey="name"
-                        innerRadius={64}
-                        outerRadius={104}
-                        paddingAngle={3}
-                        label={(item: unknown) => {
-                          const entry = item as { name?: string; ratio?: number };
-                          return `${entry.name ?? ""} ${percentFormatter(entry.ratio ?? null)}`;
-                        }}
-                      >
-                        {overview.businessLineShare.map((entry, index) => <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />)}
-                      </Pie>
-                      <Tooltip formatter={(value) => moneyFormatter(Number(value))} />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : <Empty description="暂无占比数据" />}
+              <BusinessLinePieChart data={overview.businessLineShare} />
             </Card>
           </Col>
         </Row>
@@ -446,21 +396,7 @@ export default function DashboardOverview() {
 
           <Col xs={24} xl={16}>
             <Card title="销售额与广告费对比">
-              {overview.weeklyTrend.some((item) => item.salesAmount > 0 || item.adSpend > 0) ? (
-                <div className="h-[300px] min-h-[300px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300} initialDimension={chartInitialDimension}>
-                    <BarChart data={overview.weeklyTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#edf0f5" />
-                      <XAxis dataKey="week" />
-                      <YAxis tickFormatter={(value) => shortMoney(Number(value))} />
-                      <Tooltip formatter={(value) => moneyFormatter(Number(value))} />
-                      <Legend />
-                      <Bar dataKey="salesAmount" name="销售额" fill="#1677ff" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="adSpend" name="广告费" fill="#13c2c2" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : <Empty description="暂无对比数据" />}
+              <TrendBarChart data={overview.weeklyTrend} />
             </Card>
           </Col>
         </Row>
