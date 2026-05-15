@@ -63,12 +63,23 @@ export function blockLabel(value?: string | null) {
 }
 
 export function ratingText(row: ChannelDataRow) {
-  if (row.ratingSource === "ai" && row.aiRating) return row.aiRating;
   return row.manualRating || row.aiRating || "";
 }
 
+export function ratingSourceText(row: ChannelDataRow) {
+  if (row.manualRating) return "手动";
+  if (row.aiRating) return "AI";
+  return "";
+}
+
 export function actionText(row: ChannelDataRow) {
-  return row.aiActionSuggestion || row.manualActionSuggestion || "";
+  return row.manualActionSuggestion || row.aiActionSuggestion || "";
+}
+
+export function actionSourceText(row: ChannelDataRow) {
+  if (row.manualActionSuggestion) return "手动";
+  if (row.aiActionSuggestion) return "AI";
+  return "";
 }
 
 export function RoiTag({ value }: { value: number | null }) {

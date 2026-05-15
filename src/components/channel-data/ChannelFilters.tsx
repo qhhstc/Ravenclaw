@@ -1,6 +1,6 @@
 "use client";
 
-import { DownloadOutlined, FileExcelOutlined, ReloadOutlined, SaveOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
+import { DownloadOutlined, FileExcelOutlined, ReloadOutlined, RobotOutlined, SaveOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import { Button, Card, DatePicker, Form, Select, Space } from "antd";
 import dayjs from "dayjs";
 import { businessLineOptions, channelTypeOptions } from "@/lib/basic-options";
@@ -12,12 +12,15 @@ type ChannelFiltersProps = {
   loading: boolean;
   exporting: boolean;
   saving: boolean;
+  aiAnalyzing?: boolean;
+  canRunAiAnalysis?: boolean;
   onSearch: (filters: ChannelDataFilters) => void;
   onReset: () => void;
   onSave: () => void;
   onDownloadTemplate: () => void;
   onImport: () => void;
   onExport: () => void;
+  onAnalyzeAi?: () => void;
 };
 
 type FormValues = {
@@ -35,12 +38,15 @@ export default function ChannelFilters({
   loading,
   exporting,
   saving,
+  aiAnalyzing,
+  canRunAiAnalysis,
   onSearch,
   onReset,
   onSave,
   onDownloadTemplate,
   onImport,
   onExport,
+  onAnalyzeAi,
 }: ChannelFiltersProps) {
   const [form] = Form.useForm<FormValues>();
 
@@ -101,6 +107,11 @@ export default function ChannelFilters({
             <Button type="primary" ghost icon={<SaveOutlined />} loading={saving} onClick={onSave}>
               保存本月数据
             </Button>
+            {canRunAiAnalysis ? (
+              <Button icon={<RobotOutlined />} loading={aiAnalyzing} onClick={onAnalyzeAi}>
+                AI 分析当前渠道
+              </Button>
+            ) : null}
             <Button icon={<FileExcelOutlined />} loading={exporting} onClick={onDownloadTemplate}>
               下载导入模板
             </Button>

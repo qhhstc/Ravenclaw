@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { appRoutes } from "@/lib/routes";
 import ThemeToggle from "@/components/common/ThemeToggle";
 import HeaderTitle from "@/components/layout/HeaderTitle";
+import PageHelpButton from "@/components/layout/PageHelpButton";
 import RouteScrollRestoration from "@/components/layout/RouteScrollRestoration";
 import SidebarNav from "@/components/layout/SidebarNav";
 
@@ -17,7 +18,7 @@ export default async function AdminLayout({
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <aside className="fixed left-0 top-0 z-20 h-screen w-[208px] overflow-auto border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)]">
+      <aside className="fixed left-0 top-0 z-50 h-screen w-[208px] overflow-auto border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)]">
         <div className="flex h-14 items-center gap-3 border-b border-[var(--sidebar-border)] px-4">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--primary)] text-sm font-bold text-white">R</div>
           <div className="min-w-0">
@@ -28,8 +29,11 @@ export default async function AdminLayout({
       </aside>
 
       <div className="min-h-screen pl-[208px]">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between overflow-hidden border-b border-[var(--sidebar-border)] bg-[var(--header-bg)] px-6">
-          <HeaderTitle />
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between overflow-hidden border-b border-[var(--sidebar-border)] bg-[var(--header-bg)] px-6">
+          <div className="flex min-w-0 items-center gap-2">
+            <HeaderTitle />
+            <PageHelpButton />
+          </div>
           <div className="flex h-16 items-center gap-3">
             <div className="flex h-9 items-center rounded-md bg-[var(--soft-bg)] px-2">
               <div className="mr-2 grid h-7 w-7 place-items-center rounded-full bg-[var(--primary)] text-sm text-white">A</div>

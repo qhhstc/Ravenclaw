@@ -1,9 +1,10 @@
 "use client";
 
-import { DatePicker, Input, InputNumber, Table, Tag, Typography } from "antd";
+import { Button, DatePicker, Input, InputNumber, Modal, Select, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import { actionText, blockLabel, channelTypeLabel, currencyMoney, getWeek, money, percent, PercentText, ratingText, RoiTag, rowAdSpend, rowKey, rowSales, safeRatio, weekNumbers, withUpdatedWeek } from "./channelDataUtils";
+import { useState } from "react";
+import { actionSourceText, actionText, blockLabel, channelTypeLabel, currencyMoney, getWeek, money, percent, PercentText, ratingSourceText, ratingText, RoiTag, rowAdSpend, rowKey, rowSales, safeRatio, weekNumbers, withUpdatedWeek } from "./channelDataUtils";
 import type { ChannelDataRow } from "./channelDataTypes";
 
 type WeeklyMetricTableProps = {
@@ -28,7 +29,41 @@ function EditableNumber({ value, onChange }: { value: number; onChange: (value: 
   );
 }
 
+function aiStatusText(value?: string | null) {
+  const labels: Record<string, string> = {
+    pending: "待分析",
+    analyzing: "分析中",
+    completed: "已完成",
+    failed: "失败",
+  };
+  return labels[value || ""] ?? "待分析";
+}
+
+function parseRiskNotes(value?: string | null) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 3) : [];
+  } catch {
+    return value.split(/[，,\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
+  }
+}
+
+function sourceTag(source: string) {
+  if (source !== "AI") return null;
+  return <Tag className="!m-0" color="purple">AI</Tag>;
+}
+
+function shortText(value: string, fallback: string) {
+  return value.trim() || fallback;
+}
+
+function formatDateTime(value?: string | null) {
+  return value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—";
+}
+
 export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMetricTableProps) {
+  const [detailRow, setDetailRow] = useState<ChannelDataRow | null>(null);
   const totalSales = rows.reduce((total, row) => total + rowSales(row), 0);
   const totalAdSpend = rows.reduce((total, row) => total + rowAdSpend(row), 0);
   const totalQuarterSales = rows.reduce((total, row) => total + Number(row.quarter?.salesAmount || 0), 0);
@@ -38,6 +73,22 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
 
   function updateRow(channelId: number, updater: (row: ChannelDataRow) => ChannelDataRow) {
     onChange(rows.map((row) => (row.channelId === channelId ? updater(row) : row)));
+  }
+
+  function adoptAiSuggestion(row: ChannelDataRow) {
+    if (!row.aiRating && !row.aiActionSuggestion) {
+      message.info("当前渠道暂无可采用的 AI 建议");
+      return;
+    }
+    const nextRow = {
+      ...row,
+      manualRating: row.aiRating || row.manualRating || "",
+      manualActionSuggestion: row.aiActionSuggestion || row.manualActionSuggestion || "",
+      ratingSource: row.aiRating ? "manual" : row.ratingSource,
+    };
+    updateRow(row.channelId, () => nextRow);
+    setDetailRow(nextRow);
+    message.success("已采用 AI 评级和建议动作，请记得保存本月数据");
   }
 
   const weeklyColumns: ColumnsType<ChannelDataRow> = weekNumbers.flatMap((weekNumber) => [
@@ -121,38 +172,76 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
     {
       title: "评级",
       dataIndex: "manualRating",
-      width: 96,
-      render: (_, row) => (
-        <Input
-          size="small"
-          value={ratingText(row)}
-          placeholder="S/A/B/C"
-          onChange={(event) => updateRow(row.channelId, (current) => ({ ...current, manualRating: event.target.value, ratingSource: event.target.value ? "manual" : "none" }))}
-        />
-      ),
+      width: 104,
+      render: (_, row) => {
+        const rating = ratingText(row);
+        const source = ratingSourceText(row);
+        return (
+          <Space size={4} direction="vertical" className="w-full">
+            <Select
+              size="small"
+              allowClear
+              value={rating || undefined}
+              placeholder="待分析"
+              options={["S", "A", "B", "C"].map((value) => ({ label: value, value }))}
+              className="w-[82px]"
+              onChange={(value) => updateRow(row.channelId, (current) => ({ ...current, manualRating: value || "", ratingSource: value ? "manual" : current.aiRating ? "ai" : "none" }))}
+            />
+            {source === "AI" ? <span className="leading-none">{sourceTag(source)}</span> : null}
+          </Space>
+        );
+      },
     },
     {
       title: "建议动作",
       dataIndex: "manualActionSuggestion",
       width: 220,
-      render: (_, row) => (
-        <Input
-          size="small"
-          value={actionText(row)}
-          placeholder="待填写 / 待 AI 分析"
-          onChange={(event) => updateRow(row.channelId, (current) => ({ ...current, manualActionSuggestion: event.target.value }))}
-        />
-      ),
+      ellipsis: true,
+      render: (_, row) => {
+        const action = shortText(actionText(row), "待填写 / 待 AI 分析");
+        const source = actionSourceText(row);
+        return (
+          <div className="channel-action-cell">
+            <Tooltip title={action}>
+              <button type="button" className="channel-table-link" onClick={() => setDetailRow(row)}>
+                {action}
+              </button>
+            </Tooltip>
+            {sourceTag(source)}
+          </div>
+        );
+      },
+    },
+    {
+      title: "AI 状态",
+      dataIndex: "aiAnalysisStatus",
+      width: 90,
+      render: (value) => <Tag color={value === "completed" ? "green" : value === "failed" ? "red" : value === "analyzing" ? "blue" : "default"}>{aiStatusText(value)}</Tag>,
+    },
+    {
+      title: "AI 总结/风险",
+      dataIndex: "aiSummary",
+      width: 150,
+      render: (value, row) => {
+        const risks = parseRiskNotes(row.aiRiskNotes);
+        const hasAiDetail = Boolean(value || row.aiRating || row.aiActionSuggestion || risks.length || row.aiAnalyzedAt);
+        return (
+          <Button type="link" size="small" className="!px-0" disabled={!hasAiDetail} onClick={() => setDetailRow(row)}>
+            {risks.length ? `${risks.length}条风险` : hasAiDetail ? "查看" : "待分析"}
+          </Button>
+        );
+      },
     },
     {
       title: "决策 deadline",
       dataIndex: "decisionDeadline",
-      width: 150,
+      width: 130,
       render: (value, row) => (
         <DatePicker
           size="small"
           value={value ? dayjs(value) : null}
           placeholder="选择日期"
+          style={{ width: 118 }}
           onChange={(date) => updateRow(row.channelId, (current) => ({ ...current, decisionDeadline: date ? date.toISOString() : null }))}
         />
       ),
@@ -160,65 +249,130 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
     {
       title: "备注",
       dataIndex: "remark",
-      width: 220,
+      width: 160,
       render: (value, row) => (
-        <Input
-          size="small"
-          value={value ?? ""}
-          placeholder="备注"
-          onChange={(event) => updateRow(row.channelId, (current) => ({ ...current, remark: event.target.value }))}
-        />
+        <Tooltip title={value || ""}>
+          <Input
+            size="small"
+            value={value ?? ""}
+            placeholder="备注"
+            onChange={(event) => updateRow(row.channelId, (current) => ({ ...current, remark: event.target.value }))}
+          />
+        </Tooltip>
       ),
     },
-    { title: "渠道类型", dataIndex: "channelType", width: 120, render: (value) => <Tag>{channelTypeLabel(value)}</Tag> },
+    { title: "渠道类型", dataIndex: "channelType", width: 100, render: (value) => <Tag>{channelTypeLabel(value)}</Tag> },
   ];
 
   return (
-    <Table<ChannelDataRow>
-      className="channel-weekly-table"
-      size="small"
-      rowKey={rowKey}
-      columns={columns}
-      dataSource={rows}
-      loading={loading}
-      pagination={false}
-      scroll={{ x: 3850 }}
-      summary={() => (
-        <Table.Summary fixed>
-          <Table.Summary.Row>
-            <Table.Summary.Cell index={0} colSpan={5}>
-              <Typography.Text strong>合计</Typography.Text>
-            </Table.Summary.Cell>
-            {weekNumbers.flatMap((weekNumber, index) => {
-              const sales = rows.reduce((total, row) => total + getWeek(row, weekNumber).salesAmountOriginal, 0);
-              const adSpend = rows.reduce((total, row) => total + getWeek(row, weekNumber).adSpendOriginal, 0);
-              return [
-                <Table.Summary.Cell index={5 + index * 2} key={`sales-${weekNumber}`} align="right">
-                  {money(sales)}
-                </Table.Summary.Cell>,
-                <Table.Summary.Cell index={6 + index * 2} key={`ad-${weekNumber}`} align="right">
-                  {money(adSpend)}
-                </Table.Summary.Cell>,
-              ];
-            })}
-            <Table.Summary.Cell index={15} align="right"><Typography.Text strong>{currencyMoney(totalSales)}</Typography.Text></Table.Summary.Cell>
-            <Table.Summary.Cell index={16} align="right"><Typography.Text strong>{currencyMoney(totalAdSpend)}</Typography.Text></Table.Summary.Cell>
-            <Table.Summary.Cell index={17} align="right"><RoiTag value={totalRoi} /></Table.Summary.Cell>
-            <Table.Summary.Cell index={18} align="right"><PercentText value={totalAdRatio} /></Table.Summary.Cell>
-            <Table.Summary.Cell index={19} align="right">{percent(1)}</Table.Summary.Cell>
-            <Table.Summary.Cell index={20} align="right"><Typography.Text strong>{currencyMoney(totalQuarterSales)}</Typography.Text></Table.Summary.Cell>
-            <Table.Summary.Cell index={21} align="right"><Typography.Text strong>{currencyMoney(totalQuarterAdSpend)}</Typography.Text></Table.Summary.Cell>
-            <Table.Summary.Cell index={22} align="right"><RoiTag value={safeRatio(totalQuarterSales, totalQuarterAdSpend)} /></Table.Summary.Cell>
-            <Table.Summary.Cell index={23} align="right"><PercentText value={totalQuarterSales > 0 ? totalQuarterAdSpend / totalQuarterSales : 0} /></Table.Summary.Cell>
-            <Table.Summary.Cell index={24} align="right">100.0%</Table.Summary.Cell>
-            <Table.Summary.Cell index={25} />
-            <Table.Summary.Cell index={26} />
-            <Table.Summary.Cell index={27} />
-            <Table.Summary.Cell index={28} />
-            <Table.Summary.Cell index={29} />
-          </Table.Summary.Row>
-        </Table.Summary>
-      )}
-    />
+    <>
+      <Table<ChannelDataRow>
+        className="channel-weekly-table"
+        size="small"
+        rowKey={rowKey}
+        columns={columns}
+        dataSource={rows}
+        loading={loading}
+        pagination={false}
+        scroll={{ x: 4050 }}
+        summary={() => (
+          <Table.Summary fixed>
+            <Table.Summary.Row>
+              <Table.Summary.Cell index={0} colSpan={5}>
+                <Typography.Text strong>合计</Typography.Text>
+              </Table.Summary.Cell>
+              {weekNumbers.flatMap((weekNumber, index) => {
+                const sales = rows.reduce((total, row) => total + getWeek(row, weekNumber).salesAmountOriginal, 0);
+                const adSpend = rows.reduce((total, row) => total + getWeek(row, weekNumber).adSpendOriginal, 0);
+                return [
+                  <Table.Summary.Cell index={5 + index * 2} key={`sales-${weekNumber}`} align="right">
+                    {money(sales)}
+                  </Table.Summary.Cell>,
+                  <Table.Summary.Cell index={6 + index * 2} key={`ad-${weekNumber}`} align="right">
+                    {money(adSpend)}
+                  </Table.Summary.Cell>,
+                ];
+              })}
+              <Table.Summary.Cell index={15} align="right"><Typography.Text strong>{currencyMoney(totalSales)}</Typography.Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={16} align="right"><Typography.Text strong>{currencyMoney(totalAdSpend)}</Typography.Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={17} align="right"><RoiTag value={totalRoi} /></Table.Summary.Cell>
+              <Table.Summary.Cell index={18} align="right"><PercentText value={totalAdRatio} /></Table.Summary.Cell>
+              <Table.Summary.Cell index={19} align="right">{percent(1)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={20} align="right"><Typography.Text strong>{currencyMoney(totalQuarterSales)}</Typography.Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={21} align="right"><Typography.Text strong>{currencyMoney(totalQuarterAdSpend)}</Typography.Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={22} align="right"><RoiTag value={safeRatio(totalQuarterSales, totalQuarterAdSpend)} /></Table.Summary.Cell>
+              <Table.Summary.Cell index={23} align="right"><PercentText value={totalQuarterSales > 0 ? totalQuarterAdSpend / totalQuarterSales : 0} /></Table.Summary.Cell>
+              <Table.Summary.Cell index={24} align="right">100.0%</Table.Summary.Cell>
+              <Table.Summary.Cell index={25} />
+              <Table.Summary.Cell index={26} />
+              <Table.Summary.Cell index={27} />
+              <Table.Summary.Cell index={28} />
+              <Table.Summary.Cell index={29} />
+              <Table.Summary.Cell index={30} />
+              <Table.Summary.Cell index={31} />
+            </Table.Summary.Row>
+          </Table.Summary>
+        )}
+      />
+
+      <Modal
+        title={detailRow ? `${detailRow.channelName} AI 分析详情` : "AI 分析详情"}
+        open={Boolean(detailRow)}
+        width={720}
+        onCancel={() => setDetailRow(null)}
+        footer={[
+          <Button key="close" onClick={() => setDetailRow(null)}>关闭</Button>,
+          <Button key="adopt" type="primary" disabled={!detailRow?.aiRating && !detailRow?.aiActionSuggestion} onClick={() => detailRow && adoptAiSuggestion(detailRow)}>
+            采用 AI 建议
+          </Button>,
+        ]}
+      >
+        {detailRow ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 rounded-lg bg-[var(--soft-bg)] p-3 text-sm">
+              <div>评级：{detailRow.aiRating ? <Tag color="purple">{detailRow.aiRating}</Tag> : "待分析"}</div>
+              <div>状态：<Tag>{aiStatusText(detailRow.aiAnalysisStatus)}</Tag></div>
+              <div>负责人：{detailRow.decisionOwner || "—"}</div>
+              <div>决策 deadline：{detailRow.decisionDeadline ? dayjs(detailRow.decisionDeadline).format("YYYY-MM-DD") : "—"}</div>
+              <div className="col-span-2">分析时间：{formatDateTime(detailRow.aiAnalyzedAt)}</div>
+            </div>
+            <div>
+              <Typography.Text strong>AI 总结</Typography.Text>
+              <div className="mt-2 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+                {detailRow.aiSummary || "暂无 AI 总结"}
+              </div>
+            </div>
+            <div>
+              <Typography.Text strong>风险提示</Typography.Text>
+              <div className="mt-2 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+                {parseRiskNotes(detailRow.aiRiskNotes).length ? (
+                  <ul className="m-0 list-disc pl-5">
+                    {parseRiskNotes(detailRow.aiRiskNotes).map((risk) => <li key={risk}>{risk}</li>)}
+                  </ul>
+                ) : "暂无风险提示"}
+              </div>
+            </div>
+            <div>
+              <Typography.Text strong>AI 建议动作</Typography.Text>
+              <div className="mt-2 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+                {detailRow.aiActionSuggestion || "暂无 AI 建议动作"}
+              </div>
+            </div>
+            <div>
+              <Typography.Text strong>预算建议</Typography.Text>
+              <div className="mt-2 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+                {detailRow.nextBudgetBase ? `${currencyMoney(Number(detailRow.nextBudgetBase))} · ${detailRow.budgetAdjustReason || "暂无调整原因"}` : "暂无预算建议"}
+              </div>
+            </div>
+            <div>
+              <Typography.Text strong>备注</Typography.Text>
+              <div className="mt-2 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+                {detailRow.remark || "暂无备注"}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+    </>
   );
 }

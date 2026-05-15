@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { appRoutes, getRouteTitle, getSelectedRoute } from "@/lib/routes";
 import ThemeToggle from "@/components/common/ThemeToggle";
+import PageHelpButton from "@/components/layout/PageHelpButton";
 
 const siderWidth = 208;
 const collapsedSiderWidth = 72;
@@ -50,7 +51,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
   return (
     <div className="admin-shell min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <aside
-        className="fixed left-0 top-0 z-20 h-screen overflow-auto border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)]"
+        className="fixed left-0 top-0 z-50 h-screen overflow-auto border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)]"
         style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
       >
         <div className="flex h-14 items-center gap-3 border-b border-[var(--sidebar-border)] px-4">
@@ -91,8 +92,8 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
       </aside>
 
       <div className="min-h-screen" style={{ paddingLeft: sidebarWidth }}>
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between overflow-hidden border-b border-[var(--sidebar-border)] bg-[var(--header-bg)] px-6">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between overflow-hidden border-b border-[var(--sidebar-border)] bg-[var(--header-bg)] px-6">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               className="h-9 rounded-md border-0 bg-transparent px-3 text-lg text-[var(--menu-text)] transition hover:bg-[var(--hover-fill)] hover:text-[var(--foreground)]"
@@ -101,7 +102,8 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
             >
               {collapsed ? "☰" : "×"}
             </button>
-            <h1 className="m-0 text-xl font-semibold text-[var(--foreground)]">{pageTitle}</h1>
+            <h1 className="m-0 truncate text-xl font-semibold leading-8 text-[var(--foreground)]">{pageTitle}</h1>
+            <PageHelpButton />
           </div>
 
           <div className="flex h-16 items-center gap-3">
@@ -118,7 +120,7 @@ export default function AdminShell({ children, userName, userRole }: AdminShellP
           </div>
         </header>
 
-        <main className="relative min-h-[calc(100vh-64px)] bg-[var(--background)] p-6">
+        <main data-admin-main className="relative min-h-[calc(100vh-64px)] bg-[var(--background)] p-6">
           {activePendingPath || isPending ? <div className="absolute left-0 top-0 z-20 h-1 w-full overflow-hidden bg-[var(--chart-blue-soft)]"><div className="h-full w-1/3 animate-pulse bg-[var(--primary)]" /></div> : null}
           {children}
         </main>

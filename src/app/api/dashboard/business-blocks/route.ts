@@ -19,6 +19,8 @@ type BusinessDashboardFilters = {
 };
 
 type MetricWithChannel = Awaited<ReturnType<typeof fetchMetrics>>[number];
+type BusinessPlan = Awaited<ReturnType<typeof fetchPlans>>[number];
+type BusinessWarning = Awaited<ReturnType<typeof fetchWarnings>>[number];
 
 function parseFilters(params: URLSearchParams): BusinessDashboardFilters {
   const month = Math.min(Math.max(parsePositiveInt(params.get("month"), 5), 1), 12);
@@ -68,6 +70,20 @@ async function fetchMetrics(filters: BusinessDashboardFilters, year = filters.ye
   });
 }
 
+async function fetchPlans(filters: BusinessDashboardFilters) {
+  return prisma.businessBlockPlan.findMany({
+    where: { year: filters.year, month: filters.month, brandId: filters.brandId ?? null },
+  });
+}
+
+async function fetchWarnings(filters: BusinessDashboardFilters) {
+  return prisma.businessWarning.findMany({
+    where: { year: filters.year, month: filters.month, brandId: filters.brandId ?? null },
+    orderBy: [{ warningLevel: "desc" }, { updatedAt: "desc" }],
+    take: 20,
+  });
+}
+
 function metricBlock(metric: MetricWithChannel) {
   return inferBusinessBlock({
     businessBlock: metric.businessBlock,
@@ -82,8 +98,16 @@ function roundMoney(value: number) {
   return Number(value.toFixed(2));
 }
 
-function firstText(...values: Array<string | null | undefined>) {
-  return values.find((value) => value && value.trim())?.trim() ?? "";
+function parseRiskNotes(value?: unknown) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string").slice(0, 3);
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 3) : [];
+  } catch {
+    return value.split(/[，,\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
+  }
 }
 
 function warningLevelValue(value?: string | null) {
@@ -91,9 +115,14 @@ function warningLevelValue(value?: string | null) {
   return level === "A" || level === "B" || level === "C" || level === "D" ? level : "";
 }
 
-function aggregateByBlock(metrics: MetricWithChannel[], previousSalesByBlock: Map<string, number>) {
+function planMap(plans: BusinessPlan[]) {
+  return new Map(plans.map((plan) => [plan.businessBlock, plan]));
+}
+
+function aggregateByBlock(metrics: MetricWithChannel[], previousSalesByBlock: Map<string, number>, plans: BusinessPlan[]) {
   const totalSales = metrics.reduce((sum, metric) => sum + toNumber(metric.salesAmountBase), 0);
   const grouped = new Map<string, MetricWithChannel[]>();
+  const plansByBlock = planMap(plans);
   metrics.forEach((metric) => {
     const block = metricBlock(metric);
     grouped.set(block, [...(grouped.get(block) ?? []), metric]);
@@ -101,13 +130,12 @@ function aggregateByBlock(metrics: MetricWithChannel[], previousSalesByBlock: Ma
 
   return businessBlockOptions.map((option) => {
     const blockMetrics = grouped.get(option.value) ?? [];
+    const plan = plansByBlock.get(option.value);
     const salesAmount = blockMetrics.reduce((sum, metric) => sum + toNumber(metric.salesAmountBase), 0);
     const adSpend = blockMetrics.reduce((sum, metric) => sum + toNumber(metric.adSpendBase), 0);
     const productCost = blockMetrics.reduce((sum, metric) => sum + toNumber(metric.productCostBase), 0);
     const otherCost = blockMetrics.reduce((sum, metric) => sum + toNumber(metric.otherCostBase), 0);
     const grossProfit = salesAmount - adSpend - productCost - otherCost;
-    const ratingMetric = blockMetrics.find((metric) => metric.aiRating || metric.manualRating) ?? blockMetrics[0];
-    const actionMetric = blockMetrics.find((metric) => metric.aiActionSuggestion || metric.manualActionSuggestion) ?? blockMetrics[0];
     const previousSales = previousSalesByBlock.get(option.value) ?? 0;
 
     return {
@@ -122,73 +150,88 @@ function aggregateByBlock(metrics: MetricWithChannel[], previousSalesByBlock: Ma
       grossMargin: ratio(grossProfit, salesAmount),
       roi: ratio(salesAmount, adSpend),
       monthOverMonth: previousSales > 0 ? (salesAmount - previousSales) / previousSales : null,
-      rating: displayRating({ aiRating: ratingMetric?.aiRating, manualRating: ratingMetric?.manualRating, ratingSource: ratingMetric?.ratingSource }),
-      keyAction: displayAction({ aiActionSuggestion: actionMetric?.aiActionSuggestion, manualActionSuggestion: actionMetric?.manualActionSuggestion }),
-      aiAnalysisStatus: ratingMetric?.aiAnalysisStatus ?? "pending",
-      aiAnalyzedAt: ratingMetric?.aiAnalyzedAt?.toISOString() ?? null,
+      rating: displayRating({ aiRating: plan?.aiRating, manualRating: plan?.manualRating }),
+      keyAction: displayAction({ aiActionSuggestion: plan?.aiActionSuggestion, manualActionSuggestion: plan?.manualActionSuggestion }),
+      aiAnalysisStatus: plan?.aiAnalysisStatus ?? "pending",
+      aiSummary: plan?.aiSummary ?? "",
+      aiRiskNotes: parseRiskNotes(plan?.aiRiskNotes),
+      aiAnalyzedAt: plan?.aiAnalyzedAt?.toISOString() ?? null,
+      nextBudget: plan?.nextBudgetBase === null || plan?.nextBudgetBase === undefined ? null : toNumber(plan.nextBudgetBase),
+      budgetAdjustReason: plan?.budgetAdjustReason ?? "",
+      remark: plan?.remark ?? "",
     };
   });
 }
 
-function buildWarnings(metrics: MetricWithChannel[]) {
-  const grouped = new Map<number, MetricWithChannel[]>();
-  metrics.forEach((metric) => grouped.set(metric.channelId, [...(grouped.get(metric.channelId) ?? []), metric]));
+function buildFallbackWarnings(metrics: MetricWithChannel[]) {
+  const grouped = new Map<string, MetricWithChannel[]>();
+  metrics.forEach((metric) => {
+    const block = metricBlock(metric);
+    grouped.set(block, [...(grouped.get(block) ?? []), metric]);
+  });
 
-  return Array.from(grouped.values())
-    .map((channelMetrics) => {
-      const firstMetric = channelMetrics.find((metric) => metric.warningLevel || metric.warningType || metric.manualActionSuggestion || metric.decisionDeadline) ?? channelMetrics[0];
-      const salesAmount = channelMetrics.reduce((sum, metric) => sum + toNumber(metric.salesAmountBase), 0);
-      const adSpend = channelMetrics.reduce((sum, metric) => sum + toNumber(metric.adSpendBase), 0);
-      const productCost = channelMetrics.reduce((sum, metric) => sum + toNumber(metric.productCostBase), 0);
-      const otherCost = channelMetrics.reduce((sum, metric) => sum + toNumber(metric.otherCostBase), 0);
+  return Array.from(grouped.entries())
+    .map(([block, blockMetrics]) => {
+      const salesAmount = blockMetrics.reduce((sum, metric) => sum + toNumber(metric.salesAmountBase), 0);
+      const adSpend = blockMetrics.reduce((sum, metric) => sum + toNumber(metric.adSpendBase), 0);
+      const productCost = blockMetrics.reduce((sum, metric) => sum + toNumber(metric.productCostBase), 0);
+      const otherCost = blockMetrics.reduce((sum, metric) => sum + toNumber(metric.otherCostBase), 0);
       const grossProfit = salesAmount - adSpend - productCost - otherCost;
       const roiValue = ratio(salesAmount, adSpend);
-      const warningType = firstText(firstMetric.warningType, grossProfit < 0 ? "经营毛利为负" : null, roiValue !== null && roiValue < 1 ? "ROI 偏低" : null);
-      const warningLevel = firstText(warningLevelValue(firstMetric.warningLevel), grossProfit < 0 ? "D" : roiValue !== null && roiValue < 1 ? "C" : null);
-      if (!warningType && !warningLevel && !firstMetric.manualActionSuggestion && !firstMetric.aiActionSuggestion) return null;
-
+      const warningType = grossProfit < 0 ? "系统规则：经营毛利为负" : roiValue !== null && roiValue < 1 ? "系统规则：ROI 偏低" : "";
+      if (!warningType) return null;
       return {
-        businessBlock: metricBlock(firstMetric),
-        blockName: businessBlockLabel(metricBlock(firstMetric)),
-        channelId: firstMetric.channelId,
-        channelName: firstMetric.channel.channelName,
-        warningType: warningType || "待 AI 分析",
-        currentValue: roundMoney(salesAmount),
+        businessBlock: block,
+        blockName: businessBlockLabel(block),
+        channelId: null,
+        channelName: "-",
+        warningType,
+        currentValue: roundMoney(grossProfit),
         monthOverMonth: null,
-        suggestedAction: displayAction({ aiActionSuggestion: firstMetric.aiActionSuggestion, manualActionSuggestion: firstMetric.manualActionSuggestion }),
-        decisionOwner: firstMetric.decisionOwner || "-",
-        decisionDeadline: firstMetric.decisionDeadline?.toISOString() ?? null,
-        warningLevel: warningLevel || "B",
-        remark: firstMetric.remark || "",
+        suggestedAction: "请结合渠道明细排查投放、成本和转化。",
+        decisionOwner: "",
+        decisionDeadline: null,
+        warningLevel: grossProfit < 0 ? "D" : "C",
+        remark: "系统规则生成",
       };
     })
     .filter(Boolean)
     .slice(0, 20);
 }
 
-function buildBudgetSuggestions(blockPerformance: ReturnType<typeof aggregateByBlock>, metrics: MetricWithChannel[]) {
-  const nextBudgetByBlock = new Map<string, { nextBudget: number; reason: string }>();
-  metrics
-    .filter((metric) => metric.weekNumber === 1)
-    .forEach((metric) => {
-      const block = metricBlock(metric);
-      const current = nextBudgetByBlock.get(block) ?? { nextBudget: 0, reason: "" };
-      current.nextBudget += toNumber(metric.nextBudgetBase);
-      current.reason = current.reason || metric.budgetAdjustReason || "";
-      nextBudgetByBlock.set(block, current);
-    });
+function buildWarnings(warnings: BusinessWarning[], metrics: MetricWithChannel[]) {
+  if (!warnings.length) return buildFallbackWarnings(metrics);
+  return warnings.map((warning) => ({
+    businessBlock: warning.businessBlock,
+    blockName: businessBlockLabel(warning.businessBlock),
+    channelId: warning.channelId,
+    channelName: "-",
+    warningType: warning.warningType,
+    currentValue: roundMoney(toNumber(warning.currentValue)),
+    monthOverMonth: warning.monthOverMonth === null || warning.monthOverMonth === undefined ? null : toNumber(warning.monthOverMonth),
+    suggestedAction: displayAction({ aiActionSuggestion: warning.aiActionSuggestion, manualActionSuggestion: warning.manualActionSuggestion }),
+    decisionOwner: warning.decisionOwner || "",
+    decisionDeadline: warning.decisionDeadline?.toISOString() ?? null,
+    warningLevel: warningLevelValue(warning.warningLevel) || "B",
+    remark: warning.remark || warning.aiSummary || "",
+  }));
+}
 
+function buildBudgetSuggestions(blockPerformance: ReturnType<typeof aggregateByBlock>, plans: BusinessPlan[]) {
+  const plansByBlock = planMap(plans);
   return blockPerformance.map((item) => {
-    const budget = nextBudgetByBlock.get(item.businessBlock) ?? { nextBudget: 0, reason: "" };
-    const adjustAmount = budget.nextBudget - item.adSpend;
+    const plan = plansByBlock.get(item.businessBlock);
+    const nextBudget = plan?.nextBudgetBase === null || plan?.nextBudgetBase === undefined ? null : toNumber(plan.nextBudgetBase);
+    const adjustAmount = plan?.budgetAdjustAmount === null || plan?.budgetAdjustAmount === undefined ? (nextBudget === null ? null : nextBudget - item.adSpend) : toNumber(plan.budgetAdjustAmount);
+    const adjustRatio = plan?.budgetAdjustRatio === null || plan?.budgetAdjustRatio === undefined ? (item.adSpend > 0 && adjustAmount !== null ? adjustAmount / item.adSpend : null) : toNumber(plan.budgetAdjustRatio);
     return {
       businessBlock: item.businessBlock,
       blockName: item.blockName,
       currentAdSpend: item.adSpend,
-      nextBudget: budget.nextBudget > 0 ? roundMoney(budget.nextBudget) : null,
-      adjustAmount: budget.nextBudget > 0 ? roundMoney(adjustAmount) : null,
-      adjustRatio: item.adSpend > 0 && budget.nextBudget > 0 ? adjustAmount / item.adSpend : null,
-      adjustReason: budget.reason || "待填写 / 待 AI 分析",
+      nextBudget: nextBudget === null ? null : roundMoney(nextBudget),
+      adjustAmount: adjustAmount === null ? null : roundMoney(adjustAmount),
+      adjustRatio,
+      adjustReason: plan?.budgetAdjustReason || "待填写 / 待 AI 分析",
     };
   });
 }
@@ -205,8 +248,8 @@ const fieldDefinitions = [
   { field: "销售占比", description: "当前板块销售额 ÷ 全部板块销售额。" },
   { field: "环比上月", description: "当前月销售额相对上月销售额的变化比例。" },
   { field: "SABC 评级", description: "当前版本支持手动评级，后续接入 AI API 后可自动生成评级和建议动作。" },
-  { field: "预算建议", description: "当前版本支持手动维护下月建议预算和调整逻辑，后续由 AI 经营分析补充。" },
-  { field: "AI 分析状态", description: "预留状态：pending / analyzing / completed / failed。当前不调用真实 AI API。" },
+  { field: "预算建议", description: "读取四板块经营计划中的下月建议预算和调整逻辑，后续由 AI 经营分析补充。" },
+  { field: "AI 分析状态", description: "状态：pending / analyzing / completed / failed。" },
 ];
 
 export async function GET(request: NextRequest) {
@@ -233,14 +276,19 @@ export async function GET(request: NextRequest) {
     }
 
     const previous = previousMonth(filters);
-    const [metrics, previousMetrics] = await Promise.all([fetchMetrics(filters), fetchMetrics(filters, previous.year, previous.month)]);
+    const [metrics, previousMetrics, plans, warnings] = await Promise.all([
+      fetchMetrics(filters),
+      fetchMetrics(filters, previous.year, previous.month),
+      fetchPlans(filters),
+      fetchWarnings(filters),
+    ]);
     const previousSalesByBlock = new Map<string, number>();
     previousMetrics.forEach((metric) => {
       const block = metricBlock(metric);
       previousSalesByBlock.set(block, (previousSalesByBlock.get(block) ?? 0) + toNumber(metric.salesAmountBase));
     });
 
-    const blockPerformance = aggregateByBlock(metrics, previousSalesByBlock);
+    const blockPerformance = aggregateByBlock(metrics, previousSalesByBlock, plans);
     const totalSales = blockPerformance.reduce((sum, item) => sum + item.salesAmount, 0);
     const totalAdSpend = blockPerformance.reduce((sum, item) => sum + item.adSpend, 0);
     const totalProductCost = blockPerformance.reduce((sum, item) => sum + item.productCost, 0);
@@ -260,8 +308,8 @@ export async function GET(request: NextRequest) {
         roi: ratio(totalSales, totalAdSpend),
       },
       blockPerformance,
-      warnings: buildWarnings(metrics),
-      budgetSuggestions: canViewBudget ? buildBudgetSuggestions(blockPerformance, metrics) : [],
+      warnings: buildWarnings(warnings, metrics),
+      budgetSuggestions: canViewBudget ? buildBudgetSuggestions(blockPerformance, plans) : [],
       fieldDefinitions,
     });
   } catch (error) {

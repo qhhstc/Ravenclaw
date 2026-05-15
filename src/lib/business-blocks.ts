@@ -28,15 +28,13 @@ export function inferBusinessBlock(input: { businessBlock?: string | null; busin
 }
 
 export function displayRating(input: { aiRating?: string | null; manualRating?: string | null; ratingSource?: string | null }) {
-  if (input.ratingSource === "ai" && input.aiRating) return { label: input.aiRating, source: "AI" };
-  if (input.ratingSource === "manual" && input.manualRating) return { label: input.manualRating, source: "手动" };
-  if (input.aiRating) return { label: input.aiRating, source: "AI" };
   if (input.manualRating) return { label: input.manualRating, source: "手动" };
+  if (input.aiRating) return { label: input.aiRating, source: "AI" };
   return { label: "待分析", source: "none" };
 }
 
 export function displayAction(input: { aiActionSuggestion?: string | null; manualActionSuggestion?: string | null }) {
-  return input.aiActionSuggestion || input.manualActionSuggestion || "待填写 / 待 AI 分析";
+  return input.manualActionSuggestion || input.aiActionSuggestion || "待填写 / 待 AI 分析";
 }
 
 export function ratio(numerator: number, denominator: number) {

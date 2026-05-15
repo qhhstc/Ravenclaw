@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { inferBusinessBlock } from "../../src/lib/business-blocks";
+import { businessBlockOptions, inferBusinessBlock } from "../../src/lib/business-blocks";
 
 const platformTypes: Record<string, string> = {
   Amazon: "marketplace",
@@ -467,12 +467,12 @@ export async function seedDemo(prisma: PrismaClient) {
           ratingSource: firstWeek ? "manual" : "none",
           aiAnalysisStatus: "pending",
           manualActionSuggestion: firstWeek ? blockMeta.action : null,
-          warningType: firstWeek ? blockMeta.warningType ?? null : null,
-          warningLevel: firstWeek ? blockMeta.warningLevel ?? null : null,
+          warningType: null,
+          warningLevel: null,
           decisionOwner: firstWeek ? blockMeta.owner : null,
           decisionDeadline: firstWeek ? new Date("2026-05-28T00:00:00.000Z") : null,
-          nextBudgetBase: firstWeek ? blockMeta.nextBudget : null,
-          budgetAdjustReason: firstWeek ? blockMeta.reason : null,
+          nextBudgetBase: null,
+          budgetAdjustReason: null,
           createdBy: admin.id,
           remark: firstWeek ? "演示四板块经营分析预留字段。" : null,
         },
@@ -502,14 +502,87 @@ export async function seedDemo(prisma: PrismaClient) {
           ratingSource: firstWeek ? "manual" : "none",
           aiAnalysisStatus: "pending",
           manualActionSuggestion: firstWeek ? blockMeta.action : null,
-          warningType: firstWeek ? blockMeta.warningType ?? null : null,
-          warningLevel: firstWeek ? blockMeta.warningLevel ?? null : null,
+          warningType: null,
+          warningLevel: null,
           decisionOwner: firstWeek ? blockMeta.owner : null,
           decisionDeadline: firstWeek ? new Date("2026-05-28T00:00:00.000Z") : null,
-          nextBudgetBase: firstWeek ? blockMeta.nextBudget : null,
-          budgetAdjustReason: firstWeek ? blockMeta.reason : null,
+          nextBudgetBase: null,
+          budgetAdjustReason: null,
           createdBy: admin.id,
           remark: firstWeek ? "演示四板块经营分析预留字段。" : null,
+        },
+      });
+    }
+  }
+
+  const mayMetrics = await prisma.channelMetricPeriod.findMany({
+    where: { year: 2026, month: 5, periodType: "week" },
+  });
+  await prisma.businessBlockPlan.deleteMany({ where: { year: 2026, month: 5, brandId: null } });
+  await prisma.businessWarning.deleteMany({ where: { year: 2026, month: 5, brandId: null } });
+
+  for (const option of businessBlockOptions) {
+    const blockMetrics = mayMetrics.filter((metric) => inferBusinessBlock({ businessBlock: metric.businessBlock }) === option.value);
+    const blockMeta = demoBlockMeta(option.value);
+    const salesAmount = money(blockMetrics.reduce((sum, metric) => sum + Number(metric.salesAmountBase), 0));
+    const adSpend = money(blockMetrics.reduce((sum, metric) => sum + Number(metric.adSpendBase), 0));
+    const productCost = money(blockMetrics.reduce((sum, metric) => sum + Number(metric.productCostBase), 0));
+    const otherCost = money(blockMetrics.reduce((sum, metric) => sum + Number(metric.otherCostBase), 0));
+    const grossProfit = money(salesAmount - adSpend - productCost - otherCost);
+    const budgetAdjustAmount = money(blockMeta.nextBudget - adSpend);
+
+    await prisma.businessBlockPlan.create({
+      data: {
+        year: 2026,
+        month: 5,
+        quarter: quarterFromMonth(5),
+        brandId: null,
+        businessBlock: option.value,
+        salesAmountBase: salesAmount,
+        adSpendBase: adSpend,
+        productCostBase: productCost,
+        otherCostBase: otherCost,
+        grossProfitBase: grossProfit,
+        grossMargin: salesAmount > 0 ? Number((grossProfit / salesAmount).toFixed(6)) : null,
+        roi: adSpend > 0 ? Number((salesAmount / adSpend).toFixed(6)) : null,
+        monthOverMonth: option.value === "independent_site" ? -0.18 : option.value === "amazon" ? 0.12 : null,
+        manualRating: blockMeta.rating,
+        manualActionSuggestion: blockMeta.action,
+        decisionOwner: blockMeta.owner,
+        decisionDeadline: new Date("2026-05-28T00:00:00.000Z"),
+        remark: "演示四板块经营计划，可由 AI 分析后更新。",
+        aiRating: option.value === "amazon" ? "A" : null,
+        aiSummary: option.value === "amazon" ? "Amazon 销售和 ROI 稳定，适合小幅放量。" : null,
+        aiActionSuggestion: option.value === "amazon" ? "优先加预算到高 ROI 店铺，并每周复盘广告占销。" : null,
+        aiRiskNotes: option.value === "amazon" ? ["广告占销需持续监控"] : [],
+        aiAnalysisStatus: option.value === "amazon" ? "completed" : "pending",
+        aiAnalyzedAt: option.value === "amazon" ? new Date("2026-05-20T10:00:00.000Z") : null,
+        nextBudgetBase: blockMeta.nextBudget,
+        budgetAdjustAmount,
+        budgetAdjustRatio: adSpend > 0 ? Number((budgetAdjustAmount / adSpend).toFixed(6)) : null,
+        budgetAdjustReason: blockMeta.reason,
+      },
+    });
+
+    if (blockMeta.warningType || grossProfit < 0) {
+      await prisma.businessWarning.create({
+        data: {
+          year: 2026,
+          month: 5,
+          brandId: null,
+          businessBlock: option.value,
+          warningType: blockMeta.warningType ?? "系统规则：经营毛利为负",
+          warningLevel: blockMeta.warningLevel ?? "D",
+          currentValue: grossProfit,
+          monthOverMonth: option.value === "independent_site" ? -0.18 : null,
+          manualActionSuggestion: blockMeta.action,
+          aiActionSuggestion: null,
+          aiSummary: null,
+          aiRiskNotes: [],
+          aiAnalysisStatus: "pending",
+          decisionOwner: blockMeta.owner,
+          decisionDeadline: new Date("2026-05-28T00:00:00.000Z"),
+          remark: "演示预警与动作，生产环境不会导入。",
         },
       });
     }

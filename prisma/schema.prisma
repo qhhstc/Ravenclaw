@@ -263,6 +263,7 @@ model ChannelMetricPeriod {
   aiRating             String?
   ratingSource         String   @default("none")
   aiAnalysisStatus     String   @default("pending")
+  aiSummary            String?  @db.Text
   aiActionSuggestion   String?  @db.Text
   manualActionSuggestion String? @db.Text
   aiRiskNotes          String?  @db.Text
@@ -297,6 +298,78 @@ model ChannelMetricPeriod {
   @@index([aiAnalysisStatus])
   @@index([warningLevel])
   @@index([decisionDeadline])
+}
+
+model BusinessBlockPlan {
+  id                     Int      @id @default(autoincrement())
+  year                   Int
+  month                  Int
+  quarter                Int?
+  brandId                Int?
+  businessBlock          String
+  salesAmountBase        Decimal  @default(0) @db.Decimal(18, 2)
+  adSpendBase            Decimal  @default(0) @db.Decimal(18, 2)
+  productCostBase        Decimal  @default(0) @db.Decimal(18, 2)
+  otherCostBase          Decimal  @default(0) @db.Decimal(18, 2)
+  grossProfitBase        Decimal  @default(0) @db.Decimal(18, 2)
+  grossMargin            Decimal? @db.Decimal(18, 6)
+  roi                    Decimal? @db.Decimal(18, 6)
+  monthOverMonth         Decimal? @db.Decimal(18, 6)
+  manualRating           String?
+  manualActionSuggestion String?  @db.Text
+  decisionOwner          String?
+  decisionDeadline       DateTime?
+  remark                 String?  @db.Text
+  aiRating               String?
+  aiSummary              String?  @db.Text
+  aiActionSuggestion     String?  @db.Text
+  aiRiskNotes            Json?
+  aiAnalysisStatus       String   @default("pending")
+  aiAnalyzedAt           DateTime?
+  nextBudgetBase         Decimal? @db.Decimal(18, 2)
+  budgetAdjustAmount     Decimal? @db.Decimal(18, 2)
+  budgetAdjustRatio      Decimal? @db.Decimal(18, 6)
+  budgetAdjustReason     String?  @db.Text
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([year, month, brandId, businessBlock], map: "bbp_month_brand_block_unique")
+  @@index([year, month])
+  @@index([brandId])
+  @@index([businessBlock])
+  @@index([aiAnalysisStatus])
+  @@index([decisionDeadline])
+}
+
+model BusinessWarning {
+  id                     Int      @id @default(autoincrement())
+  year                   Int
+  month                  Int
+  brandId                Int?
+  businessBlock          String
+  channelId              Int?
+  warningType            String
+  warningLevel           String
+  currentValue           Decimal  @default(0) @db.Decimal(18, 2)
+  monthOverMonth         Decimal? @db.Decimal(18, 6)
+  manualActionSuggestion String?  @db.Text
+  aiActionSuggestion     String?  @db.Text
+  aiSummary              String?  @db.Text
+  aiRiskNotes            Json?
+  aiAnalysisStatus       String   @default("pending")
+  decisionOwner          String?
+  decisionDeadline       DateTime?
+  remark                 String?  @db.Text
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([year, month])
+  @@index([brandId])
+  @@index([businessBlock])
+  @@index([channelId])
+  @@index([warningLevel])
+  @@index([decisionDeadline])
+  @@index([aiAnalysisStatus])
 }
 
 model MetricImportBatch {

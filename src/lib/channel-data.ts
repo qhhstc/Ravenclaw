@@ -169,7 +169,23 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
         adSpendOriginal: toNumber(metric?.adSpendOriginal),
       };
     });
-    const firstMetric = metrics.find((metric) => metric.channelId === channel.id && (metric.remark || metric.manualRating || metric.manualActionSuggestion || metric.decisionOwner || metric.decisionDeadline || metric.nextBudgetBase));
+    const channelMetrics = metrics.filter((metric) => metric.channelId === channel.id);
+    const firstMetric =
+      channelMetrics.find((metric) => metric.aiRating || metric.aiSummary || metric.aiActionSuggestion || metric.aiRiskNotes || metric.aiAnalyzedAt) ??
+      channelMetrics.find(
+        (metric) =>
+          metric.manualRating ||
+          metric.manualActionSuggestion ||
+          metric.remark ||
+          metric.decisionOwner ||
+          metric.decisionDeadline ||
+          metric.nextBudgetBase ||
+          metric.budgetAdjustReason ||
+          metric.warningType ||
+          metric.warningLevel,
+      ) ??
+      channelMetrics.find((metric) => metric.weekNumber === 1) ??
+      channelMetrics[0];
     const businessBlock = inferBusinessBlock({
       businessBlock: firstMetric?.businessBlock,
       businessLine: channel.businessLine,
@@ -199,6 +215,7 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
       aiRating: firstMetric?.aiRating ?? "",
       ratingSource: firstMetric?.ratingSource ?? "none",
       aiAnalysisStatus: firstMetric?.aiAnalysisStatus ?? "pending",
+      aiSummary: firstMetric?.aiSummary ?? "",
       aiActionSuggestion: firstMetric?.aiActionSuggestion ?? "",
       manualActionSuggestion: firstMetric?.manualActionSuggestion ?? "",
       aiRiskNotes: firstMetric?.aiRiskNotes ?? "",

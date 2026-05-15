@@ -33,6 +33,7 @@ export type ChannelDataRow = {
   aiRating?: string | null;
   ratingSource?: string | null;
   aiAnalysisStatus?: string | null;
+  aiSummary?: string | null;
   aiActionSuggestion?: string | null;
   manualActionSuggestion?: string | null;
   aiRiskNotes?: string | null;

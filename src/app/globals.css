@@ -239,6 +239,12 @@ a {
   white-space: nowrap;
 }
 
+[data-admin-main] {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+}
+
 .ant-card {
   border-color: var(--border);
   border-radius: 12px;
@@ -327,7 +333,10 @@ a {
 }
 
 .channel-data-page .ant-table-wrapper {
+  position: relative;
+  z-index: 0;
   max-width: 100%;
+  overflow: hidden;
 }
 
 .channel-data-page .ant-table-cell {
@@ -338,17 +347,100 @@ a {
 .channel-weekly-table .ant-table-thead > tr > th,
 .channel-weekly-table .ant-table-summary > tr > td {
   padding: 8px 10px;
+  vertical-align: middle;
+}
+
+.channel-action-cell {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.channel-table-link {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-table-link:hover {
+  color: var(--primary);
+}
+
+.dashboard-ai-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.page-help-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--soft-bg);
+  color: var(--menu-text);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 26px;
+  transform: translateY(-2px);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.page-help-trigger:hover {
+  background: var(--hover-fill);
+  color: var(--foreground);
+}
+
+.page-help-trigger-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.page-help-drawer,
+.page-help-drawer .ant-drawer-content,
+.page-help-drawer .ant-drawer-header,
+.page-help-drawer .ant-drawer-body,
+.page-help-content,
+.page-help-content .ant-typography,
+.page-help-content .ant-list,
+.page-help-content .ant-list-item {
+  text-align: left !important;
+}
+
+.page-help-drawer .ant-drawer-title {
+  text-align: left;
+}
+
+.page-help-list .ant-list-item {
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
 }
 
 .channel-weekly-table .ant-table-cell-fix-left,
 .channel-weekly-table .ant-table-cell-fix-right,
 .channel-weekly-table .ant-table-sticky-holder {
-  z-index: 4;
+  z-index: 2;
 }
 
 .channel-weekly-table .ant-table-thead .ant-table-cell-fix-left,
 .channel-weekly-table .ant-table-thead .ant-table-cell-fix-right {
-  z-index: 5;
+  z-index: 3;
 }
 
 :root[data-theme="dark"] .ant-card,

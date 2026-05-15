@@ -106,6 +106,52 @@ COOKIE_SECURE="false"
 COOKIE_SECURE="true"
 ```
 
+## AI 经营分析配置
+
+AI 分析只在用户点击按钮时由后端 API 调用，前端不会直接访问 Claude，也不会暴露 Token。
+
+PackyApi / Claude-compatible 中转推荐配置：
+
+```bash
+AI_PROVIDER="anthropic_compatible"
+AI_ANALYSIS_ENABLED="true"
+ANTHROPIC_BASE_URL="https://www.packyapi.com"
+ANTHROPIC_AUTH_TOKEN="真实 PackyApi token"
+ANTHROPIC_MODEL="claude-opus-4-7"
+AI_AUTH_MODE="auth_token"
+AI_API_ENDPOINT="/v1/messages"
+```
+
+如果服务商要求不同鉴权头，只改：
+
+```bash
+AI_AUTH_MODE="bearer"
+# 或
+AI_AUTH_MODE="x_api_key"
+```
+
+官方 Anthropic API 可使用：
+
+```bash
+AI_PROVIDER="anthropic"
+AI_ANALYSIS_ENABLED="true"
+ANTHROPIC_API_KEY="真实 key"
+ANTHROPIC_MODEL="服务商支持的模型名"
+```
+
+修改服务器 `/www/order-system/.env` 后执行：
+
+```bash
+git pull
+npm install
+npx prisma generate
+npx prisma migrate deploy
+npm run build
+pm2 restart order-profit-system --update-env
+```
+
+不要把真实 `ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY` 写入仓库。
+
 ## Nginx 性能建议
 
 建议生产环境 Nginx 至少包含以下配置，减少首屏静态资源加载时间：

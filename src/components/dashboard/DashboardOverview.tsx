@@ -1,7 +1,7 @@
 "use client";
 
 import { DownloadOutlined, DollarOutlined, QuestionCircleOutlined, ReloadOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Col, DatePicker, Empty, List, Modal, Progress, Row, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Col, DatePicker, Empty, List, Modal, Progress, Row, Select, Space, Spin, Statistic, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import dynamic from "next/dynamic";
@@ -133,11 +133,17 @@ type BusinessBlocksData = {
     rating: { label: string; source: string };
     keyAction: string;
     aiAnalysisStatus: string;
+    aiSummary?: string | null;
+    aiRiskNotes?: string[];
+    aiAnalyzedAt?: string | null;
+    nextBudget?: number | null;
+    budgetAdjustReason?: string | null;
+    remark?: string | null;
   }>;
   warnings: Array<{
     businessBlock: string;
     blockName: string;
-    channelId: number;
+    channelId: number | null;
     channelName: string;
     warningType: string;
     currentValue: number;
@@ -165,6 +171,15 @@ type Option = { label: string; value: string | number };
 type OptionRecord = { id: number; name: string; code?: string };
 
 type CountryRecord = { id: number; name: string; code: string };
+
+type AiStatus = {
+  enabled: boolean;
+  provider: string;
+  baseUrlConfigured: boolean;
+  tokenConfigured: boolean;
+  apiKeyConfigured: boolean;
+  modelConfigured: boolean;
+};
 
 const emptyOverview: DashboardOverviewData = {
   kpis: { salesAmount: 0, adSpend: 0, roi: null, adSpendRatio: null, channelCount: 0, paidChannelCount: 0 },
@@ -228,6 +243,30 @@ function warningLevelTag(value?: string | null) {
   return <Tag color={colorMap[level]}>{level}</Tag>;
 }
 
+function mutedEmpty(text = "未填写") {
+  return <span className="text-xs text-[var(--muted-weak)]">{text}</span>;
+}
+
+function twoLineText(value?: string | null) {
+  const text = value?.trim();
+  if (!text) return mutedEmpty();
+  return (
+    <Tooltip title={text}>
+      <div
+        className="text-sm leading-5 text-[var(--foreground)]"
+        style={{
+          display: "-webkit-box",
+          WebkitBoxOrient: "vertical",
+          WebkitLineClamp: 2,
+          overflow: "hidden",
+        }}
+      >
+        {text}
+      </div>
+    </Tooltip>
+  );
+}
+
 function toQuery(filters: DashboardFilters) {
   const params = new URLSearchParams({ year: String(filters.year), month: String(filters.month) });
   Object.entries(filters).forEach(([key, value]) => {
@@ -274,7 +313,10 @@ export default function DashboardOverview() {
   const [pendingPaymentsLoading, setPendingPaymentsLoading] = useState(false);
   const [businessBlocks, setBusinessBlocks] = useState<BusinessBlocksData>(emptyBusinessBlocks);
   const [businessBlocksLoading, setBusinessBlocksLoading] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [aiRunning, setAiRunning] = useState(false);
   const [definitionOpen, setDefinitionOpen] = useState(false);
+  const [blockDetail, setBlockDetail] = useState<BusinessBlocksData["blockPerformance"][number] | null>(null);
 
   const columns = useMemo<ColumnsType<DashboardOverviewData["weeklyTable"][number]>>(
     () => [
@@ -309,21 +351,48 @@ export default function DashboardOverview() {
     [],
   );
 
-  const warningColumns = useMemo<ColumnsType<BusinessBlocksData["warnings"][number]>>(
-    () => [
+  const warningColumns = useMemo<ColumnsType<BusinessBlocksData["warnings"][number]>>(() => {
+    const warnings = businessBlocks.warnings;
+    const hasChannel = warnings.some((row) => row.channelId && row.channelName && row.channelName !== "-");
+    const hasMonthOverMonth = warnings.some((row) => row.monthOverMonth !== null && row.monthOverMonth !== undefined);
+    const hasDecisionOwner = warnings.some((row) => row.decisionOwner?.trim());
+    const hasDecisionDeadline = warnings.some((row) => row.decisionDeadline);
+    const columns: ColumnsType<BusinessBlocksData["warnings"][number]> = [
       { title: "板块", dataIndex: "blockName", width: 110 },
-      { title: "渠道", dataIndex: "channelName", width: 150 },
-      { title: "异常类型", dataIndex: "warningType", width: 150 },
+    ];
+
+    if (hasChannel) columns.push({ title: "渠道", dataIndex: "channelName", width: 160, render: (value?: string) => value || mutedEmpty() });
+
+    columns.push(
+      { title: "异常类型", dataIndex: "warningType", width: 180, render: twoLineText },
       { title: "本月数据", dataIndex: "currentValue", width: 130, align: "right", render: moneyFormatter },
-      { title: "环比", dataIndex: "monthOverMonth", width: 100, align: "right", render: percentFormatter },
-      { title: "建议动作", dataIndex: "suggestedAction", width: 240 },
-      { title: "负责人", dataIndex: "decisionOwner", width: 120 },
-      { title: "决策 deadline", dataIndex: "decisionDeadline", width: 140, render: (value?: string | null) => (value ? dayjs(value).format("YYYY-MM-DD") : "-") },
+    );
+
+    if (hasMonthOverMonth) columns.push({ title: "环比", dataIndex: "monthOverMonth", width: 100, align: "right", render: percentFormatter });
+
+    columns.push({ title: "建议动作", dataIndex: "suggestedAction", width: 380, render: twoLineText });
+
+    if (hasDecisionOwner) columns.push({ title: "负责人", dataIndex: "decisionOwner", width: 120, render: (value?: string) => value || mutedEmpty() });
+    if (hasDecisionDeadline) columns.push({ title: "决策 deadline", dataIndex: "decisionDeadline", width: 140, render: (value?: string | null) => (value ? dayjs(value).format("YYYY-MM-DD") : mutedEmpty()) });
+
+    columns.push(
       { title: "预警等级", dataIndex: "warningLevel", width: 100, render: warningLevelTag },
-      { title: "备注", dataIndex: "remark", width: 180, render: (value) => value || "-" },
-    ],
-    [],
-  );
+      { title: "备注", dataIndex: "remark", width: 220, render: twoLineText },
+      {
+        title: "操作",
+        key: "action",
+        width: 120,
+        fixed: "right",
+        render: () => (
+          <Button type="link" size="small" onClick={() => message.info("决策负责人和 deadline 后续支持手动维护。")}>
+            编辑决策
+          </Button>
+        ),
+      },
+    );
+
+    return columns;
+  }, [businessBlocks.warnings]);
 
   const budgetColumns = useMemo<ColumnsType<BusinessBlocksData["budgetSuggestions"][number]>>(
     () => [
@@ -338,14 +407,14 @@ export default function DashboardOverview() {
   );
 
   const kpiCards = [
-    { title: "本月销售额", value: moneyFormatter(overview.kpis.salesAmount), tag: "真实数据", color: "blue" },
-    { title: "本月广告费", value: moneyFormatter(overview.kpis.adSpend), tag: "真实数据", color: "cyan" },
-    { title: "整体 ROI", value: ratioFormatter(overview.kpis.roi), tag: "真实数据", color: "green" },
-    { title: "广告占比", value: percentFormatter(overview.kpis.adSpendRatio), tag: "真实数据", color: "orange" },
-    { title: "渠道数量", value: overview.kpis.channelCount, tag: "真实数据", color: "blue" },
-    { title: "有广告费渠道数", value: overview.kpis.paidChannelCount, tag: "真实数据", color: "purple" },
-    { title: "净利润", value: "待接入", tag: "订单/财务模块", color: "default" },
-    { title: "应收账款", value: "待接入", tag: "财务模块", color: "default" },
+    { title: "本月销售额", value: moneyFormatter(overview.kpis.salesAmount) },
+    { title: "本月广告费", value: moneyFormatter(overview.kpis.adSpend) },
+    { title: "整体 ROI", value: ratioFormatter(overview.kpis.roi) },
+    { title: "广告占比", value: percentFormatter(overview.kpis.adSpendRatio) },
+    { title: "渠道数量", value: overview.kpis.channelCount },
+    { title: "有广告费渠道数", value: overview.kpis.paidChannelCount },
+    { title: "净利润", value: "待接入" },
+    { title: "应收账款", value: "待接入" },
   ];
 
   const loadOptions = useCallback(async () => {
@@ -440,13 +509,25 @@ export default function DashboardOverview() {
     }
   }, []);
 
+  const loadAiStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/ai/status");
+      const data = (await response.json()) as AiStatus & { message?: string };
+      if (!response.ok) throw new Error(data.message || "AI 状态加载失败");
+      setAiStatus(data);
+    } catch {
+      setAiStatus(null);
+    }
+  }, []);
+
   useEffect(() => {
     queueMicrotask(() => {
       void loadOptions();
       void loadFollowupCustomers();
       void loadPendingPayments();
+      void loadAiStatus();
     });
-  }, [loadFollowupCustomers, loadOptions, loadPendingPayments]);
+  }, [loadAiStatus, loadFollowupCustomers, loadOptions, loadPendingPayments]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -464,8 +545,33 @@ export default function DashboardOverview() {
     void loadBusinessBlocks(filters);
   }
 
-  function showAiPlaceholder() {
-    message.info("AI 经营分析后续接入，当前版本支持手动评级和建议动作。");
+  const aiConfigured = Boolean(aiStatus?.enabled && aiStatus.modelConfigured && (aiStatus.tokenConfigured || aiStatus.apiKeyConfigured));
+
+  async function runBusinessBlockAnalysis() {
+    if (!businessBlocks.visibility.canEditDecisions) {
+      message.warning("只有管理员可以触发全局 AI 分析");
+      return;
+    }
+    if (!aiConfigured) {
+      message.warning("AI 分析未配置，请在服务器 .env 开启 AI_ANALYSIS_ENABLED 并配置 Token 与模型");
+      return;
+    }
+    setAiRunning(true);
+    try {
+      const response = await fetch("/api/ai/business-block-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year: filters.year, month: filters.month, brandId: filters.brandId }),
+      });
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) throw new Error(data.message || "四板块 AI 分析失败");
+      message.success(data.message || "AI 分析完成");
+      await loadBusinessBlocks(filters);
+    } catch (runError) {
+      message.error(runError instanceof Error ? runError.message : "四板块 AI 分析失败");
+    } finally {
+      setAiRunning(false);
+    }
   }
 
   return (
@@ -499,7 +605,11 @@ export default function DashboardOverview() {
             </Space>
             <Space>
               <Button icon={<ReloadOutlined />} loading={loading || businessBlocksLoading} onClick={refreshDashboard}>刷新数据</Button>
-              <Button icon={<RobotOutlined />} onClick={showAiPlaceholder}>AI 分析</Button>
+              {businessBlocks.visibility.canEditDecisions ? (
+                <Button icon={<RobotOutlined />} loading={aiRunning} disabled={!aiConfigured && Boolean(aiStatus)} onClick={runBusinessBlockAnalysis}>
+                  AI 分析四板块经营
+                </Button>
+              ) : null}
               <Button icon={<DownloadOutlined />} disabled>导出报表</Button>
             </Space>
           </div>
@@ -515,9 +625,6 @@ export default function DashboardOverview() {
               <Col xs={24} sm={12} lg={8} xl={6} xxl={3} key={item.title}>
                 <Card className="h-full" styles={{ body: { padding: 16 } }}>
                   <Statistic title={item.title} value={item.value} styles={{ content: { color: "var(--foreground)", fontSize: 22 } }} />
-                  <div className="mt-3 text-xs text-[var(--muted)]">
-                    <Tag color={item.color}>{item.tag}</Tag>
-                  </div>
                 </Card>
               </Col>
             ))}
@@ -637,9 +744,16 @@ export default function DashboardOverview() {
                             </BusinessBlockMetric>
                             <BusinessBlockMetric title="其他成本">{moneyFormatter(block.otherCost)}</BusinessBlockMetric>
                           </div>
-                          <div className="mt-4 rounded-lg bg-[var(--soft-bg)] p-3 text-sm text-[var(--menu-text)]">
-                            关键动作：{block.keyAction || "待填写 / 待 AI 分析"}
-                          </div>
+	                          <div className="mt-4 space-y-2 rounded-lg bg-[var(--soft-bg)] p-3 text-sm text-[var(--menu-text)]">
+	                            <div className="dashboard-ai-summary">AI 总结：{block.aiSummary || "待分析"}</div>
+	                            {block.aiRiskNotes?.length ? (
+	                              <div className="dashboard-ai-summary text-[var(--muted)]">风险：{block.aiRiskNotes.join("；")}</div>
+	                            ) : null}
+	                            <div className="dashboard-ai-summary">关键动作：{block.keyAction || "待填写 / 待 AI 分析"}</div>
+                              <Button type="link" size="small" className="px-0" onClick={() => setBlockDetail(block)}>
+                                查看 AI 分析
+                              </Button>
+	                          </div>
                         </div>
                       ))}
                     </div>
@@ -655,7 +769,7 @@ export default function DashboardOverview() {
 
           <Card title="预警与动作">
             {businessBlocks.visibility.canViewGlobal ? (
-              <Table columns={warningColumns} dataSource={businessBlocks.warnings} rowKey={(row) => `${row.channelId}-${row.warningType}`} pagination={false} scroll={{ x: 1500 }} locale={{ emptyText: <Empty description="暂无预警，待 AI 分析或手动填写" /> }} />
+              <Table columns={warningColumns} dataSource={businessBlocks.warnings} rowKey={(row) => `${row.businessBlock}-${row.channelId ?? "block"}-${row.warningType}`} pagination={false} scroll={{ x: "max-content" }} locale={{ emptyText: <Empty description="暂无预警，待 AI 分析或手动填写" /> }} />
             ) : (
               <Empty description="当前角色仅显示自己负责范围，暂不展示全局预警" />
             )}
@@ -689,6 +803,50 @@ export default function DashboardOverview() {
           pagination={false}
           locale={{ emptyText: <Empty description="暂无字段口径说明" /> }}
         />
+      </Modal>
+
+      <Modal
+        title={`${blockDetail?.blockName ?? ""} AI 分析详情`}
+        open={Boolean(blockDetail)}
+        footer={null}
+        width={720}
+        onCancel={() => setBlockDetail(null)}
+      >
+        {blockDetail ? (
+          <div className="space-y-4">
+            <Space wrap>
+              <Tag color={blockDetail.rating.source === "none" ? "default" : "purple"}>{blockDetail.rating.label}</Tag>
+              <Tag>{blockDetail.aiAnalysisStatus || "pending"}</Tag>
+              <span className="text-sm text-[var(--muted)]">分析时间：{formatDateTime(blockDetail.aiAnalyzedAt)}</span>
+            </Space>
+            <Card size="small" title="AI 总结">
+              <Typography.Paragraph className="mb-0">{blockDetail.aiSummary || "待分析"}</Typography.Paragraph>
+            </Card>
+            <Card size="small" title="风险提示">
+              {blockDetail.aiRiskNotes?.length ? (
+                <List size="small" dataSource={blockDetail.aiRiskNotes} renderItem={(item) => <List.Item>{item}</List.Item>} />
+              ) : (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无风险提示" />
+              )}
+            </Card>
+            <Card size="small" title="建议动作">
+              <Typography.Paragraph className="mb-0">{blockDetail.keyAction || "待填写 / 待 AI 分析"}</Typography.Paragraph>
+            </Card>
+            <Card size="small" title="预算建议">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <BusinessBlockMetric title="下月建议预算">
+                  {blockDetail.nextBudget === null || blockDetail.nextBudget === undefined ? "待填写" : moneyFormatter(blockDetail.nextBudget)}
+                </BusinessBlockMetric>
+                <BusinessBlockMetric title="调整逻辑">{blockDetail.budgetAdjustReason || "待填写 / 待 AI 分析"}</BusinessBlockMetric>
+              </div>
+            </Card>
+            {blockDetail.remark ? (
+              <Card size="small" title="人工备注">
+                <Typography.Paragraph className="mb-0">{blockDetail.remark}</Typography.Paragraph>
+              </Card>
+            ) : null}
+          </div>
+        ) : null}
       </Modal>
 
       <Row gutter={[16, 16]}>

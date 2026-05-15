@@ -22,6 +22,13 @@ type BasicOptionRecord = {
   code?: string;
 };
 
+type AiStatus = {
+  enabled: boolean;
+  tokenConfigured: boolean;
+  apiKeyConfigured: boolean;
+  modelConfigured: boolean;
+};
+
 const defaultFilters: ChannelDataFilters = {
   year: 2026,
   month: 5,
@@ -50,6 +57,9 @@ export default function ChannelDataPage() {
   const [optionLoading, setOptionLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [currentRole, setCurrentRole] = useState("viewer");
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
   const monthlyTotals = useMemo(() => {
@@ -85,6 +95,19 @@ export default function ChannelDataPage() {
     }
   }, []);
 
+  const fetchAiStatus = useCallback(async () => {
+    try {
+      const [statusResponse, meResponse] = await Promise.all([fetch("/api/ai/status"), fetch("/api/auth/me")]);
+      const status = (await statusResponse.json()) as AiStatus & { message?: string };
+      const me = (await meResponse.json()) as { user?: { role?: string }; message?: string };
+      if (statusResponse.ok) setAiStatus(status);
+      if (meResponse.ok) setCurrentRole(me.user?.role ?? "viewer");
+    } catch {
+      setAiStatus(null);
+      setCurrentRole("viewer");
+    }
+  }, []);
+
   const fetchChannelData = useCallback(async (nextFilters: ChannelDataFilters) => {
     setLoading(true);
     try {
@@ -109,8 +132,11 @@ export default function ChannelDataPage() {
   }, []);
 
   useEffect(() => {
-    queueMicrotask(fetchOptions);
-  }, [fetchOptions]);
+    queueMicrotask(() => {
+      void fetchOptions();
+      void fetchAiStatus();
+    });
+  }, [fetchAiStatus, fetchOptions]);
 
   useEffect(() => {
     queueMicrotask(() => fetchChannelData(filters));
@@ -169,6 +195,45 @@ export default function ChannelDataPage() {
     triggerDownload(`/api/channel-data/export?${toQuery(filters)}`).then(() => message.success("渠道数据 Excel 已开始下载")).catch((error) => message.error(error instanceof Error ? error.message : "导出失败"));
   }
 
+  const aiConfigured = Boolean(aiStatus?.enabled && aiStatus.modelConfigured && (aiStatus.tokenConfigured || aiStatus.apiKeyConfigured));
+  const canRunAiAnalysis = currentRole === "admin";
+
+  async function analyzeCurrentRows() {
+    if (!canRunAiAnalysis) {
+      message.warning("只有管理员可以触发渠道 AI 分析");
+      return;
+    }
+    if (!aiConfigured) {
+      message.warning("AI 分析未配置，请在服务器 .env 开启并配置 Token 与模型");
+      return;
+    }
+    if (!rows.length) {
+      message.info("当前筛选范围暂无渠道数据");
+      return;
+    }
+    setAiAnalyzing(true);
+    try {
+      let successCount = 0;
+      for (const row of rows) {
+        const response = await fetch("/api/ai/channel-analysis", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ year: filters.year, month: filters.month, channelId: row.channelId, businessBlock: row.businessBlock }),
+        });
+        const data = (await response.json()) as { message?: string };
+        if (!response.ok) throw new Error(data.message || `${row.channelName} AI 分析失败`);
+        successCount += 1;
+      }
+      message.success(`已完成 ${successCount} 个渠道 AI 分析`);
+      await fetchChannelData(filters);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "渠道 AI 分析失败");
+      await fetchChannelData(filters);
+    } finally {
+      setAiAnalyzing(false);
+    }
+  }
+
   return (
     <div className="channel-data-page page-stack">
       <div className="page-section-header">
@@ -185,12 +250,15 @@ export default function ChannelDataPage() {
           loading={loading}
           exporting={exporting}
           saving={saving}
+          aiAnalyzing={aiAnalyzing}
+          canRunAiAnalysis={canRunAiAnalysis}
           onSearch={setFilters}
           onReset={() => setFilters(defaultFilters)}
           onSave={saveRows}
           onDownloadTemplate={downloadTemplate}
           onImport={() => setImportOpen(true)}
           onExport={exportExcel}
+          onAnalyzeAi={analyzeCurrentRows}
         />
       </Spin>
 
