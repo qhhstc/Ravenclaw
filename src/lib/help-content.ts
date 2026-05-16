@@ -24,7 +24,7 @@ const sharedFlows = [
 const helpByRoute: Record<string, HelpContent> = {
   "/dashboard": {
     title: "经营看板使用说明",
-    summary: "经营看板把渠道周数据、四板块经营、AI 分析、预警和预算建议放在一起，适合 admin/finance 做经营复盘。",
+    summary: "经营看板把渠道周数据、四板块经营、AI 分析、预警和预算建议放在一起，适合管理员/财务做经营复盘。",
     quickStart: [
       "先选择年份、月份、季度、品牌、店铺或币种。",
       "查看顶部 KPI、趋势图和渠道 ROI 排行，判断本月整体表现。",
@@ -35,7 +35,7 @@ const helpByRoute: Record<string, HelpContent> = {
     sections: [
       {
         title: "角色可见范围",
-        items: ["admin 可看完整全局经营数据和预算建议。", "finance 可看财务和利润相关经营数据。", "sales 不显示公司整体毛利、预算建议和全局 AI 经营分析。"],
+        items: ["管理员可看完整全局经营数据和预算建议。", "财务可看财务和利润相关经营数据。", "业务员不显示公司整体毛利、预算建议和全局 AI 经营分析。"],
       },
       {
         title: "AI 分析怎么用",
@@ -87,7 +87,7 @@ const helpByRoute: Record<string, HelpContent> = {
     quickStart: ["点击新增订单，填写客户、业务员、币种、汇率和订单基础信息。", "在商品明细表选择产品，录入数量、销售单价、采购单价和包装单价。", "保存订单后可继续维护成本分项、状态记录和附件。", "订单附件建议上传提单、装箱单、报关单、聊天记录等关键资料。"],
     sections: [
       { title: "利润核算", items: ["销售小计、采购小计、包装小计会实时计算。", "成本为空按 0 处理。", "订单毛利 = 销售额 - 商品采购成本 - 包装成本 - 其他成本。"] },
-      { title: "权限", items: ["sales 只能新增和维护自己的订单。", "finance 可查看利润和维护成本，但不能随意改订单基础信息。", "admin 拥有全部订单权限。"] },
+      { title: "权限", items: ["业务员只能新增和维护自己的订单。", "财务可查看利润和维护成本，但不能随意改订单基础信息。", "管理员拥有全部订单权限。"] },
     ],
     relatedFlows: [sharedFlows[1], sharedFlows[2]],
   },
@@ -95,7 +95,7 @@ const helpByRoute: Record<string, HelpContent> = {
     title: "利润报表使用说明",
     summary: "利润报表按订单、客户、产品、成本构成和周期维度汇总毛利表现，适合财务和管理者复盘。",
     quickStart: ["选择统计维度和时间范围。", "查看总销售额、总成本、总毛利和平均毛利率。", "切换客户排行、产品排行、订单明细、成本构成等 Tab。", "需要留档时导出 Excel。"],
-    sections: [{ title: "权限", items: ["admin 和 finance 可查看整体利润报表。", "sales 不可查看公司整体利润报表。"] }],
+    sections: [{ title: "权限", items: ["管理员和财务可查看整体利润报表。", "业务员不可查看公司整体利润报表。"] }],
     relatedFlows: [sharedFlows[2]],
   },
   "/crm/customers": {
@@ -125,8 +125,8 @@ const helpByRoute: Record<string, HelpContent> = {
   "/settings/system": {
     title: "账号管理使用说明",
     summary: "账号管理用于维护系统用户、角色和启停状态。管理员不能停用自己。",
-    quickStart: ["管理员可新增、编辑、删除或停用账号。", "为用户选择 admin、sales、finance 或 viewer。", "销售账号用于录入和查看自己的订单。", "财务账号用于查看利润和维护成本。"],
-    sections: [{ title: "角色边界", items: ["admin：全权限。", "sales：看和录自己的订单，不看整体利润和全局经营数据。", "finance：看利润和成本，默认不能改订单基础信息。", "viewer：只读。"] }],
+    quickStart: ["管理员可新增、编辑、删除或停用账号。", "为用户选择管理员、业务员、财务或只读用户。", "业务员账号用于录入和查看自己的订单。", "财务账号用于查看利润和维护成本。"],
+    sections: [{ title: "角色边界", items: ["管理员：全权限。", "业务员：看和录自己的订单，不看整体利润和全局经营数据。", "财务：看利润和成本，默认不能改订单基础信息。", "只读用户：只读。"] }],
     relatedFlows: ["权限同时由前端按钮隐藏和后端 API 校验，不只靠页面隐藏。"],
   },
   "/finance": {
