@@ -242,7 +242,7 @@ export default function OrderDetailPage({ orderId }: Props) {
               ["销售总金额", order.salesAmount, "var(--chart-blue)"],
               ["总成本", order.totalCost, "var(--muted)"],
               ["订单毛利", order.grossProfit, Number(order.grossProfit) < 0 ? "var(--danger)" : "var(--success)"],
-              ["毛利率", order.grossMargin == null ? "—" : `${(Number(order.grossMargin) * 100).toFixed(2)}%`, marginColor(Number(order.grossMargin), Number(order.grossProfit))],
+              ["毛利率", order.grossMargin == null ? "-" : `${(Number(order.grossMargin) * 100).toFixed(2)}%`, marginColor(Number(order.grossMargin), Number(order.grossProfit))],
               ["已收金额", order.paidAmount, "var(--success)"],
               ["未收金额", order.unpaidAmount, Number(order.unpaidAmount) > 0 ? "var(--warning)" : "var(--muted)"],
             ].map(([title, value, color]) => (

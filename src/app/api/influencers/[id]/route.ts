@@ -45,4 +45,3 @@ export async function DELETE(_request: NextRequest, context: Context) {
     return apiError(error, "红人合作删除失败");
   }
 }
-

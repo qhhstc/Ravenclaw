@@ -41,6 +41,13 @@ type InfluencerRecord = {
   salesAmount: number;
   orderCount: number;
   roi?: number | null;
+  linkedOrderCount?: number;
+  linkedSalesAmountBase?: number;
+  linkedGrossProfit?: number;
+  effectiveSalesAmountBase?: number;
+  effectiveOrderCount?: number;
+  effectiveRoi?: number | null;
+  metricSource?: "orders" | "manual";
   rating?: string | null;
   nextFollowupAt?: string | null;
   remark?: string | null;
@@ -156,7 +163,7 @@ export default function InfluencerCollaborationPage() {
   const [channels, setChannels] = useState<Option[]>([]);
   const [users, setUsers] = useState<Option[]>([]);
 
-  const canEdit = ["admin", "sales", "finance"].includes(currentRole);
+  const canEdit = ["admin", "sales"].includes(currentRole);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -285,13 +292,24 @@ export default function InfluencerCollaborationPage() {
     { title: "粉丝", dataIndex: "followerCount", width: 110, align: "right", render: shortNumber },
     { title: "类型", dataIndex: "cooperationType", width: 120, render: (value) => labelOf(cooperationTypeOptions, value) },
     { title: "状态", dataIndex: "status", width: 110, render: (value) => <Tag color={colorOf(value)}>{labelOf(statusOptions, value)}</Tag> },
-    { title: "品牌", dataIndex: ["brand", "name"], width: 160, render: (_, row) => row.brand?.name ?? "-" },
+    { title: "品牌", dataIndex: ["brand", "name"], width: 150, render: (_, row) => row.brand?.name ?? "-" },
     { title: "渠道", dataIndex: ["channel", "channelName"], width: 180, render: (_, row) => (row.channel ? `${row.channel.businessLine} / ${row.channel.channelName}` : "-") },
     { title: "负责人", dataIndex: ["owner", "name"], width: 110, render: (_, row) => row.owner?.name ?? "-" },
-    { title: "成本", dataIndex: "totalCostBase", width: 140, align: "right", render: (value) => money(value, "CNY") },
-    { title: "销售额", dataIndex: "salesAmount", width: 140, align: "right", render: (value, row) => money(value, row.currency) },
-    { title: "订单数", dataIndex: "orderCount", width: 90, align: "right" },
-    { title: "ROI", dataIndex: "roi", width: 90, align: "right", render: (value) => <b className={Number(value || 0) >= 2 ? "text-[var(--success)]" : undefined}>{roiText(value)}</b> },
+    { title: "投入成本", dataIndex: "totalCostBase", width: 130, align: "right", render: (value) => money(value, "CNY") },
+    {
+      title: "订单销售额",
+      dataIndex: "effectiveSalesAmountBase",
+      width: 140,
+      align: "right",
+      render: (value, row) => (
+        <div>
+          <div>{money(value, "CNY")}</div>
+          {row.metricSource === "manual" ? <Tag>手填</Tag> : <Tag color="green">订单汇总</Tag>}
+        </div>
+      ),
+    },
+    { title: "订单数", dataIndex: "effectiveOrderCount", width: 90, align: "right" },
+    { title: "ROI", dataIndex: "effectiveRoi", width: 90, align: "right", render: (value) => <b className={Number(value || 0) >= 2 ? "text-[var(--success)]" : undefined}>{roiText(value)}</b> },
     { title: "下次跟进", dataIndex: "nextFollowupAt", width: 120, render: dateText },
     {
       title: "内容链接",
@@ -341,7 +359,7 @@ export default function InfluencerCollaborationPage() {
       <div className="page-section-header">
         <div>
           <Typography.Title level={3} className="!mb-1 !text-[var(--foreground)]">红人合作</Typography.Title>
-          <Typography.Text type="secondary">管理达人线索、寄样/付费合作、内容发布、费用投入和销售转化，沉淀每个红人的 ROI。</Typography.Text>
+          <Typography.Text type="secondary">管理达人线索、寄样/付费合作、内容发布、费用投入和销售转化；销售额优先来自关联订单自动汇总。</Typography.Text>
         </div>
         <Space wrap>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={loadData}>刷新</Button>
@@ -353,7 +371,7 @@ export default function InfluencerCollaborationPage() {
         type="info"
         showIcon
         title="使用方式"
-        description="先录入红人账号和合作方式，再维护寄样成本、付费金额、内容链接、优惠码和销售结果。系统会自动换算基础成本并计算 ROI，方便判断是否继续合作。"
+        description="先录入红人账号和合作方式，再在订单里选择对应红人。系统会用关联订单自动汇总销售额、订单数和 ROI；没有关联订单时，才使用本页手填的销售额作为临时参考。"
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 16 }}>
@@ -361,7 +379,7 @@ export default function InfluencerCollaborationPage() {
         <Card loading={loading}><Statistic title="进行中" value={summary?.active ?? 0} suffix="条" styles={{ content: { color: "var(--chart-blue)" } }} /></Card>
         <Card loading={loading}><Statistic title="已发布" value={summary?.published ?? 0} suffix="条" styles={{ content: { color: "var(--success)" } }} /></Card>
         <Card loading={loading}><Statistic title="投入成本" value={summary ? money(summary.totalCostBase, summary.baseCurrency) : "-"} /></Card>
-        <Card loading={loading}><Statistic title="销售额" value={summary ? money(summary.salesAmount, summary.baseCurrency) : "-"} styles={{ content: { color: "var(--success)" } }} /></Card>
+        <Card loading={loading}><Statistic title="订单销售额" value={summary ? money(summary.salesAmount, summary.baseCurrency) : "-"} styles={{ content: { color: "var(--success)" } }} /></Card>
         <Card loading={loading}><Statistic title="平均 ROI" value={roiText(summary?.avgRoi)} /></Card>
       </div>
 
@@ -418,6 +436,7 @@ export default function InfluencerCollaborationPage() {
           </div>
 
           <Typography.Title level={5}>费用与结果</Typography.Title>
+          <Alert className="!mb-4" type="info" showIcon message="销售额口径" description="如果订单已经关联到该红人，列表和汇总会优先使用订单自动汇总。这里的销售额/订单数只作为没有关联订单前的临时预估。" />
           <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
             <Form.Item name="sampleSku" label="样品 SKU"><Input /></Form.Item>
             <Form.Item name="sampleQuantity" label="样品数量"><InputNumber min={0} precision={0} className="!w-full" /></Form.Item>
@@ -427,8 +446,8 @@ export default function InfluencerCollaborationPage() {
             <Form.Item name="exchangeRate" label="汇率"><InputNumber min={0} precision={6} className="!w-full" /></Form.Item>
             <Form.Item name="contentCount" label="内容数量"><InputNumber min={0} precision={0} className="!w-full" /></Form.Item>
             <Form.Item name="postUrl" label="内容链接"><Input /></Form.Item>
-            <Form.Item name="salesAmount" label="带来销售额"><InputNumber min={0} precision={2} className="!w-full" /></Form.Item>
-            <Form.Item name="orderCount" label="带来订单数"><InputNumber min={0} precision={0} className="!w-full" /></Form.Item>
+            <Form.Item name="salesAmount" label="临时销售额"><InputNumber min={0} precision={2} className="!w-full" /></Form.Item>
+            <Form.Item name="orderCount" label="临时订单数"><InputNumber min={0} precision={0} className="!w-full" /></Form.Item>
           </div>
 
           <Typography.Title level={5}>联系方式与备注</Typography.Title>

@@ -81,8 +81,8 @@ async function fetchJson<T>(url: string) {
 function productSummary(row: OrderRecord) {
   const items = row.items ?? [];
   if (!items.length) return "-";
-  const suffix = items.length >= 3 ? "…" : "";
-  return `${items.map((item) => `${item.productName}×${item.quantity}`).join("；")}${suffix}`;
+  const suffix = items.length >= 3 ? "..." : "";
+  return `${items.map((item) => `${item.productName}x${item.quantity}`).join("，")}${suffix}`;
 }
 
 export default function OrderListPage() {
@@ -344,9 +344,7 @@ export default function OrderListPage() {
         </Space>
       </div>
 
-      <div className="opacity-100">
-        <OrderStatsCards stats={statsLoading ? emptyStats : stats} />
-      </div>
+      <OrderStatsCards stats={statsLoading ? emptyStats : stats} />
 
       <Card styles={{ body: { padding: 16 } }}>
         <Space size={10} wrap>

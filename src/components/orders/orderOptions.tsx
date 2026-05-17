@@ -285,7 +285,7 @@ export function compactMoneyText(value: unknown, currency = "USD") {
 }
 
 export function percentText(value?: number | null) {
-  return value === null || value === undefined || !Number.isFinite(Number(value)) ? "—" : `${(Number(value) * 100).toFixed(2)}%`;
+  return value === null || value === undefined || !Number.isFinite(Number(value)) ? "-" : `${(Number(value) * 100).toFixed(2)}%`;
 }
 
 export function formatDate(value?: string | Date | null) {
@@ -314,7 +314,7 @@ export function StatusTag({ value, type }: { value?: string | null; type: "order
 }
 
 export function MarginTag({ value }: { value?: number | null }) {
-  if (value === null || value === undefined) return <Tag>—</Tag>;
+  if (value === null || value === undefined) return <Tag>-</Tag>;
   if (value < 0) return <Tag color="red">{percentText(value)}</Tag>;
   if (value < 0.1) return <Tag color="red">{percentText(value)}</Tag>;
   if (value < 0.2) return <Tag color="orange">{percentText(value)}</Tag>;

@@ -124,4 +124,3 @@ export function normalizeInfluencerInput(input: Record<string, unknown>) {
     remark: textValue(input.remark),
   };
 }
-

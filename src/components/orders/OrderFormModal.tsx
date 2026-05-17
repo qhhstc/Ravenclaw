@@ -219,7 +219,7 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
       <Form form={form} layout="vertical" preserve={false} initialValues={orderToFormValues(editing)} onValuesChange={() => queueMicrotask(syncComputed)}>
         <Divider titlePlacement="start">订单基础信息</Divider>
         <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3 xl:grid-cols-4">
-          <Form.Item name="orderNo" label="订单编号"><Input placeholder="自动生成，可手动改" /></Form.Item>
+          <Form.Item name="orderNo" label="订单编号"><Input placeholder="自动生成，可手动修改" /></Form.Item>
           <Form.Item name="orderSource" label="订单来源"><Select options={orderSourceOptions} /></Form.Item>
           <Form.Item name="customerId" label="客户"><Select allowClear showSearch optionFilterProp="label" options={customers.map((item) => ({ label: `${item.name}${item.companyName ? ` / ${item.companyName}` : ""}`, value: item.id }))} onChange={applyCustomer} /></Form.Item>
           <Form.Item name="customerName" label="客户名称" rules={[{ required: true, message: "请输入客户名称" }]}><Input /></Form.Item>

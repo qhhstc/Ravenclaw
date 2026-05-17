@@ -55,6 +55,8 @@ export default function ProductListPage() {
   const [editing, setEditing] = useState<ProductRecord | null>(null);
   const [currentRole, setCurrentRole] = useState("viewer");
 
+  const canManage = ["admin", "finance"].includes(currentRole);
+
   const loadProducts = useCallback(async () => {
     setLoading(true);
     try {
@@ -101,6 +103,19 @@ export default function ProductListPage() {
   function updateFilter(patch: Filters) {
     setPage(1);
     setFilters((current) => ({ ...current, ...patch }));
+  }
+
+  function openCreate() {
+    setEditing(null);
+    form.resetFields();
+    form.setFieldsValue({ currency: "USD", status: "active", defaultPurchasePrice: 0, defaultPackagingCost: 0 });
+    setModalOpen(true);
+  }
+
+  function openEdit(row: ProductRecord) {
+    setEditing(row);
+    form.setFieldsValue({ ...row, defaultVendorId: row.defaultVendor?.id ?? row.defaultVendorId });
+    setModalOpen(true);
   }
 
   async function saveProduct() {
@@ -203,8 +218,8 @@ export default function ProductListPage() {
       width: 150,
       render: (_, row) => (
         <Space size={0} className="whitespace-nowrap">
-          {["admin", "finance"].includes(currentRole) ? <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditing(row); form.setFieldsValue({ ...row, defaultVendorId: row.defaultVendor?.id ?? row.defaultVendorId }); setModalOpen(true); }}>编辑</Button> : null}
-          {["admin", "finance"].includes(currentRole) ? (
+          {canManage ? <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>编辑</Button> : null}
+          {canManage ? (
             <Popconfirm title="确认删除产品？" onConfirm={() => deleteProduct(row.id)}>
               <Button danger type="link" size="small" icon={<DeleteOutlined />}>删除</Button>
             </Popconfirm>
@@ -234,10 +249,10 @@ export default function ProductListPage() {
           <Typography.Text type="secondary">维护 SKU、规格、默认供应商、采购单价和包装成本，为订单利润核算自动带出成本。</Typography.Text>
         </div>
         <Space wrap>
-          {["admin", "finance"].includes(currentRole) ? <Button loading={exporting} icon={<DownloadOutlined />} onClick={downloadTemplate}>下载导入模板</Button> : null}
-          {["admin", "finance"].includes(currentRole) ? <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入 Excel</Button> : null}
-          {["admin", "finance"].includes(currentRole) ? <Button loading={exporting} icon={<DownloadOutlined />} onClick={exportProducts}>导出 Excel</Button> : null}
-          {["admin", "finance"].includes(currentRole) ? <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); form.setFieldsValue({ currency: "USD", status: "active", defaultPurchasePrice: 0, defaultPackagingCost: 0 }); setModalOpen(true); }}>新增产品</Button> : null}
+          {canManage ? <Button loading={exporting} icon={<DownloadOutlined />} onClick={downloadTemplate}>下载导入模板</Button> : null}
+          {canManage ? <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入 Excel</Button> : null}
+          {canManage ? <Button loading={exporting} icon={<DownloadOutlined />} onClick={exportProducts}>导出 Excel</Button> : null}
+          {canManage ? <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增产品</Button> : null}
         </Space>
       </div>
 
