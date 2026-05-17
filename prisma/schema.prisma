@@ -512,6 +512,7 @@ model InfluencerCollaboration {
   brand            Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
   channel          Channel?  @relation(fields: [channelId], references: [id], onDelete: SetNull)
   owner            User?     @relation("InfluencerOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  orders           Order[]
 
   @@index([influencerName])
   @@index([platform])
@@ -624,6 +625,7 @@ model Order {
   platformId      Int?
   storeId         Int?
   channelId       Int?
+  influencerCollaborationId Int?
   countryCode     String?
   currency        String   @default("USD")
   exchangeRate    Decimal  @default(1) @db.Decimal(18, 6)
@@ -663,6 +665,7 @@ model Order {
   platform        Platform? @relation(fields: [platformId], references: [id], onDelete: SetNull)
   store           Store?   @relation(fields: [storeId], references: [id], onDelete: SetNull)
   channel         Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  influencerCollaboration InfluencerCollaboration? @relation(fields: [influencerCollaborationId], references: [id], onDelete: SetNull)
   creator         User?    @relation("OrderCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   items           OrderItem[]
   costs           OrderCost[]
@@ -681,6 +684,7 @@ model Order {
   @@index([platformId])
   @@index([storeId])
   @@index([channelId])
+  @@index([influencerCollaborationId])
   @@index([countryCode])
   @@index([currency])
   @@index([orderDate])

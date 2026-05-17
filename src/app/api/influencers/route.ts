@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     await requireApiSession();
     const params = request.nextUrl.searchParams;
     const page = parsePositiveInt(params.get("page"), 1);
-    const pageSize = Math.min(parsePositiveInt(params.get("pageSize"), 10), 50);
+    const pageSize = Math.min(parsePositiveInt(params.get("pageSize"), 10), 100);
     const where = buildInfluencerWhere(params);
     const [items, total, summary] = await Promise.all([
       prisma.influencerCollaboration.findMany({

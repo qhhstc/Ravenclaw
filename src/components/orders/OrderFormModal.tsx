@@ -20,6 +20,7 @@ import {
   type CountryOption,
   type CurrencyOption,
   type CustomerOption,
+  type InfluencerOption,
   type OrderRecord,
   type PlatformOption,
   type ProductOption,
@@ -35,6 +36,7 @@ type Props = {
   platforms: PlatformOption[];
   stores: StoreOption[];
   channels: ChannelOption[];
+  influencers: InfluencerOption[];
   countries: CountryOption[];
   currencies: CurrencyOption[];
   customers: CustomerOption[];
@@ -125,10 +127,29 @@ export function serializeOrderForm(values: Record<string, unknown>, formCosts: R
   };
 }
 
-export default function OrderFormModal({ open, saving, editing, brands, platforms, stores, channels, countries, currencies, customers, users, products, onCancel, onSubmit }: Props) {
+function isInfluencerChannel(channel?: ChannelOption | null) {
+  if (!channel) return false;
+  const text = `${channel.channelType ?? ""} ${channel.businessLine ?? ""} ${channel.channelName ?? ""}`.toLowerCase();
+  return text.includes("influencer") || text.includes("红人") || text.includes("达人");
+}
+
+function influencerLabel(item: InfluencerOption) {
+  return `${item.influencerName}${item.accountHandle ? ` / ${item.accountHandle}` : ""} (${item.platform})`;
+}
+
+export default function OrderFormModal({ open, saving, editing, brands, platforms, stores, channels, influencers, countries, currencies, customers, users, products, onCancel, onSubmit }: Props) {
   const [form] = Form.useForm();
   const values = Form.useWatch([], form) ?? {};
   const currency = String((values as Record<string, unknown>).currency || "USD");
+  const selectedChannelId = Number((values as Record<string, unknown>).channelId || 0);
+  const selectedBrandId = Number((values as Record<string, unknown>).brandId || 0);
+  const selectedChannel = channels.find((item) => item.id === selectedChannelId);
+  const showInfluencerSelect = isInfluencerChannel(selectedChannel);
+  const influencerOptions = influencers
+    .filter((item) => item.status !== "cancelled")
+    .filter((item) => !selectedChannelId || !item.channelId || item.channelId === selectedChannelId)
+    .filter((item) => !selectedBrandId || !item.brandId || item.brandId === selectedBrandId)
+    .map((item) => ({ label: influencerLabel(item), value: item.id }));
   const computed = calculate(values as Record<string, unknown>);
 
   function syncComputed() {
@@ -147,6 +168,11 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
     const store = stores.find((item) => item.id === storeId);
     if (!store) return;
     form.setFieldsValue({ brandId: store.brandId, platformId: store.platformId, currency: store.defaultCurrency ?? form.getFieldValue("currency") ?? "USD", countryCode: form.getFieldValue("countryCode") ?? store.primaryMarketCode });
+  }
+
+  function applyChannel(channelId?: number) {
+    const channel = channels.find((item) => item.id === channelId);
+    if (!isInfluencerChannel(channel)) form.setFieldsValue({ influencerCollaborationId: null });
   }
 
   async function fetchReferenceRate() {
@@ -201,7 +227,12 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
           <Form.Item name="brandId" label="品牌"><Select allowClear showSearch optionFilterProp="label" options={brands.map((item) => ({ label: item.name, value: item.id }))} /></Form.Item>
           <Form.Item name="platformId" label="平台"><Select allowClear showSearch optionFilterProp="label" options={platforms.map((item) => ({ label: item.name, value: item.id }))} /></Form.Item>
           <Form.Item name="storeId" label="店铺/站点"><Select allowClear showSearch optionFilterProp="label" options={stores.map((item) => ({ label: item.name, value: item.id }))} onChange={applyStore} /></Form.Item>
-          <Form.Item name="channelId" label="渠道"><Select allowClear showSearch optionFilterProp="label" options={channels.map((item) => ({ label: channelLabel(item), value: item.id }))} /></Form.Item>
+          <Form.Item name="channelId" label="渠道"><Select allowClear showSearch optionFilterProp="label" options={channels.map((item) => ({ label: channelLabel(item), value: item.id }))} onChange={applyChannel} /></Form.Item>
+          {showInfluencerSelect ? (
+            <Form.Item name="influencerCollaborationId" label="关联红人">
+              <Select allowClear showSearch optionFilterProp="label" placeholder="从红人合作模块选择已维护的达人" options={influencerOptions} />
+            </Form.Item>
+          ) : null}
           <Form.Item name="countryCode" label="国家"><Select allowClear showSearch optionFilterProp="label" options={countries.map((item) => ({ label: `${item.name} (${item.code})`, value: item.code }))} /></Form.Item>
           <Form.Item name="currency" label="订单币种"><Select options={currencies.map((item) => ({ label: item.code, value: item.code }))} /></Form.Item>
           <Form.Item label="汇率">

@@ -30,6 +30,7 @@ import {
   type CountryOption,
   type CurrencyOption,
   type CustomerOption,
+  type InfluencerOption,
   type OrderCostRecord,
   type OrderItemRecord,
   type OrderRecord,
@@ -67,6 +68,7 @@ export default function OrderDetailPage({ orderId }: Props) {
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
+  const [influencers, setInfluencers] = useState<InfluencerOption[]>([]);
   const [currentRole, setCurrentRole] = useState("viewer");
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
@@ -85,7 +87,7 @@ export default function OrderDetailPage({ orderId }: Props) {
 
   const loadOptions = useCallback(async () => {
     try {
-      const [brandData, platformData, storeData, channelData, countryData, currencyData, customerData, userData, productData] = await Promise.all([
+      const [brandData, platformData, storeData, channelData, countryData, currencyData, customerData, userData, productData, influencerData] = await Promise.all([
         fetchJson<OptionResponse<BrandOption>>("/api/basic/brands?pageSize=100&status=active"),
         fetchJson<OptionResponse<PlatformOption>>("/api/basic/platforms?pageSize=100&status=active"),
         fetchJson<OptionResponse<StoreOption>>("/api/basic/stores?pageSize=100&status=active"),
@@ -95,6 +97,7 @@ export default function OrderDetailPage({ orderId }: Props) {
         fetchJson<OptionResponse<CustomerOption>>("/api/crm/customers?pageSize=100"),
         fetchJson<OptionResponse<UserOption>>("/api/crm/users"),
         fetchJson<OptionResponse<ProductOption>>("/api/products?pageSize=100&status=active"),
+        fetchJson<OptionResponse<InfluencerOption>>("/api/influencers?pageSize=100"),
       ]);
       setBrands(brandData.items ?? []);
       setPlatforms(platformData.items ?? []);
@@ -105,6 +108,7 @@ export default function OrderDetailPage({ orderId }: Props) {
       setCustomers(customerData.items ?? []);
       setUsers(userData.items ?? []);
       setProducts(productData.items ?? []);
+      setInfluencers(influencerData.items ?? []);
     } catch {
       message.error("基础选项加载失败");
     }
@@ -263,6 +267,11 @@ export default function OrderDetailPage({ orderId }: Props) {
                         <Descriptions.Item label="平台">{order.platform?.name ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label="店铺/站点">{order.store?.name ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label="来源渠道">{channelLabel(order.channel)}</Descriptions.Item>
+                        <Descriptions.Item label="关联红人">
+                          {order.influencerCollaboration
+                            ? `${order.influencerCollaboration.influencerName}${order.influencerCollaboration.accountHandle ? ` / ${order.influencerCollaboration.accountHandle}` : ""}`
+                            : "-"}
+                        </Descriptions.Item>
                         <Descriptions.Item label="币种">{order.currency}</Descriptions.Item>
                         <Descriptions.Item label="收款方式">{order.paymentMethod || "-"}</Descriptions.Item>
                         <Descriptions.Item label="出货日期">{formatDate(order.shipmentDate)}</Descriptions.Item>
@@ -311,6 +320,7 @@ export default function OrderDetailPage({ orderId }: Props) {
             platforms={platforms}
             stores={stores}
             channels={channels}
+            influencers={influencers}
             countries={countries}
             currencies={currencies}
             customers={customers}

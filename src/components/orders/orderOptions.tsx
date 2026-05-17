@@ -104,6 +104,16 @@ export type ChannelOption = {
   platform?: { id: number; name: string } | null;
 };
 
+export type InfluencerOption = {
+  id: number;
+  influencerName: string;
+  platform: string;
+  accountHandle?: string | null;
+  status: string;
+  brandId?: number | null;
+  channelId?: number | null;
+};
+
 export type OrderItemRecord = {
   id?: number;
   productId?: number | null;
@@ -185,6 +195,7 @@ export type OrderRecord = {
   platformId?: number | null;
   storeId?: number | null;
   channelId?: number | null;
+  influencerCollaborationId?: number | null;
   countryCode?: string | null;
   currency: string;
   exchangeRate: number;
@@ -218,6 +229,7 @@ export type OrderRecord = {
   platform?: PlatformOption | null;
   store?: StoreOption | null;
   channel?: ChannelOption | null;
+  influencerCollaboration?: Pick<InfluencerOption, "id" | "influencerName" | "platform" | "accountHandle" | "status"> | null;
   quote?: { id: number; quoteNo: string; totalAmount: number; status: string } | null;
   inquiry?: { id: number; inquiryNo: string; title: string; status: string } | null;
   creator?: UserOption | null;

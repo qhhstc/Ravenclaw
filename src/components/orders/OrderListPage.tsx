@@ -26,6 +26,7 @@ import {
   type CountryOption,
   type CurrencyOption,
   type CustomerOption,
+  type InfluencerOption,
   type OrderRecord,
   type PlatformOption,
   type ProductOption,
@@ -108,12 +109,13 @@ export default function OrderListPage() {
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
+  const [influencers, setInfluencers] = useState<InfluencerOption[]>([]);
   const [currentRole, setCurrentRole] = useState("viewer");
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
   const loadOptions = useCallback(async () => {
     try {
-      const [brandData, platformData, storeData, channelData, countryData, currencyData, customerData, userData, productData] = await Promise.all([
+      const [brandData, platformData, storeData, channelData, countryData, currencyData, customerData, userData, productData, influencerData] = await Promise.all([
         fetchJson<OptionResponse<BrandOption>>("/api/basic/brands?pageSize=100&status=active"),
         fetchJson<OptionResponse<PlatformOption>>("/api/basic/platforms?pageSize=100&status=active"),
         fetchJson<OptionResponse<StoreOption>>("/api/basic/stores?pageSize=100&status=active"),
@@ -123,6 +125,7 @@ export default function OrderListPage() {
         fetchJson<OptionResponse<CustomerOption>>("/api/crm/customers?pageSize=100"),
         fetchJson<OptionResponse<UserOption>>("/api/crm/users"),
         fetchJson<OptionResponse<ProductOption>>("/api/products?pageSize=100&status=active"),
+        fetchJson<OptionResponse<InfluencerOption>>("/api/influencers?pageSize=100"),
       ]);
       setBrands(brandData.items ?? []);
       setPlatforms(platformData.items ?? []);
@@ -133,6 +136,7 @@ export default function OrderListPage() {
       setCustomers(customerData.items ?? []);
       setUsers(userData.items ?? []);
       setProducts(productData.items ?? []);
+      setInfluencers(influencerData.items ?? []);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "基础选项加载失败");
     }
@@ -389,6 +393,7 @@ export default function OrderListPage() {
         platforms={platforms}
         stores={stores}
         channels={channels}
+        influencers={influencers}
         countries={countries}
         currencies={currencies}
         customers={customers}
