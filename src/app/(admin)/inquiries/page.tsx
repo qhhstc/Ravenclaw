@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightOutlined, EditOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, EditOutlined, PrinterOutlined } from "@ant-design/icons";
 import { Button, Card, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useRouter } from "next/navigation";
@@ -133,12 +133,16 @@ export default function InquiriesPage() {
       title: "操作",
       key: "actions",
       fixed: "right",
-      width: 210,
+      width: 270,
       render: (_, row) => row.order || row.status === "converted" ? (
-        <Button type="link" size="small" onClick={() => row.order && router.push(`/orders/${row.order.id}`)}>查看订单</Button>
+        <Space size={0} className="whitespace-nowrap">
+          <Button type="link" size="small" icon={<PrinterOutlined />} onClick={() => window.open(`/quote-print/${row.id}`, "_blank", "noopener,noreferrer")}>打印</Button>
+          <Button type="link" size="small" onClick={() => row.order && router.push(`/orders/${row.order.id}`)}>查看订单</Button>
+        </Space>
       ) : (
         <Space size={0} className="whitespace-nowrap">
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>编辑</Button>
+          <Button type="link" size="small" icon={<PrinterOutlined />} onClick={() => window.open(`/quote-print/${row.id}`, "_blank", "noopener,noreferrer")}>打印</Button>
           <Popconfirm title="确认将该报价单转为订单？" onConfirm={() => convertQuote(row.id)}>
             <Button type="link" size="small" icon={<ArrowRightOutlined />} loading={convertingId === row.id}>转订单</Button>
           </Popconfirm>
@@ -160,7 +164,7 @@ export default function InquiriesPage() {
           columns={columns}
           dataSource={items}
           pagination={{ pageSize: 10, showSizeChanger: true }}
-          scroll={{ x: 1290 }}
+          scroll={{ x: 1350 }}
           locale={{ emptyText: <Empty description="暂无报价数据" /> }}
         />
       </Card>
