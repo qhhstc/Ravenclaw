@@ -63,6 +63,10 @@ export function canManageProducts(role?: string | null) {
   return ["admin", "finance"].includes(role ?? "");
 }
 
+export function canManageInfluencers(role?: string | null) {
+  return ["admin", "sales", "finance"].includes(role ?? "");
+}
+
 export function canManageAccounts(role?: string | null) {
   return role === "admin";
 }

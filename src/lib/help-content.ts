@@ -189,6 +189,40 @@ export const defaultHelpContent: HelpContent = {
   relatedFlows: sharedFlows,
 };
 
+const influencerHelpContent: HelpContent = {
+  title: "红人合作使用说明",
+  summary: "红人合作用于管理达人线索、寄样/付费合作、内容发布、费用投入和销售转化，帮助判断哪些红人值得继续合作。",
+  quickStart: [
+    "点击新增合作，先填写红人名称、平台、账号、主页链接、国家和内容类目。",
+    "选择合作类型、状态、品牌、渠道和负责人，方便后续按经营口径复盘。",
+    "填写样品 SKU、样品数量、样品成本、付费/佣金金额、币种和汇率。",
+    "内容发布后补充内容链接、优惠码、带来销售额和订单数，系统会自动计算 ROI。",
+    "用下次跟进日期记录下一步动作，例如催内容、确认账单或评估是否长期合作。",
+  ],
+  sections: [
+    {
+      title: "字段怎么填",
+      items: [
+        "合作类型：寄样合作、付费贴文、佣金合作、联盟分销、长期合作等。",
+        "状态：从线索中、已联系、已寄样、等内容、已发布到已结算，按真实进度维护。",
+        "总成本：样品成本加付费/佣金金额，并按汇率换算成基础币种。",
+        "ROI：带来销售额按汇率换算后除以总成本；成本为 0 时不显示 ROI。",
+      ],
+    },
+    {
+      title: "和其他模块的关系",
+      items: [
+        "品牌和渠道来自基础资料，建议先维护红人/达人渠道。",
+        "红人合作用于看单个达人投入产出；渠道数据用于看整条红人渠道的周/月表现。",
+        "如果红人合作最终产生订单，订单仍然在订单中心录入并核算利润。",
+      ],
+    },
+  ],
+  relatedFlows: [sharedFlows[3]],
+};
+
 export function getHelpContent(pathname: string) {
-  return helpByRoute[getSelectedRoute(pathname)] ?? defaultHelpContent;
+  const selectedRoute = getSelectedRoute(pathname);
+  if (selectedRoute === "/influencers") return influencerHelpContent;
+  return helpByRoute[selectedRoute] ?? defaultHelpContent;
 }

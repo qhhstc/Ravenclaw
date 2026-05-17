@@ -26,6 +26,7 @@ model User {
   orderPayments OrderPayment[]     @relation("OrderPaymentCreator")
   orderShipments OrderShipment[]   @relation("OrderShipmentCreator")
   attachments   Attachment[]       @relation("AttachmentUploader")
+  influencerCollaborations InfluencerCollaboration[] @relation("InfluencerOwner")
 }
 
 model Brand {
@@ -47,6 +48,7 @@ model Brand {
   quotes      Quote[]
   orders      Order[]
   products    Product[]
+  influencerCollaborations InfluencerCollaboration[]
 }
 
 model Platform {
@@ -117,6 +119,7 @@ model Channel {
   inquiries     Inquiry[]
   quotes        Quote[]
   orders        Order[]
+  influencerCollaborations InfluencerCollaboration[]
 
   @@unique([businessLine, channelName, storeId])
   @@index([brandId])
@@ -464,6 +467,58 @@ model CustomerFollowup {
   owner          User?    @relation("FollowupOwner", fields: [ownerId], references: [id])
 
   @@index([customerId])
+  @@index([ownerId])
+  @@index([nextFollowupAt])
+}
+
+model InfluencerCollaboration {
+  id               Int       @id @default(autoincrement())
+  influencerName   String
+  platform         String
+  accountHandle    String?
+  profileUrl       String?
+  countryCode      String?
+  followerCount    Int       @default(0)
+  avgViews         Int       @default(0)
+  contentCategory  String?
+  cooperationType  String    @default("sample")
+  status           String    @default("prospecting")
+  brandId          Int?
+  channelId        Int?
+  ownerId          Int?
+  contactName      String?
+  email            String?
+  whatsapp         String?
+  startDate        DateTime?
+  endDate          DateTime?
+  sampleSku        String?
+  sampleQuantity   Int       @default(0)
+  sampleCost       Decimal   @default(0) @db.Decimal(18, 2)
+  feeAmount        Decimal   @default(0) @db.Decimal(18, 2)
+  currency         String    @default("USD")
+  exchangeRate     Decimal   @default(1) @db.Decimal(18, 6)
+  totalCostBase    Decimal   @default(0) @db.Decimal(18, 2)
+  contentCount     Int       @default(0)
+  postUrl          String?
+  couponCode       String?
+  salesAmount      Decimal   @default(0) @db.Decimal(18, 2)
+  orderCount       Int       @default(0)
+  roi              Decimal?  @db.Decimal(18, 6)
+  rating           String?
+  nextFollowupAt   DateTime?
+  remark           String?   @db.Text
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  brand            Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  channel          Channel?  @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  owner            User?     @relation("InfluencerOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([influencerName])
+  @@index([platform])
+  @@index([status])
+  @@index([cooperationType])
+  @@index([brandId])
+  @@index([channelId])
   @@index([ownerId])
   @@index([nextFollowupAt])
 }
