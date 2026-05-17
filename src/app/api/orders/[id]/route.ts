@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { apiError, normalizeOrderInput, orderDetailInclude, orderInclude } from "@/lib/orders";
+import { syncOrderPaymentSummary, syncOrderShipmentSummary } from "@/lib/order-records";
+import { decimal } from "@/lib/order-profit-calculations";
+import { apiError, normalizeOrderInput, orderDetailInclude, orderInclude, toNumber } from "@/lib/orders";
 import { ApiAuthError, canDeleteOrder, canEditOrder, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
@@ -28,14 +30,14 @@ export async function PATCH(request: NextRequest, context: Context) {
     const item = await prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
         where: { id: Number(id) },
-        select: { orderNo: true, createdBy: true, salespersonId: true, orderStatus: true },
+        select: { orderNo: true, createdBy: true, salespersonId: true, orderStatus: true, _count: { select: { payments: true, shipments: true } } },
       });
       if (!existing) throw new Error("订单不存在或已被删除");
       if (!canEditOrder(session.role, existing, session.userId)) throw new ApiAuthError("只能编辑自己负责且未关闭的订单", 403);
       const normalized = normalizeOrderInput(input, existing.orderNo, session);
       await tx.orderItem.deleteMany({ where: { orderId: Number(id) } });
       await tx.orderCost.deleteMany({ where: { orderId: Number(id) } });
-      const updated = await tx.order.update({
+      await tx.order.update({
         where: { id: Number(id) },
         data: {
           ...normalized.data,
@@ -45,8 +47,26 @@ export async function PATCH(request: NextRequest, context: Context) {
           items: { create: normalized.items },
           costs: { create: normalized.costs },
         },
-        include: orderInclude,
       });
+      if (existing._count.payments > 0) {
+        await syncOrderPaymentSummary(tx, Number(id));
+      } else if (toNumber(normalized.data.paidAmount) > 0) {
+        await tx.orderPayment.create({
+          data: {
+            orderId: Number(id),
+            paymentDate: normalized.data.orderDate,
+            amount: normalized.data.paidAmount,
+            currency: normalized.data.currency,
+            exchangeRate: normalized.data.exchangeRate,
+            baseAmount: decimal(toNumber(normalized.data.paidAmount) * toNumber(normalized.data.exchangeRate, 1)),
+            paymentMethod: normalized.data.paymentMethod,
+            referenceNo: "initial-paid-amount",
+            createdBy: session.userId,
+          },
+        });
+        await syncOrderPaymentSummary(tx, Number(id));
+      }
+      if (existing._count.shipments > 0) await syncOrderShipmentSummary(tx, Number(id));
       if (existing.orderStatus !== normalized.data.orderStatus) {
         await tx.orderStatusLog.create({
           data: {
@@ -58,7 +78,7 @@ export async function PATCH(request: NextRequest, context: Context) {
           },
         });
       }
-      return updated;
+      return tx.order.findUnique({ where: { id: Number(id) }, include: orderInclude });
     });
     return NextResponse.json({ item });
   } catch (error) {

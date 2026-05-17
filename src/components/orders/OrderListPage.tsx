@@ -65,6 +65,8 @@ function toQuery(filters: Filters, page = 1, pageSize = 10) {
 function parseInitialFilters(params: URLSearchParams): Filters {
   return {
     paymentDue: params.get("paymentDue") || undefined,
+    paymentStatus: params.get("paymentStatus") || undefined,
+    shippingStatus: params.get("shippingStatus") || undefined,
   };
 }
 

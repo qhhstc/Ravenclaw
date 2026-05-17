@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logApiDuration } from "@/lib/api-logger";
-import { apiError, buildOrderWhere, nextOrderNo, normalizeOrderInput, orderInclude, parsePositiveInt } from "@/lib/orders";
+import { decimal } from "@/lib/order-profit-calculations";
+import { apiError, buildOrderWhere, nextOrderNo, normalizeOrderInput, orderInclude, parsePositiveInt, toNumber } from "@/lib/orders";
 import { canCreateOrder, forbidden, requireApiSession } from "@/lib/permissions";
 
 export async function GET(request: NextRequest) {
@@ -39,6 +40,21 @@ export async function POST(request: NextRequest) {
           orderNo,
           items: { create: normalized.items },
           costs: { create: normalized.costs },
+          payments:
+            toNumber(normalized.data.paidAmount) > 0
+              ? {
+                  create: {
+                    paymentDate: normalized.data.orderDate,
+                    amount: normalized.data.paidAmount,
+                    currency: normalized.data.currency,
+                    exchangeRate: normalized.data.exchangeRate,
+                    baseAmount: decimal(toNumber(normalized.data.paidAmount) * toNumber(normalized.data.exchangeRate, 1)),
+                    paymentMethod: normalized.data.paymentMethod,
+                    referenceNo: "initial-paid-amount",
+                    createdBy: session.userId,
+                  },
+                }
+              : undefined,
           statusLogs: {
             create: {
               fromStatus: null,

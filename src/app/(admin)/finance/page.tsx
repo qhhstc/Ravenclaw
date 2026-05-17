@@ -1,5 +1,5 @@
-import ModulePlaceholder from "@/components/common/ModulePlaceholder";
+import FinanceCenterPage from "@/components/finance/FinanceCenterPage";
 
 export default function FinancePage() {
-  return <ModulePlaceholder title="财务中心模块开发中" />;
+  return <FinanceCenterPage />;
 }

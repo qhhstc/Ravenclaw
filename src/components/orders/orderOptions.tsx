@@ -134,6 +134,45 @@ export type OrderCostRecord = {
   remark?: string | null;
 };
 
+export type OrderPaymentRecord = {
+  id: number;
+  orderId: number;
+  paymentDate: string;
+  amount: number;
+  currency: string;
+  exchangeRate: number;
+  baseAmount: number;
+  paymentMethod?: string | null;
+  referenceNo?: string | null;
+  payerName?: string | null;
+  status: string;
+  remark?: string | null;
+  createdBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  creator?: UserOption | null;
+};
+
+export type OrderShipmentRecord = {
+  id: number;
+  orderId: number;
+  shipmentDate: string;
+  deliveredAt?: string | null;
+  status: string;
+  isFinalShipment: boolean;
+  logisticsProvider?: string | null;
+  trackingNo?: string | null;
+  packageCount: number;
+  freightAmount: number;
+  currency: string;
+  exchangeRate: number;
+  remark?: string | null;
+  createdBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  creator?: UserOption | null;
+};
+
 export type OrderRecord = {
   id: number;
   orderNo: string;
@@ -184,6 +223,8 @@ export type OrderRecord = {
   creator?: UserOption | null;
   items?: OrderItemRecord[];
   costs?: OrderCostRecord[];
+  payments?: OrderPaymentRecord[];
+  shipments?: OrderShipmentRecord[];
   statusLogs?: OrderStatusLogRecord[];
 };
 

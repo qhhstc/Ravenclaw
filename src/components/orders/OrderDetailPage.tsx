@@ -8,7 +8,8 @@ import { useRouter } from "next/navigation";
 import OrderAttachmentPanel from "./OrderAttachmentPanel";
 import OrderCostModal from "./OrderCostModal";
 import OrderFormModal from "./OrderFormModal";
-import OrderPaymentPlaceholder from "./OrderPaymentPlaceholder";
+import OrderPaymentPanel from "./OrderPaymentPanel";
+import OrderShipmentPanel from "./OrderShipmentPanel";
 import OrderSourcePanel from "./OrderSourcePanel";
 import OrderStatusLogPanel from "./OrderStatusLogPanel";
 import {
@@ -295,7 +296,8 @@ export default function OrderDetailPage({ orderId }: Props) {
                 { key: "source", label: "来源信息", children: <OrderSourcePanel order={order} /> },
                 { key: "statusLogs", label: "状态记录", children: <OrderStatusLogPanel orderId={order.id} currentStatus={order.orderStatus} logs={order.statusLogs ?? []} canWrite={canEditCurrentOrder} onChanged={loadOrder} /> },
                 { key: "attachments", label: "附件资料", children: <OrderAttachmentPanel orderId={order.id} /> },
-                { key: "payments", label: "收款记录", children: <OrderPaymentPlaceholder order={order} /> },
+                { key: "payments", label: "收款记录", children: <OrderPaymentPanel order={order} canWrite={["admin", "finance"].includes(currentRole)} onChanged={loadOrder} /> },
+                { key: "shipments", label: "发货记录", children: <OrderShipmentPanel order={order} canWrite={canEditCurrentOrder} onChanged={loadOrder} /> },
               ]}
             />
           </Card>

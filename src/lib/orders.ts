@@ -27,6 +27,8 @@ export const orderDetailInclude = {
   items: { orderBy: { id: "asc" }, include: { product: { select: { id: true, sku: true, name: true, specification: true } } } },
   costs: { orderBy: { id: "asc" } },
   statusLogs: { orderBy: { createdAt: "desc" }, include: { creator: { select: { id: true, name: true, email: true } } } },
+  payments: { where: { status: { not: "void" } }, orderBy: [{ paymentDate: "desc" }, { id: "desc" }], include: { creator: { select: { id: true, name: true, email: true } } } },
+  shipments: { where: { status: { not: "cancelled" } }, orderBy: [{ shipmentDate: "desc" }, { id: "desc" }], include: { creator: { select: { id: true, name: true, email: true } } } },
 } satisfies Prisma.OrderInclude;
 
 export function apiError(error: unknown, fallback = "操作失败，请稍后重试") {
