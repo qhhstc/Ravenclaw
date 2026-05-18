@@ -1,7 +1,7 @@
 "use client";
 
 import { DownloadOutlined, DollarOutlined, QuestionCircleOutlined, ReloadOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Col, DatePicker, Empty, List, Modal, Progress, Row, Select, Space, Spin, Statistic, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Card, Col, DatePicker, Empty, Input, List, Modal, Progress, Row, Select, Space, Spin, Statistic, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import dynamic from "next/dynamic";
@@ -83,6 +83,9 @@ type DashboardOverviewData = {
     adSpendRatio: number | null;
     channelCount: number;
     paidChannelCount: number;
+    netProfit: number;
+    receivableAmount: number;
+    receivableCount: number;
   };
   weeklyTrend: Array<{ weekNumber: number; week: string; salesAmount: number; adSpend: number }>;
   businessLineShare: Array<{ name: string; salesAmount: number; ratio: number }>;
@@ -141,6 +144,7 @@ type BusinessBlocksData = {
     remark?: string | null;
   }>;
   warnings: Array<{
+    id: number | null;
     businessBlock: string;
     blockName: string;
     channelId: number | null;
@@ -182,7 +186,7 @@ type AiStatus = {
 };
 
 const emptyOverview: DashboardOverviewData = {
-  kpis: { salesAmount: 0, adSpend: 0, roi: null, adSpendRatio: null, channelCount: 0, paidChannelCount: 0 },
+  kpis: { salesAmount: 0, adSpend: 0, roi: null, adSpendRatio: null, channelCount: 0, paidChannelCount: 0, netProfit: 0, receivableAmount: 0, receivableCount: 0 },
   weeklyTrend: [],
   businessLineShare: [],
   roiRanking: [],
@@ -315,8 +319,18 @@ export default function DashboardOverview() {
   const [businessBlocksLoading, setBusinessBlocksLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [aiRunning, setAiRunning] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [definitionOpen, setDefinitionOpen] = useState(false);
   const [blockDetail, setBlockDetail] = useState<BusinessBlocksData["blockPerformance"][number] | null>(null);
+  const [editingWarning, setEditingWarning] = useState<BusinessBlocksData["warnings"][number] | null>(null);
+  const [warningDraft, setWarningDraft] = useState({
+    manualActionSuggestion: "",
+    decisionOwner: "",
+    decisionDeadline: "",
+    warningLevel: "B",
+    remark: "",
+  });
+  const [savingWarning, setSavingWarning] = useState(false);
 
   const columns = useMemo<ColumnsType<DashboardOverviewData["weeklyTable"][number]>>(
     () => [
@@ -383,8 +397,8 @@ export default function DashboardOverview() {
         key: "action",
         width: 120,
         fixed: "right",
-        render: () => (
-          <Button type="link" size="small" onClick={() => message.info("决策负责人和 deadline 后续支持手动维护。")}>
+        render: (_, row) => (
+          <Button type="link" size="small" disabled={!businessBlocks.visibility.canEditDecisions || !row.id} onClick={() => openWarningEditor(row)}>
             编辑决策
           </Button>
         ),
@@ -392,7 +406,7 @@ export default function DashboardOverview() {
     );
 
     return columns;
-  }, [businessBlocks.warnings]);
+  }, [businessBlocks.visibility.canEditDecisions, businessBlocks.warnings]);
 
   const budgetColumns = useMemo<ColumnsType<BusinessBlocksData["budgetSuggestions"][number]>>(
     () => [
@@ -413,8 +427,8 @@ export default function DashboardOverview() {
     { title: "广告占比", value: percentFormatter(overview.kpis.adSpendRatio) },
     { title: "渠道数量", value: overview.kpis.channelCount },
     { title: "有广告费渠道数", value: overview.kpis.paidChannelCount },
-    { title: "净利润", value: "待接入" },
-    { title: "应收账款", value: "待接入" },
+    { title: "净利润", value: moneyFormatter(overview.kpis.netProfit) },
+    { title: "应收账款", value: moneyFormatter(overview.kpis.receivableAmount) },
   ];
 
   const loadOptions = useCallback(async () => {
@@ -545,6 +559,42 @@ export default function DashboardOverview() {
     void loadBusinessBlocks(filters);
   }
 
+  function openWarningEditor(row: BusinessBlocksData["warnings"][number]) {
+    if (!row.id) {
+      message.info("系统规则预警尚未入库，AI 分析生成预警后可编辑决策。");
+      return;
+    }
+    setEditingWarning(row);
+    setWarningDraft({
+      manualActionSuggestion: row.suggestedAction === "待填写 / 待 AI 分析" ? "" : row.suggestedAction || "",
+      decisionOwner: row.decisionOwner || "",
+      decisionDeadline: row.decisionDeadline || "",
+      warningLevel: row.warningLevel || "B",
+      remark: row.remark || "",
+    });
+  }
+
+  async function saveWarningDecision() {
+    if (!editingWarning?.id) return;
+    setSavingWarning(true);
+    try {
+      const response = await fetch(`/api/dashboard/business-warnings/${editingWarning.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(warningDraft),
+      });
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) throw new Error(data.message || "预警决策保存失败");
+      message.success("预警决策已保存");
+      setEditingWarning(null);
+      await loadBusinessBlocks(filters);
+    } catch (saveError) {
+      message.error(saveError instanceof Error ? saveError.message : "预警决策保存失败");
+    } finally {
+      setSavingWarning(false);
+    }
+  }
+
   const aiConfigured = Boolean(aiStatus?.enabled && aiStatus.modelConfigured && (aiStatus.tokenConfigured || aiStatus.apiKeyConfigured));
 
   async function runBusinessBlockAnalysis() {
@@ -571,6 +621,38 @@ export default function DashboardOverview() {
       message.error(runError instanceof Error ? runError.message : "四板块 AI 分析失败");
     } finally {
       setAiRunning(false);
+    }
+  }
+
+  function filenameFromDisposition(disposition: string | null, fallback: string) {
+    const utf8Match = disposition?.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+    const fallbackMatch = disposition?.match(/filename="?([^";]+)"?/i);
+    return fallbackMatch?.[1] ?? fallback;
+  }
+
+  async function exportDashboard() {
+    setExporting(true);
+    try {
+      const response = await fetch(`/api/dashboard/export?${toQuery(filters)}`);
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || "导出失败");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filenameFromDisposition(response.headers.get("Content-Disposition"), "经营看板.xlsx");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      message.success("经营看板 Excel 已开始下载");
+    } catch (exportError) {
+      message.error(exportError instanceof Error ? exportError.message : "导出失败");
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -610,7 +692,7 @@ export default function DashboardOverview() {
                   AI 分析四板块经营
                 </Button>
               ) : null}
-              <Button icon={<DownloadOutlined />} disabled>导出报表</Button>
+              {businessBlocks.visibility.canViewProfit ? <Button icon={<DownloadOutlined />} loading={exporting} onClick={exportDashboard}>导出报表</Button> : null}
             </Space>
           </div>
         </Spin>
@@ -803,6 +885,74 @@ export default function DashboardOverview() {
           pagination={false}
           locale={{ emptyText: <Empty description="暂无字段口径说明" /> }}
         />
+      </Modal>
+
+      <Modal
+        title="编辑预警决策"
+        open={Boolean(editingWarning)}
+        width={640}
+        confirmLoading={savingWarning}
+        okText="保存"
+        cancelText="取消"
+        onOk={saveWarningDecision}
+        onCancel={() => setEditingWarning(null)}
+      >
+        {editingWarning ? (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-[var(--soft-bg)] p-3 text-sm text-[var(--muted)]">
+              <div className="font-medium text-[var(--foreground)]">{editingWarning.blockName} · {editingWarning.warningType}</div>
+              <div className="mt-1">本月数据：{moneyFormatter(editingWarning.currentValue)}</div>
+            </div>
+            <div>
+              <Typography.Text type="secondary">建议动作</Typography.Text>
+              <Input.TextArea
+                className="mt-2"
+                rows={3}
+                value={warningDraft.manualActionSuggestion}
+                placeholder="填写人工决策动作，保存后优先展示人工内容"
+                onChange={(event) => setWarningDraft((current) => ({ ...current, manualActionSuggestion: event.target.value }))}
+              />
+            </div>
+            <Row gutter={[12, 12]}>
+              <Col xs={24} md={8}>
+                <Typography.Text type="secondary">预警等级</Typography.Text>
+                <Select
+                  className="mt-2 w-full"
+                  value={warningDraft.warningLevel}
+                  options={["A", "B", "C", "D"].map((level) => ({ label: level, value: level }))}
+                  onChange={(warningLevel) => setWarningDraft((current) => ({ ...current, warningLevel }))}
+                />
+              </Col>
+              <Col xs={24} md={8}>
+                <Typography.Text type="secondary">负责人</Typography.Text>
+                <Input
+                  className="mt-2"
+                  value={warningDraft.decisionOwner}
+                  placeholder="如：运营负责人"
+                  onChange={(event) => setWarningDraft((current) => ({ ...current, decisionOwner: event.target.value }))}
+                />
+              </Col>
+              <Col xs={24} md={8}>
+                <Typography.Text type="secondary">Deadline</Typography.Text>
+                <DatePicker
+                  className="mt-2 w-full"
+                  value={warningDraft.decisionDeadline ? dayjs(warningDraft.decisionDeadline) : null}
+                  onChange={(value) => setWarningDraft((current) => ({ ...current, decisionDeadline: value ? value.format("YYYY-MM-DD") : "" }))}
+                />
+              </Col>
+            </Row>
+            <div>
+              <Typography.Text type="secondary">备注</Typography.Text>
+              <Input.TextArea
+                className="mt-2"
+                rows={2}
+                value={warningDraft.remark}
+                placeholder="补充判断依据或跟进说明"
+                onChange={(event) => setWarningDraft((current) => ({ ...current, remark: event.target.value }))}
+              />
+            </div>
+          </div>
+        ) : null}
       </Modal>
 
       <Modal

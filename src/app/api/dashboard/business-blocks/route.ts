@@ -181,6 +181,7 @@ function buildFallbackWarnings(metrics: MetricWithChannel[]) {
       const warningType = grossProfit < 0 ? "系统规则：经营毛利为负" : roiValue !== null && roiValue < 1 ? "系统规则：ROI 偏低" : "";
       if (!warningType) return null;
       return {
+        id: null,
         businessBlock: block,
         blockName: businessBlockLabel(block),
         channelId: null,
@@ -202,6 +203,7 @@ function buildFallbackWarnings(metrics: MetricWithChannel[]) {
 function buildWarnings(warnings: BusinessWarning[], metrics: MetricWithChannel[]) {
   if (!warnings.length) return buildFallbackWarnings(metrics);
   return warnings.map((warning) => ({
+    id: warning.id,
     businessBlock: warning.businessBlock,
     blockName: businessBlockLabel(warning.businessBlock),
     channelId: warning.channelId,

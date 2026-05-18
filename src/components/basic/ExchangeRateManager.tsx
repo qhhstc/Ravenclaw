@@ -1,7 +1,7 @@
 "use client";
 
 import { SyncOutlined } from "@ant-design/icons";
-import { Button, message } from "antd";
+import { Button, Modal, Table, Tag, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useState } from "react";
 import BasicResourceManager from "./BasicResourceManager";
@@ -16,6 +16,15 @@ type ExchangeRateRecord = BasicRecord & {
   updatedAt: string;
 };
 
+type SyncResult = {
+  from: string;
+  to: string;
+  ok: boolean;
+  rate?: number;
+  source?: string;
+  message?: string;
+};
+
 export default function ExchangeRateManager({ options }: { options: BasicOptionState }) {
   const [syncing, setSyncing] = useState(false);
 
@@ -23,9 +32,32 @@ export default function ExchangeRateManager({ options }: { options: BasicOptionS
     setSyncing(true);
     try {
       const response = await fetch("/api/basic/exchange-rates/sync", { method: "POST" });
-      const data = (await response.json()) as { updated?: number; failed?: number; message?: string };
+      const data = (await response.json()) as { updated?: number; failed?: number; results?: SyncResult[]; message?: string };
       if (!response.ok) throw new Error(data.message || "汇率更新失败");
-      message.success(`汇率更新完成：成功 ${data.updated ?? 0} 条，失败 ${data.failed ?? 0} 条`);
+      if ((data.updated ?? 0) > 0) {
+        message.success(`汇率更新完成：成功 ${data.updated ?? 0} 条，失败 ${data.failed ?? 0} 条`);
+      } else {
+        message.warning("暂未获取到外部最新汇率，请检查网络或手动维护汇率");
+      }
+      Modal.info({
+        title: "汇率更新结果",
+        width: 720,
+        content: (
+          <Table<SyncResult>
+            className="mt-4"
+            size="small"
+            rowKey={(row) => `${row.from}-${row.to}`}
+            pagination={false}
+            dataSource={data.results ?? []}
+            columns={[
+              { title: "币种对", width: 140, render: (_, row) => `${row.from}/${row.to}` },
+              { title: "状态", width: 90, render: (_, row) => (row.ok ? <Tag color="green">成功</Tag> : <Tag color="orange">未更新</Tag>) },
+              { title: "汇率", width: 120, align: "right", render: (_, row) => (row.rate ? Number(row.rate).toFixed(6) : "-") },
+              { title: "来源/说明", render: (_, row) => row.source || row.message || "-" },
+            ]}
+          />
+        ),
+      });
       refresh();
     } catch (error) {
       message.error(error instanceof Error ? error.message : "汇率更新失败");
