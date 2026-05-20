@@ -99,10 +99,12 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   margin: 0;
+  overscroll-behavior-x: none;
 }
 
 html,
 body {
+  overscroll-behavior-x: none;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -243,6 +245,7 @@ a {
   position: relative;
   isolation: isolate;
   overflow-x: clip;
+  overscroll-behavior-x: contain;
 }
 
 .ant-card {
@@ -304,6 +307,19 @@ a {
 .ant-dropdown .ant-dropdown-menu,
 .ant-tooltip .ant-tooltip-inner {
   border-color: var(--border);
+}
+
+.ant-modal,
+.ant-modal-root,
+.ant-modal-wrap,
+.ant-modal-content,
+.ant-drawer,
+.ant-drawer-content,
+.ant-table-wrapper,
+.ant-table-container,
+.ant-table-content,
+.ant-table-body {
+  overscroll-behavior-x: contain;
 }
 
 .ant-descriptions-bordered .ant-descriptions-item-label,

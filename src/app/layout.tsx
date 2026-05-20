@@ -1,6 +1,7 @@
 import { AntdRegistry } from "@ant-design/nextjs-registry";
 import type { Metadata } from "next";
 import AntdProvider from "@/components/common/AntdProvider";
+import HorizontalGestureGuard from "@/components/layout/HorizontalGestureGuard";
 import { getThemeBootstrapScript } from "@/lib/theme";
 import "./globals.css";
 
@@ -19,7 +20,10 @@ export default function RootLayout({
       <body className="min-h-full bg-[var(--background)] text-[var(--foreground)]">
         <script dangerouslySetInnerHTML={{ __html: getThemeBootstrapScript() }} />
         <AntdRegistry>
-          <AntdProvider>{children}</AntdProvider>
+          <AntdProvider>
+            <HorizontalGestureGuard />
+            {children}
+          </AntdProvider>
         </AntdRegistry>
       </body>
     </html>
