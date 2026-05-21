@@ -108,7 +108,7 @@ export default function ProductListPage() {
   function openCreate() {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ currency: "USD", status: "active", defaultPurchasePrice: 0, defaultPackagingCost: 0 });
+    form.setFieldsValue({ currency: "CNY", status: "active", defaultPurchasePrice: 0, defaultPackagingCost: 0 });
     setModalOpen(true);
   }
 
@@ -283,7 +283,7 @@ export default function ProductListPage() {
       />
 
       <Modal title={editing ? "编辑产品" : "新增产品"} open={modalOpen} width={860} confirmLoading={saving} onCancel={() => setModalOpen(false)} onOk={saveProduct} destroyOnHidden>
-        <Form form={form} layout="vertical" initialValues={{ currency: "USD", status: "active", defaultPurchasePrice: 0, defaultPackagingCost: 0 }}>
+        <Form form={form} layout="vertical" initialValues={{ currency: "CNY", status: "active", defaultPurchasePrice: 0, defaultPackagingCost: 0 }}>
           <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
             <Form.Item name="sku" label="SKU" rules={[{ required: true, message: "请输入 SKU" }]}><Input /></Form.Item>
             <Form.Item name="name" label="产品名称" rules={[{ required: true, message: "请输入产品名称" }]}><Input /></Form.Item>

@@ -32,7 +32,8 @@ function toBase(order: FinanceOrder, value: unknown) {
 }
 
 function sumBase(orders: FinanceOrder[], field: keyof Pick<FinanceOrder, "salesAmount" | "paidAmount" | "unpaidAmount" | "totalCost" | "grossProfit">) {
-  return Number(orders.reduce((sum, order) => sum + toBase(order, order[field]), 0).toFixed(2));
+  const alreadyBaseFields = new Set<keyof Pick<FinanceOrder, "salesAmount" | "paidAmount" | "unpaidAmount" | "totalCost" | "grossProfit">>(["totalCost", "grossProfit"]);
+  return Number(orders.reduce((sum, order) => sum + (alreadyBaseFields.has(field) ? toNumber(order[field]) : toBase(order, order[field])), 0).toFixed(2));
 }
 
 function paymentRows(orders: FinanceOrder[]) {

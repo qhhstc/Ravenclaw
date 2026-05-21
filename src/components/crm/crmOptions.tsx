@@ -94,6 +94,8 @@ export type CustomerRecord = {
     orderNo: string;
     orderDate: string;
     currency: string;
+    exchangeRate?: number;
+    baseCurrency?: string;
     salesAmount: number;
     totalCost: number;
     grossProfit: number;
@@ -108,7 +110,13 @@ export type CustomerRecord = {
       saleUnitPrice: number;
       salesSubtotal?: number;
       purchaseUnitCost: number;
+      purchaseCurrency?: string;
+      purchaseCostSubtotal?: number;
+      purchaseCostBase?: number;
       packagingUnitCost: number;
+      packagingCurrency?: string;
+      packagingCostSubtotal?: number;
+      packagingCostBase?: number;
     }>;
   }>;
 };

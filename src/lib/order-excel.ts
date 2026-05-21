@@ -64,6 +64,7 @@ export async function createOrderListWorkbook(params: URLSearchParams, session: 
     "出货日期",
     "产品摘要",
     "币种",
+    "本位币",
     "销售总金额",
     "总成本",
     "毛利",
@@ -85,6 +86,7 @@ export async function createOrderListWorkbook(params: URLSearchParams, session: 
       order.shipmentDate,
       productSummary,
       order.currency,
+      order.baseCurrency,
       toNumber(order.salesAmount),
       toNumber(order.totalCost),
       toNumber(order.grossProfit),
@@ -98,12 +100,13 @@ export async function createOrderListWorkbook(params: URLSearchParams, session: 
     ]);
     row.getCell(3).numFmt = "yyyy-mm-dd";
     row.getCell(4).numFmt = "yyyy-mm-dd";
-    row.getCell(10).numFmt = percentFormat;
-    if (toNumber(order.grossProfit) < 0) row.getCell(9).font = { color: { argb: "FFFF4D4F" }, bold: true };
-    if (order.grossMargin != null && toNumber(order.grossMargin) < 0.2) row.getCell(10).font = { color: { argb: "FFFA8C16" }, bold: true };
+    row.getCell(11).numFmt = percentFormat;
+    if (toNumber(order.grossProfit) < 0) row.getCell(10).font = { color: { argb: "FFFF4D4F" }, bold: true };
+    if (order.grossMargin != null && toNumber(order.grossMargin) < 0.2) row.getCell(11).font = { color: { argb: "FFFA8C16" }, bold: true };
   });
   const totalRow = sheet.addRow([
     "合计",
+    "",
     "",
     "",
     "",
@@ -118,8 +121,8 @@ export async function createOrderListWorkbook(params: URLSearchParams, session: 
   ]);
   totalRow.font = { bold: true };
   totalRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF7E6" } };
-  setWidths(sheet, [18, 26, 13, 13, 42, 9, 14, 14, 14, 11, 14, 14, 14, 14, 14, 28]);
-  styleMoneyColumns(sheet, [7, 8, 9, 11, 12]);
+  setWidths(sheet, [18, 26, 13, 13, 42, 9, 9, 14, 14, 14, 11, 14, 14, 14, 14, 14, 28]);
+  styleMoneyColumns(sheet, [8, 9, 10, 12, 13]);
   return workbook;
 }
 

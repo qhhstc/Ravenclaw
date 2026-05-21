@@ -40,8 +40,8 @@ function baseAmount(value: unknown, exchangeRate: unknown) {
 
 function summarizeOrders(orders: Array<{ salesAmount: unknown; totalCost: unknown; grossProfit: unknown; exchangeRate?: unknown }>) {
   const salesAmount = orders.reduce((sum, order) => sum + baseAmount(order.salesAmount, order.exchangeRate), 0);
-  const totalCost = orders.reduce((sum, order) => sum + baseAmount(order.totalCost, order.exchangeRate), 0);
-  const grossProfit = orders.reduce((sum, order) => sum + baseAmount(order.grossProfit, order.exchangeRate), 0);
+  const totalCost = orders.reduce((sum, order) => sum + toNumber(order.totalCost), 0);
+  const grossProfit = orders.reduce((sum, order) => sum + toNumber(order.grossProfit), 0);
   return {
     orderCount: orders.length,
     salesAmount,
@@ -105,8 +105,8 @@ export async function getProfitReport(params: URLSearchParams, session: SessionU
       const current = productMap.get(key) ?? { sku: item.sku || "-", productName: item.productName, quantity: 0, salesAmount: 0, purchaseCost: 0, packagingCost: 0 };
       current.quantity += Number(item.quantity) || 0;
       current.salesAmount += baseAmount(item.salesSubtotal, order.exchangeRate);
-      current.purchaseCost += baseAmount(item.purchaseCostSubtotal, order.exchangeRate);
-      current.packagingCost += baseAmount(item.packagingCostSubtotal, order.exchangeRate);
+      current.purchaseCost += toNumber(item.purchaseCostBase);
+      current.packagingCost += toNumber(item.packagingCostBase);
       productMap.set(key, current);
     });
     order.costs.forEach((cost) => {
@@ -153,8 +153,8 @@ export async function getProfitReport(params: URLSearchParams, session: SessionU
       customerName: order.customerName || order.customer?.name || "散客/平台订单",
       orderDate: order.orderDate,
       salesAmount: baseAmount(order.salesAmount, order.exchangeRate),
-      totalCost: baseAmount(order.totalCost, order.exchangeRate),
-      grossProfit: baseAmount(order.grossProfit, order.exchangeRate),
+      totalCost: toNumber(order.totalCost),
+      grossProfit: toNumber(order.grossProfit),
       grossMargin: order.grossMargin == null ? null : toNumber(order.grossMargin),
       salespersonName: order.salesperson?.name ?? "",
       orderStatus: order.orderStatus,

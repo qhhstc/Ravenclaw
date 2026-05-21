@@ -117,6 +117,7 @@ export type InfluencerOption = {
 export type OrderItemRecord = {
   id?: number;
   productId?: number | null;
+  product?: { id: number; sku: string; name: string; specification?: string | null } | null;
   sku?: string | null;
   productName: string;
   specification?: string | null;
@@ -128,9 +129,15 @@ export type OrderItemRecord = {
   saleUnitPrice: number;
   salesSubtotal?: number;
   purchaseUnitCost: number;
+  purchaseCurrency: string;
+  purchaseExchangeRate: number;
   purchaseCostSubtotal?: number;
+  purchaseCostBase?: number;
   packagingUnitCost: number;
+  packagingCurrency: string;
+  packagingExchangeRate: number;
   packagingCostSubtotal?: number;
+  packagingCostBase?: number;
   remark?: string | null;
 };
 

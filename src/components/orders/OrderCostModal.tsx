@@ -29,11 +29,11 @@ export default function OrderCostModal({ open, saving, order, onCancel, onSubmit
       }}
       onOk={async () => {
         const values = await form.validateFields();
-        await onSubmit({ ...values, costs: buildCostRows(form, order.currency) });
+        await onSubmit({ ...values, costs: buildCostRows(form, order.currency, order.baseCurrency || "CNY", Number(order.exchangeRate) || 1) });
       }}
     >
-      <Form form={form} layout="vertical" initialValues={{ items: order.items ?? [], costs: order.costs ?? [] }}>
-        <OrderCostEditor form={form} currency={order.currency} />
+      <Form form={form} layout="vertical" initialValues={{ items: order.items ?? [], costs: order.costs ?? [], exchangeRate: order.exchangeRate }}>
+        <OrderCostEditor form={form} currency={order.currency} baseCurrency={order.baseCurrency || "CNY"} />
       </Form>
     </Modal>
   );

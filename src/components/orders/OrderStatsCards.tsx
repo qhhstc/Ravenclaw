@@ -26,9 +26,9 @@ export { emptyStats };
 export default function OrderStatsCards({ stats }: { stats: OrderStatsData }) {
   const cards = [
     { title: "本月订单数", value: stats.monthOrderCount, tag: "订单", color: "blue" },
-    { title: "本月订单金额", value: compactMoneyText(stats.monthTotalAmount), tag: "金额", color: "cyan" },
-    { title: "本月已收金额", value: compactMoneyText(stats.monthPaidAmount), tag: "已收", color: "green" },
-    { title: "本月未收金额", value: compactMoneyText(stats.monthUnpaidAmount), tag: "未收", color: "orange" },
+    { title: "本月订单金额", value: compactMoneyText(stats.monthTotalAmount, "CNY"), tag: "金额", color: "cyan" },
+    { title: "本月已收金额", value: compactMoneyText(stats.monthPaidAmount, "CNY"), tag: "已收", color: "green" },
+    { title: "本月未收金额", value: compactMoneyText(stats.monthUnpaidAmount, "CNY"), tag: "未收", color: "orange" },
     { title: "待回款订单", value: stats.pendingPaymentCount, tag: "待处理", color: "red" },
     { title: "逾期回款订单", value: stats.overduePaymentCount, tag: "逾期", color: "volcano" },
   ];

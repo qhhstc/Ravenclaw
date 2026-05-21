@@ -156,7 +156,7 @@ model Product {
   category             String?
   defaultPurchasePrice Decimal  @default(0) @db.Decimal(18, 2)
   defaultPackagingCost Decimal  @default(0) @db.Decimal(18, 2)
-  currency             String   @default("USD")
+  currency             String   @default("CNY")
   weight               Decimal? @db.Decimal(18, 3)
   volume               Decimal? @db.Decimal(18, 3)
   defaultVendorId      Int?
@@ -797,9 +797,15 @@ model OrderItem {
   saleUnitPrice Decimal @default(0) @db.Decimal(18, 2)
   salesSubtotal Decimal @default(0) @db.Decimal(18, 2)
   purchaseUnitCost Decimal @default(0) @db.Decimal(18, 2)
+  purchaseCurrency String @default("CNY")
+  purchaseExchangeRate Decimal @default(1) @db.Decimal(18, 6)
   purchaseCostSubtotal Decimal @default(0) @db.Decimal(18, 2)
+  purchaseCostBase Decimal @default(0) @db.Decimal(18, 2)
   packagingUnitCost Decimal @default(0) @db.Decimal(18, 2)
+  packagingCurrency String @default("CNY")
+  packagingExchangeRate Decimal @default(1) @db.Decimal(18, 6)
   packagingCostSubtotal Decimal @default(0) @db.Decimal(18, 2)
+  packagingCostBase Decimal @default(0) @db.Decimal(18, 2)
   remark      String?  @db.Text
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

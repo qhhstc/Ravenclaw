@@ -24,11 +24,15 @@ export async function PATCH(request: NextRequest, context: Context) {
         quantity: Number(row.quantity),
         saleUnitPrice: toNumber(row.saleUnitPrice),
         purchaseUnitCost: toNumber(row.purchaseUnitCost),
+        purchaseCurrency: row.purchaseCurrency,
+        purchaseExchangeRate: toNumber(row.purchaseExchangeRate, 1),
         packagingUnitCost: toNumber(row.packagingUnitCost),
+        packagingCurrency: row.packagingCurrency,
+        packagingExchangeRate: toNumber(row.packagingExchangeRate, 1),
         remark: row.remark,
       }));
       const costs = normalizeOrderCosts(input.costs, items, order.currency, toNumber(order.exchangeRate, 1));
-      const amounts = calculateOrderAmounts({ paidAmount: order.paidAmount }, items, costs);
+      const amounts = calculateOrderAmounts({ paidAmount: order.paidAmount, exchangeRate: order.exchangeRate }, items, costs);
       await tx.orderCost.deleteMany({ where: { orderId } });
       return tx.order.update({
         where: { id: orderId },

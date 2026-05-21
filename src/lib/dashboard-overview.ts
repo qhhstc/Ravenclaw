@@ -141,7 +141,7 @@ export async function getDashboardOverviewData(filters: DashboardOverviewFilters
   const totalAdSpend = metrics.reduce((sum, metric) => sum + toNumber(metric.adSpendBase), 0);
   const channelsWithData = new Set(metrics.map((metric) => metric.channelId));
   const paidChannelIds = new Set(metrics.filter((metric) => toNumber(metric.adSpendBase) > 0).map((metric) => metric.channelId));
-  const netProfit = Number(orders.reduce((sum, order) => sum + toBaseAmount(order.grossProfit, order.exchangeRate), 0).toFixed(2));
+  const netProfit = Number(orders.reduce((sum, order) => sum + toNumber(order.grossProfit), 0).toFixed(2));
   const receivableOrders = orders.filter((order) => toNumber(order.unpaidAmount) > 0);
   const receivableAmount = Number(receivableOrders.reduce((sum, order) => sum + toBaseAmount(order.unpaidAmount, order.exchangeRate), 0).toFixed(2));
 

@@ -55,7 +55,7 @@ export function normalizeProductInput(input: Record<string, unknown>) {
     category: textValue(input.category),
     defaultPurchasePrice: decimal(Math.max(toNumber(input.defaultPurchasePrice), 0)),
     defaultPackagingCost: decimal(Math.max(toNumber(input.defaultPackagingCost), 0)),
-    currency: textValue(input.currency)?.toUpperCase() ?? "USD",
+    currency: textValue(input.currency)?.toUpperCase() ?? "CNY",
     weight: input.weight === null || input.weight === undefined || input.weight === "" ? null : new Prisma.Decimal(toNumber(input.weight).toFixed(3)),
     volume: input.volume === null || input.volume === undefined || input.volume === "" ? null : new Prisma.Decimal(toNumber(input.volume).toFixed(3)),
     defaultVendorId: optionalNumber(input.defaultVendorId),

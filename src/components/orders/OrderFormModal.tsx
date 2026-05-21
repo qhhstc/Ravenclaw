@@ -2,6 +2,7 @@
 
 import { Alert, Button, Card, DatePicker, Divider, Form, Input, InputNumber, Modal, Select, Typography, message } from "antd";
 import dayjs from "dayjs";
+import { useRef } from "react";
 import OrderAttachmentPanel from "./OrderAttachmentPanel";
 import OrderCostEditor, { buildCostRows } from "./OrderCostEditor";
 import OrderItemsEditor from "./OrderItemsEditor";
@@ -21,6 +22,7 @@ import {
   type CurrencyOption,
   type CustomerOption,
   type InfluencerOption,
+  type OrderItemRecord,
   type OrderRecord,
   type PlatformOption,
   type ProductOption,
@@ -50,8 +52,46 @@ function dayValue(value?: string | Date | null) {
   return value ? dayjs(value) : null;
 }
 
-function defaultCosts(currency = "USD") {
-  return ["product_purchase", "domestic_shipping", "packaging_material", "international_shipping", "customs_fee", "port_charge", "trucking_fee", "platform_fee", "payment_fee", "other"].map((costType) => ({ costType, amount: 0, currency, exchangeRate: 1 }));
+function defaultCosts(currency = "USD", baseCurrency = "CNY") {
+  return ["product_purchase", "domestic_shipping", "packaging_material", "international_shipping", "customs_fee", "port_charge", "trucking_fee", "platform_fee", "payment_fee", "other"].map((costType) => {
+    const automaticCost = costType === "product_purchase" || costType === "packaging_material";
+    return { costType, amount: 0, currency: automaticCost ? baseCurrency : currency, exchangeRate: 1, baseAmount: 0 };
+  });
+}
+
+function normalizedOrderItem(item: OrderItemRecord) {
+  return {
+    ...item,
+    productId: item.productId ?? item.product?.id ?? null,
+    sku: item.sku || item.product?.sku || "",
+    productName: item.productName || item.product?.name || "",
+    specification: item.specification || item.product?.specification || "",
+    quantity: moneyValue(item.quantity) || 1,
+    saleUnitPrice: moneyValue(item.saleUnitPrice ?? item.unitPrice),
+    purchaseUnitCost: moneyValue(item.purchaseUnitCost ?? item.costPrice),
+    purchaseCurrency: item.purchaseCurrency || "CNY",
+    purchaseExchangeRate: moneyValue(item.purchaseExchangeRate) || 1,
+    purchaseCostBase: moneyValue(item.purchaseCostBase),
+    packagingUnitCost: moneyValue(item.packagingUnitCost),
+    packagingCurrency: item.packagingCurrency || "CNY",
+    packagingExchangeRate: moneyValue(item.packagingExchangeRate) || 1,
+    packagingCostBase: moneyValue(item.packagingCostBase),
+    remark: item.remark ?? "",
+  };
+}
+
+function defaultOrderItem() {
+  return {
+    productName: "",
+    quantity: 1,
+    saleUnitPrice: 0,
+    purchaseUnitCost: 0,
+    purchaseCurrency: "CNY",
+    purchaseExchangeRate: 1,
+    packagingUnitCost: 0,
+    packagingCurrency: "CNY",
+    packagingExchangeRate: 1,
+  };
 }
 
 export function orderToFormValues(order?: OrderRecord | null) {
@@ -68,8 +108,8 @@ export function orderToFormValues(order?: OrderRecord | null) {
       orderStatus: "pending_payment",
       paymentStatus: "unpaid",
       shippingStatus: "unshipped",
-      items: [{ productName: "", quantity: 1, saleUnitPrice: 0, purchaseUnitCost: 0, packagingUnitCost: 0 }],
-      costs: defaultCosts("USD"),
+      items: [defaultOrderItem()],
+      costs: defaultCosts("USD", "CNY"),
     };
   }
   return {
@@ -77,8 +117,8 @@ export function orderToFormValues(order?: OrderRecord | null) {
     orderDate: dayValue(order.orderDate),
     shipmentDate: dayValue(order.shipmentDate),
     dueDate: dayValue(order.dueDate),
-    items: order.items?.length ? order.items.map((item) => ({ ...item, quantity: moneyValue(item.quantity), saleUnitPrice: moneyValue(item.saleUnitPrice ?? item.unitPrice), purchaseUnitCost: moneyValue(item.purchaseUnitCost ?? item.costPrice), packagingUnitCost: moneyValue(item.packagingUnitCost) })) : [{ productName: "", quantity: 1, saleUnitPrice: 0, purchaseUnitCost: 0, packagingUnitCost: 0 }],
-    costs: order.costs?.length ? order.costs.map((cost) => ({ ...cost, amount: moneyValue(cost.amount), exchangeRate: moneyValue(cost.exchangeRate) || 1, baseAmount: moneyValue(cost.baseAmount) })) : defaultCosts(order.currency),
+    items: order.items?.length ? order.items.map(normalizedOrderItem) : [defaultOrderItem()],
+    costs: order.costs?.length ? order.costs.map((cost) => ({ ...cost, amount: moneyValue(cost.amount), exchangeRate: moneyValue(cost.exchangeRate) || 1, baseAmount: moneyValue(cost.baseAmount) })) : defaultCosts(order.currency, order.baseCurrency),
   };
 }
 
@@ -88,32 +128,54 @@ function serializeDate(value: unknown) {
 
 function calculate(values: Record<string, unknown>) {
   const items = Array.isArray(values.items) ? values.items : [];
+  const orderExchangeRate = moneyValue(values.exchangeRate) || 1;
   const itemTotals = items.reduce(
     (summary, item) => {
       const row = item as Record<string, unknown>;
       const quantity = moneyValue(row.quantity);
+      const saleUnitPrice = moneyValue(row.saleUnitPrice ?? row.unitPrice);
+      const purchaseUnitCost = moneyValue(row.purchaseUnitCost ?? row.costPrice);
+      const purchaseExchangeRate = moneyValue(row.purchaseExchangeRate) || 1;
+      const packagingUnitCost = moneyValue(row.packagingUnitCost);
+      const packagingExchangeRate = moneyValue(row.packagingExchangeRate) || 1;
+      const salesAmount = quantity * saleUnitPrice;
+      const productPurchase = quantity * purchaseUnitCost;
+      const packaging = quantity * packagingUnitCost;
       return {
-        salesAmount: summary.salesAmount + quantity * moneyValue(row.saleUnitPrice),
-        productPurchase: summary.productPurchase + quantity * moneyValue(row.purchaseUnitCost),
-        packaging: summary.packaging + quantity * moneyValue(row.packagingUnitCost),
+        salesAmount: summary.salesAmount + salesAmount,
+        salesBase: summary.salesBase + salesAmount * orderExchangeRate,
+        productPurchase: summary.productPurchase + productPurchase,
+        productPurchaseBase: summary.productPurchaseBase + productPurchase * purchaseExchangeRate,
+        packaging: summary.packaging + packaging,
+        packagingBase: summary.packagingBase + packaging * packagingExchangeRate,
       };
     },
-    { salesAmount: 0, productPurchase: 0, packaging: 0 },
+    { salesAmount: 0, salesBase: 0, productPurchase: 0, productPurchaseBase: 0, packaging: 0, packagingBase: 0 },
   );
   const costs = Array.isArray(values.costs) ? values.costs : [];
   const otherCost = costs.reduce((sum, cost) => {
     const row = cost as Record<string, unknown>;
     if (["product_purchase", "packaging_material"].includes(String(row.costType))) return sum;
-    return sum + moneyValue(row.amount);
+    const exchangeRate = moneyValue(row.exchangeRate) || 1;
+    const baseAmount = row.baseAmount === null || row.baseAmount === undefined || row.baseAmount === "" ? moneyValue(row.amount) * exchangeRate : moneyValue(row.baseAmount);
+    return sum + baseAmount;
   }, 0);
   const salesAmount = Number(itemTotals.salesAmount.toFixed(2));
-  const totalCost = Number((itemTotals.productPurchase + itemTotals.packaging + otherCost).toFixed(2));
-  const grossProfit = Number((salesAmount - totalCost).toFixed(2));
-  const grossMargin = salesAmount > 0 ? grossProfit / salesAmount : null;
+  const salesBase = Number(itemTotals.salesBase.toFixed(2));
+  const totalCost = Number((itemTotals.productPurchaseBase + itemTotals.packagingBase + otherCost).toFixed(2));
+  const grossProfit = Number((salesBase - totalCost).toFixed(2));
+  const grossMargin = salesBase > 0 ? grossProfit / salesBase : null;
   const paidAmount = moneyValue(values.paidAmount);
   const unpaidAmount = Math.max(salesAmount - paidAmount, 0);
   const orderStatus = String(values.orderStatus || "pending_payment");
-  return { salesAmount, productPurchase: itemTotals.productPurchase, packaging: itemTotals.packaging, totalCost, grossProfit, grossMargin, paidAmount, unpaidAmount, paymentStatus: paymentStatusFor(salesAmount, paidAmount, orderStatus) };
+  return { salesAmount, salesBase, productPurchase: itemTotals.productPurchase, productPurchaseBase: itemTotals.productPurchaseBase, packaging: itemTotals.packaging, packagingBase: itemTotals.packagingBase, totalCost, grossProfit, grossMargin, paidAmount, unpaidAmount, paymentStatus: paymentStatusFor(salesAmount, paidAmount, orderStatus) };
+}
+
+function calculatedPaymentStatus(values: Record<string, unknown>) {
+  const salesAmount = moneyValue(values.salesAmount);
+  const paidAmount = moneyValue(values.paidAmount);
+  const orderStatus = String(values.orderStatus || "pending_payment");
+  return paymentStatusFor(salesAmount, paidAmount, orderStatus);
 }
 
 export function serializeOrderForm(values: Record<string, unknown>, formCosts: Record<string, unknown>[]) {
@@ -139,8 +201,11 @@ function influencerLabel(item: InfluencerOption) {
 
 export default function OrderFormModal({ open, saving, editing, brands, platforms, stores, channels, influencers, countries, currencies, customers, users, products, onCancel, onSubmit }: Props) {
   const [form] = Form.useForm();
+  const manualPaymentStatusRef = useRef(false);
   const values = Form.useWatch([], form) ?? {};
   const currency = String((values as Record<string, unknown>).currency || "USD");
+  const baseCurrency = String((values as Record<string, unknown>).baseCurrency || "CNY");
+  const currencyCodes = currencies.map((item) => item.code);
   const selectedChannelId = Number((values as Record<string, unknown>).channelId || 0);
   const selectedBrandId = Number((values as Record<string, unknown>).brandId || 0);
   const selectedChannel = channels.find((item) => item.id === selectedChannelId);
@@ -153,9 +218,21 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
   const computed = calculate(values as Record<string, unknown>);
 
   function syncComputed() {
-    const nextCosts = buildCostRows(form, currency);
-    const next = calculate({ ...form.getFieldsValue(true), costs: nextCosts });
-    form.setFieldsValue({ salesAmount: next.salesAmount, totalAmount: next.salesAmount, productAmount: next.salesAmount, totalCost: next.totalCost, grossProfit: next.grossProfit, grossMargin: next.grossMargin, unpaidAmount: next.unpaidAmount, paymentStatus: next.paymentStatus, costs: nextCosts });
+    const orderExchangeRate = moneyValue(form.getFieldValue("exchangeRate")) || 1;
+    const nextCosts = buildCostRows(form, currency, baseCurrency, orderExchangeRate);
+    const currentValues = form.getFieldsValue(true);
+    const next = calculate({ ...currentValues, costs: nextCosts });
+    form.setFieldsValue({
+      salesAmount: next.salesAmount,
+      totalAmount: next.salesAmount,
+      productAmount: next.salesAmount,
+      totalCost: next.totalCost,
+      grossProfit: next.grossProfit,
+      grossMargin: next.grossMargin,
+      unpaidAmount: next.unpaidAmount,
+      paymentStatus: manualPaymentStatusRef.current ? currentValues.paymentStatus : next.paymentStatus,
+      costs: nextCosts,
+    });
   }
 
   function applyCustomer(customerId?: number) {
@@ -203,20 +280,43 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
       destroyOnHidden
       afterOpenChange={(visible) => {
         if (visible) {
+          manualPaymentStatusRef.current = false;
           form.resetFields();
           form.setFieldsValue(orderToFormValues(editing));
           queueMicrotask(syncComputed);
         } else {
+          manualPaymentStatusRef.current = false;
           form.resetFields();
         }
       }}
       onOk={async () => {
         syncComputed();
         const nextValues = await form.validateFields();
-        await onSubmit(serializeOrderForm({ ...nextValues, ...calculate(nextValues) }, buildCostRows(form, String(nextValues.currency || "USD"))));
+        const calculatedValues = calculate(nextValues);
+        await onSubmit(
+          serializeOrderForm(
+            {
+              ...nextValues,
+              ...calculatedValues,
+              paymentStatus: manualPaymentStatusRef.current ? nextValues.paymentStatus : calculatedValues.paymentStatus,
+            },
+            buildCostRows(form, String(nextValues.currency || "USD"), String(nextValues.baseCurrency || "CNY"), moneyValue(nextValues.exchangeRate) || 1),
+          ),
+        );
       }}
     >
-      <Form form={form} layout="vertical" preserve={false} initialValues={orderToFormValues(editing)} onValuesChange={() => queueMicrotask(syncComputed)}>
+      <Form
+        form={form}
+        layout="vertical"
+        preserve={false}
+        initialValues={orderToFormValues(editing)}
+        onValuesChange={(changedValues, allValues) => {
+          if (Object.prototype.hasOwnProperty.call(changedValues, "paymentStatus")) {
+            manualPaymentStatusRef.current = changedValues.paymentStatus !== calculatedPaymentStatus(allValues);
+          }
+          queueMicrotask(syncComputed);
+        }}
+      >
         <Divider titlePlacement="start">订单基础信息</Divider>
         <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3 xl:grid-cols-4">
           <Form.Item name="orderNo" label="订单编号"><Input placeholder="自动生成，可手动修改" /></Form.Item>
@@ -247,7 +347,7 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
           <Form.Item name="paymentMethod" label="收款方式"><Input placeholder="PayPal / 银行 / 平台" /></Form.Item>
           <Form.Item name="dueDate" label="应收款到期"><DatePicker className="w-full" /></Form.Item>
           <Form.Item name="orderStatus" label="订单状态"><Select options={orderStatusOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
-          <Form.Item name="paymentStatus" label="付款状态"><Select options={paymentStatusOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
+          <Form.Item name="paymentStatus" label="付款状态" extra="默认按已收金额自动判断；手动选择后会按你的选择保存。"><Select options={paymentStatusOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
           <Form.Item name="shippingStatus" label="发货状态"><Select options={shippingStatusOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
           <Form.Item name="paidAmount" label="已收金额"><InputNumber min={0} precision={2} className="!w-full" /></Form.Item>
           <Form.Item name="statusRemark" label="状态备注" className="md:col-span-2"><Input placeholder="订单状态变化时记录备注，例如客户已确认尾款、已安排出货" /></Form.Item>
@@ -268,17 +368,18 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
         </div>
 
         <Divider titlePlacement="start">商品明细</Divider>
-        <OrderItemsEditor form={form} products={products} />
+        <OrderItemsEditor form={form} products={products} currencies={currencyCodes} baseCurrency={baseCurrency} />
 
         <Divider titlePlacement="start">成本分项</Divider>
-        <OrderCostEditor form={form} currency={currency} />
+        <OrderCostEditor form={form} currency={currency} baseCurrency={baseCurrency} currencies={currencyCodes} />
 
         <Divider titlePlacement="start">利润计算结果</Divider>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           {[
             { title: "销售总金额", value: `${currency} ${computed.salesAmount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "var(--chart-blue)" },
-            { title: "全部成本合计", value: `${currency} ${computed.totalCost.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "var(--muted)" },
-            { title: "订单毛利", value: `${currency} ${computed.grossProfit.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: computed.grossProfit < 0 ? "var(--danger)" : "var(--success)" },
+            { title: "销售本位币", value: `${baseCurrency} ${computed.salesBase.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "var(--foreground)" },
+            { title: "全部成本合计", value: `${baseCurrency} ${computed.totalCost.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "var(--muted)" },
+            { title: "订单毛利", value: `${baseCurrency} ${computed.grossProfit.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: computed.grossProfit < 0 ? "var(--danger)" : "var(--success)" },
             { title: "毛利率", value: percentText(computed.grossMargin), color: marginColor(computed.grossMargin, computed.grossProfit) },
           ].map((card) => (
             <div key={card.title} className="flex min-h-[112px] flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">

@@ -1,0 +1,2 @@
+ALTER TABLE `Product`
+  MODIFY `currency` VARCHAR(191) NOT NULL DEFAULT 'CNY';

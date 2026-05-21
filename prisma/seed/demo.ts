@@ -34,8 +34,11 @@ function orderPaymentStatus(totalAmount: number, paidAmount: number, orderStatus
   return "paid";
 }
 
-function orderGrossMargin(salesAmount: number, grossProfit: number) {
-  return salesAmount > 0 ? Number((grossProfit / salesAmount).toFixed(4)) : null;
+const ORDER_EXCHANGE_RATE = 7.2;
+const BASE_CURRENCY = "CNY";
+
+function orderGrossMargin(salesBase: number, grossProfit: number) {
+  return salesBase > 0 ? Number((grossProfit / salesBase).toFixed(4)) : null;
 }
 
 function demoBlockMeta(businessBlock: string) {
@@ -1054,7 +1057,7 @@ export async function seedDemo(prisma: PrismaClient) {
           category: seed.category,
           defaultPurchasePrice: seed.defaultPurchasePrice,
           defaultPackagingCost: seed.defaultPackagingCost,
-          currency: "USD",
+          currency: BASE_CURRENCY,
           defaultVendorId: vendorMap[seed.vendor].id,
           brandId: brandMap[seed.brand].id,
           status: "active",
@@ -1201,16 +1204,18 @@ export async function seedDemo(prisma: PrismaClient) {
       const salesSubtotal = money(item.quantity * item.saleUnitPrice);
       const purchaseCostSubtotal = money(item.quantity * purchaseUnitCost);
       const packagingCostSubtotal = money(item.quantity * packagingUnitCost);
-      return { ...item, product, purchaseUnitCost, packagingUnitCost, salesSubtotal, purchaseCostSubtotal, packagingCostSubtotal };
+      return { ...item, product, purchaseUnitCost, packagingUnitCost, salesSubtotal, purchaseCostSubtotal, purchaseCostBase: purchaseCostSubtotal, packagingCostSubtotal, packagingCostBase: packagingCostSubtotal };
     });
     const salesAmount = money(items.reduce((sum, item) => sum + item.salesSubtotal, 0));
+    const salesBase = money(salesAmount * ORDER_EXCHANGE_RATE);
     const purchaseAmount = productCost(items);
     const packageAmount = packagingCost(items);
     const manualCosts = { ...costDefaults, ...seed.costs };
-    const otherCost = money(Object.values(manualCosts).reduce((sum, value) => sum + value, 0));
+    const otherCostOriginal = money(Object.values(manualCosts).reduce((sum, value) => sum + value, 0));
+    const otherCost = money(otherCostOriginal * ORDER_EXCHANGE_RATE);
     const totalCost = money(purchaseAmount + packageAmount + otherCost);
-    const grossProfit = money(salesAmount - totalCost);
-    const grossMargin = orderGrossMargin(salesAmount, grossProfit);
+    const grossProfit = money(salesBase - totalCost);
+    const grossMargin = orderGrossMargin(salesBase, grossProfit);
     const paidAmount = money(Math.min(seed.paidAmount, salesAmount));
     const unpaidAmount = money(salesAmount - paidAmount);
     const paymentStatus = orderPaymentStatus(salesAmount, paidAmount, seed.orderStatus);
@@ -1232,8 +1237,8 @@ export async function seedDemo(prisma: PrismaClient) {
         channelId: channel?.id ?? null,
         countryCode: seed.countryCode,
         currency: "USD",
-        exchangeRate: 1,
-        baseCurrency: "CNY",
+        exchangeRate: ORDER_EXCHANGE_RATE,
+        baseCurrency: BASE_CURRENCY,
         productAmount: salesAmount,
         shippingFee: 0,
         discountAmount: 0,
@@ -1269,21 +1274,27 @@ export async function seedDemo(prisma: PrismaClient) {
             unitPrice: item.saleUnitPrice,
             costPrice: item.purchaseUnitCost,
             totalPrice: item.salesSubtotal,
-            totalCost: money(item.purchaseCostSubtotal + item.packagingCostSubtotal),
+            totalCost: money(item.purchaseCostBase + item.packagingCostBase),
             saleUnitPrice: item.saleUnitPrice,
             salesSubtotal: item.salesSubtotal,
             purchaseUnitCost: item.purchaseUnitCost,
+            purchaseCurrency: BASE_CURRENCY,
+            purchaseExchangeRate: 1,
             purchaseCostSubtotal: item.purchaseCostSubtotal,
+            purchaseCostBase: item.purchaseCostBase,
             packagingUnitCost: item.packagingUnitCost,
+            packagingCurrency: BASE_CURRENCY,
+            packagingExchangeRate: 1,
             packagingCostSubtotal: item.packagingCostSubtotal,
+            packagingCostBase: item.packagingCostBase,
             remark: item.remark ?? null,
           })),
         },
         costs: {
           create: [
-            { costType: "product_purchase", amount: purchaseAmount, currency: "USD", exchangeRate: 1, baseAmount: purchaseAmount, remark: "由商品明细自动汇总" },
-            { costType: "packaging_material", amount: packageAmount, currency: "USD", exchangeRate: 1, baseAmount: packageAmount, remark: "由商品明细自动汇总" },
-            ...Object.entries(manualCosts).map(([costType, amount]) => ({ costType, amount: money(amount), currency: "USD", exchangeRate: 1, baseAmount: money(amount), remark: amount ? "Seed 成本分项" : null })),
+            { costType: "product_purchase", amount: purchaseAmount, currency: BASE_CURRENCY, exchangeRate: 1, baseAmount: purchaseAmount, remark: "由商品明细自动汇总" },
+            { costType: "packaging_material", amount: packageAmount, currency: BASE_CURRENCY, exchangeRate: 1, baseAmount: packageAmount, remark: "由商品明细自动汇总" },
+            ...Object.entries(manualCosts).map(([costType, amount]) => ({ costType, amount: money(amount), currency: "USD", exchangeRate: ORDER_EXCHANGE_RATE, baseAmount: money(amount * ORDER_EXCHANGE_RATE), remark: amount ? "Seed 成本分项" : null })),
           ],
         },
       },

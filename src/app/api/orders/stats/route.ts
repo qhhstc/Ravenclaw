@@ -22,6 +22,10 @@ function mergeWhere(base: Prisma.OrderWhereInput, extra: Prisma.OrderWhereInput)
   return { AND: [base, extra] };
 }
 
+function toBase(value: unknown, exchangeRate: unknown) {
+  return toNumber(value) * (toNumber(exchangeRate, 1) || 1);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await requireApiSession();
@@ -33,18 +37,18 @@ export async function GET(request: NextRequest) {
     const overdueWhere = mergeWhere(filteredWhere, paymentDueWhere("overdue"));
 
     const [monthOrders, pendingPaymentCount, overduePaymentCount] = await Promise.all([
-      prisma.order.findMany({ where: monthWhere, select: { salesAmount: true, totalAmount: true, totalCost: true, grossProfit: true, paidAmount: true, unpaidAmount: true } }),
+      prisma.order.findMany({ where: monthWhere, select: { salesAmount: true, totalAmount: true, totalCost: true, grossProfit: true, paidAmount: true, unpaidAmount: true, exchangeRate: true } }),
       prisma.order.count({ where: pendingWhere }),
       prisma.order.count({ where: overdueWhere }),
     ]);
 
     const totals = monthOrders.reduce(
       (summary, order) => ({
-        totalAmount: summary.totalAmount + toNumber(order.salesAmount ?? order.totalAmount),
+        totalAmount: summary.totalAmount + toBase(order.salesAmount ?? order.totalAmount, order.exchangeRate),
         totalCost: summary.totalCost + toNumber(order.totalCost),
         grossProfit: summary.grossProfit + toNumber(order.grossProfit),
-        paidAmount: summary.paidAmount + toNumber(order.paidAmount),
-        unpaidAmount: summary.unpaidAmount + toNumber(order.unpaidAmount),
+        paidAmount: summary.paidAmount + toBase(order.paidAmount, order.exchangeRate),
+        unpaidAmount: summary.unpaidAmount + toBase(order.unpaidAmount, order.exchangeRate),
       }),
       { totalAmount: 0, totalCost: 0, grossProfit: 0, paidAmount: 0, unpaidAmount: 0 },
     );

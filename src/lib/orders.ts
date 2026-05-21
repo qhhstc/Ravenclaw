@@ -74,6 +74,11 @@ function optionalNumber(value: unknown) {
   return Number.isInteger(numericValue) && numericValue > 0 ? numericValue : null;
 }
 
+function optionalMoney(value: unknown, fallback?: unknown) {
+  if (value === null || value === undefined || value === "") return toNumber(fallback);
+  return toNumber(value);
+}
+
 function enumValue<T extends readonly string[]>(value: unknown, options: T, fallback: T[number]) {
   const normalized = textValue(value);
   return normalized && options.includes(normalized) ? normalized : fallback;
@@ -96,7 +101,11 @@ export type OrderItemInput = {
   quantity: number;
   saleUnitPrice: number;
   purchaseUnitCost: number;
+  purchaseCurrency: string;
+  purchaseExchangeRate: number;
   packagingUnitCost: number;
+  packagingCurrency: string;
+  packagingExchangeRate: number;
   remark?: string | null;
 };
 
@@ -123,9 +132,13 @@ export function normalizeOrderItems(input: unknown): OrderItemInput[] {
       productName,
       specification: textValue(row.specification),
       quantity: calculated.quantity,
-      saleUnitPrice: calculated.saleUnitPrice,
-      purchaseUnitCost: calculated.purchaseUnitCost,
+      saleUnitPrice: calculated.saleUnitPrice || optionalMoney(row.unitPrice),
+      purchaseUnitCost: calculated.purchaseUnitCost || optionalMoney(row.costPrice),
+      purchaseCurrency: textValue(row.purchaseCurrency)?.toUpperCase() ?? "CNY",
+      purchaseExchangeRate: Math.max(toNumber(row.purchaseExchangeRate, 1), 0.000001),
       packagingUnitCost: calculated.packagingUnitCost,
+      packagingCurrency: textValue(row.packagingCurrency)?.toUpperCase() ?? "CNY",
+      packagingExchangeRate: Math.max(toNumber(row.packagingExchangeRate, 1), 0.000001),
       remark: textValue(row.remark),
     };
   });
@@ -146,7 +159,7 @@ export function normalizeOrderCosts(input: unknown, items: OrderItemInput[], cur
 }
 
 export function calculateOrderAmounts(input: Record<string, unknown>, items: OrderItemInput[], costs: OrderCostInput[]) {
-  const profit = calculateOrderProfit(items, costs);
+  const profit = calculateOrderProfit(items, costs, input.exchangeRate);
   const paidAmount = money(Math.max(toNumber(input.paidAmount), 0));
   if (paidAmount > profit.salesAmount) throw new Error("已收金额不能大于订单销售总金额");
   const unpaidAmount = money(profit.salesAmount - paidAmount);
@@ -172,7 +185,7 @@ export function normalizeOrderInput(input: Record<string, unknown>, forcedOrderN
   const items = normalizeOrderItems(input.items);
   const costs = normalizeOrderCosts(input.costs, items, currency, exchangeRate);
   const orderStatus = enumValue(input.orderStatus, ORDER_STATUSES, "pending_payment");
-  const amounts = calculateOrderAmounts(input, items, costs);
+  const amounts = calculateOrderAmounts({ ...input, exchangeRate }, items, costs);
   const orderDate = optionalDate(input.orderDate) ?? new Date();
   const customerName = textValue(input.customerName);
   const createdBy = optionalNumber(input.createdBy) ?? session?.userId ?? null;
@@ -223,7 +236,7 @@ export function normalizeOrderInput(input: Record<string, unknown>, forcedOrderN
       createdBy,
     },
     items: items.map((item) => {
-      const calculated = calculateItemProfit(item);
+      const calculated = calculateItemProfit(item, exchangeRate);
       return {
         productId: item.productId,
         sku: item.sku,
@@ -233,13 +246,19 @@ export function normalizeOrderInput(input: Record<string, unknown>, forcedOrderN
         unitPrice: decimal(calculated.saleUnitPrice),
         costPrice: decimal(calculated.purchaseUnitCost),
         totalPrice: decimal(calculated.salesSubtotal),
-        totalCost: decimal(calculated.purchaseCostSubtotal + calculated.packagingCostSubtotal),
+        totalCost: decimal(calculated.purchaseCostBase + calculated.packagingCostBase),
         saleUnitPrice: decimal(calculated.saleUnitPrice),
         salesSubtotal: decimal(calculated.salesSubtotal),
         purchaseUnitCost: decimal(calculated.purchaseUnitCost),
+        purchaseCurrency: item.purchaseCurrency,
+        purchaseExchangeRate: new Prisma.Decimal(item.purchaseExchangeRate.toFixed(6)),
         purchaseCostSubtotal: decimal(calculated.purchaseCostSubtotal),
+        purchaseCostBase: decimal(calculated.purchaseCostBase),
         packagingUnitCost: decimal(calculated.packagingUnitCost),
+        packagingCurrency: item.packagingCurrency,
+        packagingExchangeRate: new Prisma.Decimal(item.packagingExchangeRate.toFixed(6)),
         packagingCostSubtotal: decimal(calculated.packagingCostSubtotal),
+        packagingCostBase: decimal(calculated.packagingCostBase),
         remark: item.remark,
       };
     }),
