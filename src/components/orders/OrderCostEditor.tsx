@@ -101,12 +101,12 @@ export default function OrderCostEditor({ form, currency, baseCurrency = "CNY", 
         return (
           <div key={option.value} className="rounded-lg border border-[var(--border)] bg-[var(--soft-bg)] p-3">
             <div className="mb-2 text-sm font-medium text-[var(--foreground)]">{option.label}</div>
-            <Form.Item name={["costs", index, "costType"]} initialValue={option.value} hidden><Input /></Form.Item>
+            <Form.Item name={["costs", index, "costType"]} hidden><Input /></Form.Item>
             <div className="grid grid-cols-[1fr_92px] gap-2">
-              <Form.Item name={["costs", index, "amount"]} initialValue={row.amount} className="!mb-2">
+              <Form.Item name={["costs", index, "amount"]} className="!mb-2">
                 <InputNumber min={0} precision={2} disabled={option.readonly} className="!w-full" />
               </Form.Item>
-              <Form.Item name={["costs", index, "currency"]} initialValue={row.currency} className="!mb-2">
+              <Form.Item name={["costs", index, "currency"]} className="!mb-2">
                 <Select
                   disabled={option.readonly}
                   options={currencyOptions}
@@ -115,10 +115,10 @@ export default function OrderCostEditor({ form, currency, baseCurrency = "CNY", 
                 />
               </Form.Item>
             </div>
-            <Form.Item name={["costs", index, "exchangeRate"]} initialValue={row.exchangeRate} className="!mb-2" extra={option.readonly ? "自动汇总为本位币" : loadingCostIndex === index ? "正在刷新汇率…" : `换算到 ${baseCurrency}`}>
+            <Form.Item name={["costs", index, "exchangeRate"]} className="!mb-2" extra={option.readonly ? "自动汇总为本位币" : loadingCostIndex === index ? "正在刷新汇率…" : `换算到 ${baseCurrency}`}>
               <InputNumber min={0.000001} precision={6} disabled={option.readonly} className="!w-full" addonBefore="汇率" />
             </Form.Item>
-            <Form.Item name={["costs", index, "remark"]} initialValue={row.remark} className="!mb-0"><Input size="small" placeholder="备注" disabled={option.readonly} /></Form.Item>
+            <Form.Item name={["costs", index, "remark"]} className="!mb-0"><Input size="small" placeholder="备注" disabled={option.readonly} /></Form.Item>
           </div>
         );
       })}
