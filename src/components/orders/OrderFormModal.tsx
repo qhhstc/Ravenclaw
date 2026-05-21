@@ -204,6 +204,8 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
   const manualPaymentStatusRef = useRef(false);
   const manualExchangeRateRef = useRef(false);
   const rateRequestRef = useRef(0);
+  const previousOrderCurrencyRef = useRef("USD");
+  const pendingOrderCurrencyRef = useRef<string | null>(null);
   const values = Form.useWatch([], form) ?? {};
   const currency = String((values as Record<string, unknown>).currency || "USD");
   const baseCurrency = String((values as Record<string, unknown>).baseCurrency || "CNY");
@@ -219,12 +221,16 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
     .map((item) => ({ label: influencerLabel(item), value: item.id }));
   const computed = calculate(values as Record<string, unknown>);
 
-  function syncComputed() {
+  function syncComputed(options: { forceManualCostCurrencyToOrder?: boolean; previousOrderCurrency?: string; refreshOrderCurrencyCostRates?: boolean } = {}) {
     const currentValues = form.getFieldsValue(true);
     const nextCurrency = String(currentValues.currency || "USD");
     const nextBaseCurrency = String(currentValues.baseCurrency || "CNY");
     const orderExchangeRate = moneyValue(currentValues.exchangeRate) || 1;
-    const nextCosts = buildCostRows(form, nextCurrency, nextBaseCurrency, orderExchangeRate);
+    const nextCosts = buildCostRows(form, nextCurrency, nextBaseCurrency, orderExchangeRate, {
+      forceManualCurrencyToOrder: options.forceManualCostCurrencyToOrder,
+      previousOrderCurrency: options.previousOrderCurrency,
+      refreshOrderCurrencyRates: options.refreshOrderCurrencyCostRates,
+    });
     const next = calculate({ ...currentValues, costs: nextCosts });
     form.setFieldsValue({
       salesAmount: next.salesAmount,
@@ -269,7 +275,7 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
     const requestId = ++rateRequestRef.current;
     if (from === to) {
       form.setFieldsValue({ exchangeRate: 1 });
-      queueMicrotask(syncComputed);
+      queueMicrotask(() => syncComputed({ refreshOrderCurrencyCostRates: true }));
       return;
     }
     try {
@@ -280,7 +286,10 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
       if (!response.ok || !data.rate) throw new Error(data.message || "暂未获取到参考汇率");
       if (requestId !== rateRequestRef.current) return;
       form.setFieldsValue({ exchangeRate: data.rate });
-      queueMicrotask(syncComputed);
+      const previousOrderCurrency = pendingOrderCurrencyRef.current || previousOrderCurrencyRef.current;
+      previousOrderCurrencyRef.current = from;
+      pendingOrderCurrencyRef.current = null;
+      queueMicrotask(() => syncComputed({ previousOrderCurrency, refreshOrderCurrencyCostRates: true }));
       if (!options.silent) message.success(`已刷新参考汇率：${from}/${to} = ${Number(data.rate).toFixed(6)}`);
     } catch (error) {
       if (!options.silent) message.warning(error instanceof Error ? error.message : "暂未获取到参考汇率，请手动填写");
@@ -310,6 +319,8 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
           form.resetFields();
           const initialValues = orderToFormValues(editing);
           form.setFieldsValue(initialValues);
+          previousOrderCurrencyRef.current = String(initialValues.currency || "USD");
+          pendingOrderCurrencyRef.current = null;
           queueMicrotask(() => {
             syncComputed();
             if (!editing) void applyReferenceRate({ from: String(initialValues.currency || "USD"), to: String(initialValues.baseCurrency || "CNY"), silent: true });
@@ -349,6 +360,11 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
             manualExchangeRateRef.current = true;
           }
           if (Object.prototype.hasOwnProperty.call(changedValues, "currency") || Object.prototype.hasOwnProperty.call(changedValues, "baseCurrency") || Object.prototype.hasOwnProperty.call(changedValues, "orderDate")) {
+            if (Object.prototype.hasOwnProperty.call(changedValues, "currency")) {
+              pendingOrderCurrencyRef.current = previousOrderCurrencyRef.current;
+              previousOrderCurrencyRef.current = String(allValues.currency || "USD");
+              queueMicrotask(() => syncComputed({ previousOrderCurrency: pendingOrderCurrencyRef.current || undefined, forceManualCostCurrencyToOrder: true }));
+            }
             manualExchangeRateRef.current = false;
             void applyReferenceRate({ from: String(allValues.currency || "USD"), to: String(allValues.baseCurrency || "CNY"), silent: true, force: true });
           }

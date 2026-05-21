@@ -7,6 +7,11 @@ import { costTypeOptions, moneyValue } from "./orderOptions";
 const DEFAULT_CURRENCIES = ["CNY", "USD", "EUR", "JPY", "GBP"];
 
 type Props = { form: FormInstance; currency: string; baseCurrency?: string; currencies?: string[] };
+type BuildCostRowsOptions = {
+  forceManualCurrencyToOrder?: boolean;
+  previousOrderCurrency?: string;
+  refreshOrderCurrencyRates?: boolean;
+};
 
 function automaticTotals(form: FormInstance) {
   const items = (form.getFieldValue("items") ?? []) as Record<string, unknown>[];
@@ -20,21 +25,29 @@ function automaticTotals(form: FormInstance) {
   return { productPurchase, packaging };
 }
 
-function costExchangeRate(existingRate: unknown, rowCurrency: string, orderCurrency: string, baseCurrency: string, defaultExchangeRate: number) {
+function costExchangeRate(existingRate: unknown, rowCurrency: string, orderCurrency: string, baseCurrency: string, defaultExchangeRate: number, refreshOrderCurrencyRates = false) {
   if (rowCurrency === baseCurrency) return 1;
   const currentRate = moneyValue(existingRate);
+  if (rowCurrency === orderCurrency && defaultExchangeRate && refreshOrderCurrencyRates) return defaultExchangeRate;
   if (rowCurrency === orderCurrency && defaultExchangeRate && currentRate <= 1) return defaultExchangeRate;
   return currentRate || defaultExchangeRate || 1;
 }
 
-export function buildCostRows(form: FormInstance, currency: string, baseCurrency = "CNY", defaultExchangeRate = 1) {
+function shouldUseOrderCurrency(existing: Record<string, unknown> | undefined, previousOrderCurrency: string | undefined, forceManualCurrencyToOrder: boolean) {
+  if (forceManualCurrencyToOrder) return true;
+  if (!existing?.currency) return true;
+  return Boolean(previousOrderCurrency && String(existing.currency) === previousOrderCurrency);
+}
+
+export function buildCostRows(form: FormInstance, currency: string, baseCurrency = "CNY", defaultExchangeRate = 1, options: BuildCostRowsOptions = {}) {
   const totals = automaticTotals(form);
   const current = ((form.getFieldValue("costs") ?? []) as Record<string, unknown>[]).filter(Boolean);
   return costTypeOptions.map((option) => {
     const existing = current.find((item) => item.costType === option.value);
     const automaticAmount = option.value === "product_purchase" ? totals.productPurchase : option.value === "packaging_material" ? totals.packaging : undefined;
-    const rowCurrency = automaticAmount === undefined ? String(existing?.currency || currency || "USD") : baseCurrency;
-    const rowExchangeRate = automaticAmount === undefined ? costExchangeRate(existing?.exchangeRate, rowCurrency, currency, baseCurrency, defaultExchangeRate) : 1;
+    const useOrderCurrency = automaticAmount === undefined && shouldUseOrderCurrency(existing, options.previousOrderCurrency, Boolean(options.forceManualCurrencyToOrder));
+    const rowCurrency = automaticAmount === undefined ? String(useOrderCurrency ? currency : existing?.currency || currency || "USD") : baseCurrency;
+    const rowExchangeRate = automaticAmount === undefined ? costExchangeRate(existing?.exchangeRate, rowCurrency, currency, baseCurrency, defaultExchangeRate, options.refreshOrderCurrencyRates) : 1;
     const amount = automaticAmount ?? moneyValue(existing?.amount);
     return {
       costType: option.value,
