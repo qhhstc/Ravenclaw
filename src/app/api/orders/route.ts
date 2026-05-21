@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logApiDuration } from "@/lib/api-logger";
 import { decimal } from "@/lib/order-profit-calculations";
+import { syncOrderCustomer } from "@/lib/order-customer-sync";
 import { apiError, buildOrderWhere, nextOrderNo, normalizeOrderInput, orderInclude, parsePositiveInt, toNumber } from "@/lib/orders";
 import { canCreateOrder, forbidden, requireApiSession } from "@/lib/permissions";
 
@@ -34,10 +35,27 @@ export async function POST(request: NextRequest) {
       const manualOrderNo = typeof input.orderNo === "string" && input.orderNo.trim() ? input.orderNo.trim() : null;
       const orderNo = manualOrderNo ?? await nextOrderNo(tx);
       const normalized = normalizeOrderInput({ ...input, createdBy: session.userId }, orderNo, session);
+      const customerSync = await syncOrderCustomer(
+        tx,
+        {
+          customerId: toNumber(normalized.data.customerId),
+          customerName: normalized.data.customerName,
+          countryCode: normalized.data.countryCode,
+          channelId: toNumber(normalized.data.channelId),
+          brandId: toNumber(normalized.data.brandId),
+          salespersonId: toNumber(normalized.data.salespersonId),
+          createdBy: session.userId,
+          orderSource: String(normalized.data.orderSource ?? ""),
+          orderNo,
+        },
+        session,
+      );
       return tx.order.create({
         data: {
           ...normalized.data,
           orderNo,
+          customerId: customerSync.customerId,
+          customerName: customerSync.customerName ?? normalized.data.customerName,
           items: { create: normalized.items },
           costs: { create: normalized.costs },
           payments:

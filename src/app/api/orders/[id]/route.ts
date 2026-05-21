@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncOrderPaymentSummary, syncOrderShipmentSummary } from "@/lib/order-records";
 import { decimal } from "@/lib/order-profit-calculations";
+import { syncOrderCustomer } from "@/lib/order-customer-sync";
 import { apiError, normalizeOrderInput, orderDetailInclude, orderInclude, toNumber } from "@/lib/orders";
 import { ApiAuthError, canDeleteOrder, canEditOrder, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
 
@@ -38,6 +39,21 @@ export async function PATCH(request: NextRequest, context: Context) {
       if (!existing) throw new Error("订单不存在或已被删除");
       if (!canEditOrder(session.role, existing, session.userId)) throw new ApiAuthError("只能编辑自己负责且未关闭的订单", 403);
       const normalized = normalizeOrderInput(input, existing.orderNo, session);
+      const customerSync = await syncOrderCustomer(
+        tx,
+        {
+          customerId: toNumber(normalized.data.customerId),
+          customerName: normalized.data.customerName,
+          countryCode: normalized.data.countryCode,
+          channelId: toNumber(normalized.data.channelId),
+          brandId: toNumber(normalized.data.brandId),
+          salespersonId: toNumber(session.role === "sales" ? session.userId : normalized.data.salespersonId),
+          createdBy: existing.createdBy,
+          orderSource: String(normalized.data.orderSource ?? ""),
+          orderNo: existing.orderNo,
+        },
+        session,
+      );
       await tx.orderItem.deleteMany({ where: { orderId: Number(id) } });
       await tx.orderCost.deleteMany({ where: { orderId: Number(id) } });
       await tx.order.update({
@@ -47,6 +63,8 @@ export async function PATCH(request: NextRequest, context: Context) {
           orderNo: existing.orderNo,
           createdBy: existing.createdBy,
           salespersonId: session.role === "sales" ? session.userId : normalized.data.salespersonId,
+          customerId: customerSync.customerId,
+          customerName: customerSync.customerName ?? normalized.data.customerName,
           items: { create: normalized.items },
           costs: { create: normalized.costs },
         },
