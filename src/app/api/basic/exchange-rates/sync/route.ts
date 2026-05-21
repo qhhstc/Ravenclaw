@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const results: SyncResult[] = [];
     for (const pair of pairs) {
-      const latestRate = await getLatestExchangeRate(pair.from, pair.to);
+      const latestRate = await getLatestExchangeRate(pair.from, pair.to, { preferLocal: false });
       if (!latestRate || latestRate.source === "local") {
         results.push({ from: pair.from, to: pair.to, ok: false, message: "未获取到外部最新汇率" });
         continue;

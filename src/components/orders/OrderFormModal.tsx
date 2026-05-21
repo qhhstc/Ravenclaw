@@ -202,6 +202,8 @@ function influencerLabel(item: InfluencerOption) {
 export default function OrderFormModal({ open, saving, editing, brands, platforms, stores, channels, influencers, countries, currencies, customers, users, products, onCancel, onSubmit }: Props) {
   const [form] = Form.useForm();
   const manualPaymentStatusRef = useRef(false);
+  const manualExchangeRateRef = useRef(false);
+  const rateRequestRef = useRef(0);
   const values = Form.useWatch([], form) ?? {};
   const currency = String((values as Record<string, unknown>).currency || "USD");
   const baseCurrency = String((values as Record<string, unknown>).baseCurrency || "CNY");
@@ -218,9 +220,11 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
   const computed = calculate(values as Record<string, unknown>);
 
   function syncComputed() {
-    const orderExchangeRate = moneyValue(form.getFieldValue("exchangeRate")) || 1;
-    const nextCosts = buildCostRows(form, currency, baseCurrency, orderExchangeRate);
     const currentValues = form.getFieldsValue(true);
+    const nextCurrency = String(currentValues.currency || "USD");
+    const nextBaseCurrency = String(currentValues.baseCurrency || "CNY");
+    const orderExchangeRate = moneyValue(currentValues.exchangeRate) || 1;
+    const nextCosts = buildCostRows(form, nextCurrency, nextBaseCurrency, orderExchangeRate);
     const next = calculate({ ...currentValues, costs: nextCosts });
     form.setFieldsValue({
       salesAmount: next.salesAmount,
@@ -244,7 +248,10 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
   function applyStore(storeId?: number) {
     const store = stores.find((item) => item.id === storeId);
     if (!store) return;
-    form.setFieldsValue({ brandId: store.brandId, platformId: store.platformId, currency: store.defaultCurrency ?? form.getFieldValue("currency") ?? "USD", countryCode: form.getFieldValue("countryCode") ?? store.primaryMarketCode });
+    const nextCurrency = store.defaultCurrency ?? form.getFieldValue("currency") ?? "USD";
+    form.setFieldsValue({ brandId: store.brandId, platformId: store.platformId, currency: nextCurrency, countryCode: form.getFieldValue("countryCode") ?? store.primaryMarketCode });
+    manualExchangeRateRef.current = false;
+    void applyReferenceRate({ from: String(nextCurrency), to: String(form.getFieldValue("baseCurrency") || "CNY"), silent: true, force: true });
   }
 
   function applyChannel(channelId?: number) {
@@ -252,19 +259,37 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
     if (!isInfluencerChannel(channel)) form.setFieldsValue({ influencerCollaborationId: null });
   }
 
-  async function fetchReferenceRate() {
-    const from = String(form.getFieldValue("currency") || "USD");
-    const to = String(form.getFieldValue("baseCurrency") || "CNY");
+  async function applyReferenceRate(options: { from?: string; to?: string; silent?: boolean; force?: boolean } = {}) {
+    if (editing && !options.force) return;
+    if (manualExchangeRateRef.current && !options.force) return;
+    const from = String(options.from || form.getFieldValue("currency") || "USD").toUpperCase();
+    const to = String(options.to || form.getFieldValue("baseCurrency") || "CNY").toUpperCase();
+    const orderDate = form.getFieldValue("orderDate");
+    const date = orderDate && typeof orderDate === "object" && "format" in orderDate ? (orderDate as dayjs.Dayjs).format("YYYY-MM-DD") : undefined;
+    const requestId = ++rateRequestRef.current;
+    if (from === to) {
+      form.setFieldsValue({ exchangeRate: 1 });
+      queueMicrotask(syncComputed);
+      return;
+    }
     try {
-      const response = await fetch(`/api/exchange-rates/latest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+      const search = new URLSearchParams({ from, to });
+      if (date) search.set("date", date);
+      const response = await fetch(`/api/exchange-rates/latest?${search.toString()}`);
       const data = (await response.json()) as { rate?: number; source?: string; message?: string };
       if (!response.ok || !data.rate) throw new Error(data.message || "暂未获取到参考汇率");
+      if (requestId !== rateRequestRef.current) return;
       form.setFieldsValue({ exchangeRate: data.rate });
       queueMicrotask(syncComputed);
-      message.success(`已获取参考汇率：${from}/${to} = ${Number(data.rate).toFixed(6)}`);
+      if (!options.silent) message.success(`已刷新参考汇率：${from}/${to} = ${Number(data.rate).toFixed(6)}`);
     } catch (error) {
-      message.warning(error instanceof Error ? error.message : "暂未获取到参考汇率，请手动填写");
+      if (!options.silent) message.warning(error instanceof Error ? error.message : "暂未获取到参考汇率，请手动填写");
     }
+  }
+
+  function fetchReferenceRate() {
+    manualExchangeRateRef.current = false;
+    void applyReferenceRate({ silent: false, force: true });
   }
 
   return (
@@ -281,11 +306,17 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
       afterOpenChange={(visible) => {
         if (visible) {
           manualPaymentStatusRef.current = false;
+          manualExchangeRateRef.current = false;
           form.resetFields();
-          form.setFieldsValue(orderToFormValues(editing));
-          queueMicrotask(syncComputed);
+          const initialValues = orderToFormValues(editing);
+          form.setFieldsValue(initialValues);
+          queueMicrotask(() => {
+            syncComputed();
+            if (!editing) void applyReferenceRate({ from: String(initialValues.currency || "USD"), to: String(initialValues.baseCurrency || "CNY"), silent: true });
+          });
         } else {
           manualPaymentStatusRef.current = false;
+          manualExchangeRateRef.current = false;
           form.resetFields();
         }
       }}
@@ -314,6 +345,13 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
           if (Object.prototype.hasOwnProperty.call(changedValues, "paymentStatus")) {
             manualPaymentStatusRef.current = changedValues.paymentStatus !== calculatedPaymentStatus(allValues);
           }
+          if (Object.prototype.hasOwnProperty.call(changedValues, "exchangeRate")) {
+            manualExchangeRateRef.current = true;
+          }
+          if (Object.prototype.hasOwnProperty.call(changedValues, "currency") || Object.prototype.hasOwnProperty.call(changedValues, "baseCurrency") || Object.prototype.hasOwnProperty.call(changedValues, "orderDate")) {
+            manualExchangeRateRef.current = false;
+            void applyReferenceRate({ from: String(allValues.currency || "USD"), to: String(allValues.baseCurrency || "CNY"), silent: true, force: true });
+          }
           queueMicrotask(syncComputed);
         }}
       >
@@ -338,8 +376,9 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
           <Form.Item label="汇率">
             <div className="flex gap-2">
               <Form.Item name="exchangeRate" noStyle><InputNumber min={0.000001} precision={6} className="!w-full" /></Form.Item>
-              <Button onClick={fetchReferenceRate}>获取参考汇率</Button>
+              <Button onClick={fetchReferenceRate}>刷新汇率</Button>
             </div>
+            <div className="mt-1 text-xs text-[var(--muted)]">按订单日期自动取汇率表/参考汇率，保存后作为订单快照。</div>
           </Form.Item>
           <Form.Item name="baseCurrency" label="本位币"><Select options={["CNY", "USD", "EUR", "JPY", "GBP"].map((value) => ({ label: value, value }))} /></Form.Item>
           <Form.Item name="orderDate" label="下单日期" rules={[{ required: true, message: "请选择下单日期" }]}><DatePicker className="w-full" /></Form.Item>
@@ -368,7 +407,7 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
         </div>
 
         <Divider titlePlacement="start">商品明细</Divider>
-        <OrderItemsEditor form={form} products={products} currencies={currencyCodes} baseCurrency={baseCurrency} />
+        <OrderItemsEditor form={form} products={products} currencies={currencyCodes} baseCurrency={baseCurrency} orderCurrency={currency} orderExchangeRate={moneyValue((values as Record<string, unknown>).exchangeRate) || 1} />
 
         <Divider titlePlacement="start">成本分项</Divider>
         <OrderCostEditor form={form} currency={currency} baseCurrency={baseCurrency} currencies={currencyCodes} />
