@@ -1,9 +1,9 @@
 "use client";
 
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { Button, Form, Input, InputNumber, Select, Table } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { Button, Form, Input, InputNumber, Select } from "antd";
 import type { FormInstance } from "antd";
+import { useEffect } from "react";
 import { moneyValue, type ProductOption } from "./orderOptions";
 
 type Props = {
@@ -13,22 +13,46 @@ type Props = {
   baseCurrency?: string;
   orderCurrency?: string;
   orderExchangeRate?: number;
+  onItemsChange?: () => void;
 };
 
-type FieldRow = { key: number; name: number };
+type ItemRow = Record<string, unknown>;
 
-function rowValue(form: FormInstance, rowIndex: number, key: string) {
-  const item = form.getFieldValue(["items", rowIndex]) as Record<string, unknown> | undefined;
-  return moneyValue(item?.[key]);
+function defaultItemRow() {
+  return { quantity: 1, saleUnitPrice: 0, purchaseUnitCost: 0, purchaseCurrency: "CNY", purchaseExchangeRate: 1, packagingUnitCost: 0, packagingCurrency: "CNY", packagingExchangeRate: 1 };
 }
 
-function rowSubtotal(form: FormInstance, rowIndex: number, unitKey: string) {
-  return (rowValue(form, rowIndex, "quantity") * rowValue(form, rowIndex, unitKey)).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function normalizeRows(value: unknown): ItemRow[] {
+  return Array.isArray(value) ? value.map((item) => (item && typeof item === "object" ? { ...(item as ItemRow) } : {})) : [];
 }
 
-function rowBaseSubtotal(form: FormInstance, rowIndex: number, unitKey: string, exchangeRateKey: string) {
-  const subtotal = rowValue(form, rowIndex, "quantity") * rowValue(form, rowIndex, unitKey);
-  const exchangeRate = rowValue(form, rowIndex, exchangeRateKey) || 1;
+function textValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function optionalNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return undefined;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : undefined;
+}
+
+function positiveId(value: unknown) {
+  const numericValue = optionalNumber(value);
+  return numericValue && numericValue > 0 ? numericValue : undefined;
+}
+
+function rowValue(row: ItemRow | undefined, key: string) {
+  return moneyValue(row?.[key]);
+}
+
+function rowSubtotal(row: ItemRow | undefined, unitKey: string) {
+  return (rowValue(row, "quantity") * rowValue(row, unitKey)).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function rowBaseSubtotal(row: ItemRow | undefined, unitKey: string, exchangeRateKey: string) {
+  const subtotal = rowValue(row, "quantity") * rowValue(row, unitKey);
+  const exchangeRate = rowValue(row, exchangeRateKey) || 1;
   return (subtotal * exchangeRate).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -39,90 +63,133 @@ function defaultRateForCurrency(rowCurrency: string | undefined, baseCurrency: s
   return moneyValue(fallbackRate) || 1;
 }
 
-export default function OrderItemsEditor({ form, products, currencies, baseCurrency = "CNY", orderCurrency = "USD", orderExchangeRate = 1 }: Props) {
-  const watchedItems = Form.useWatch("items", form) as Record<string, unknown>[] | undefined;
-  const currentItems = (watchedItems ?? form.getFieldValue("items") ?? []) as Record<string, unknown>[];
-  const currencyOptions = Array.from(new Set([baseCurrency, ...currencies, "CNY", "USD", "EUR", "JPY", "GBP"].filter(Boolean))).map((currency) => ({ label: currency, value: currency }));
+function HiddenItemsField() {
+  return null;
+}
 
-  function applyProduct(rowIndex: number, productId?: number) {
+export default function OrderItemsEditor({ form, products, currencies, baseCurrency = "CNY", orderCurrency = "USD", orderExchangeRate = 1, onItemsChange }: Props) {
+  const watchedItems = Form.useWatch("items", form);
+  const rows = normalizeRows(watchedItems ?? form.getFieldValue("items"));
+  const currencyOptions = Array.from(new Set([baseCurrency, ...currencies, "CNY", "USD", "EUR", "JPY", "GBP"].filter(Boolean))).map((currency) => ({ label: currency, value: currency }));
+  const productOptions = [
+    ...products.map((item) => ({ label: `${item.sku} / ${item.name}`, value: item.id })),
+    ...rows
+      .map((row) => {
+        const productId = positiveId(row.productId);
+        if (!productId || products.some((item) => item.id === productId)) return null;
+        return { label: `${textValue(row.sku) || productId} / ${textValue(row.productName) || "已选产品"}`, value: productId };
+      })
+      .filter((item): item is { label: string; value: number } => Boolean(item)),
+  ];
+
+  useEffect(() => {
+    if (normalizeRows(form.getFieldValue("items")).length === 0) {
+      form.setFieldValue("items", [defaultItemRow()]);
+      onItemsChange?.();
+    }
+  }, [form, onItemsChange]);
+
+  function commitRows(nextRows: ItemRow[]) {
+    form.setFieldValue("items", nextRows.length ? nextRows : [defaultItemRow()]);
+    onItemsChange?.();
+  }
+
+  function updateRow(rowIndex: number, patch: ItemRow) {
+    const currentRows = normalizeRows(form.getFieldValue("items"));
+    const nextRows = currentRows.length ? [...currentRows] : [defaultItemRow()];
+    nextRows[rowIndex] = { ...defaultItemRow(), ...(nextRows[rowIndex] ?? {}), ...patch };
+    commitRows(nextRows);
+  }
+
+  function removeRow(rowIndex: number) {
+    const nextRows = normalizeRows(form.getFieldValue("items")).filter((_, index) => index !== rowIndex);
+    commitRows(nextRows);
+  }
+
+  function addRow() {
+    commitRows([...normalizeRows(form.getFieldValue("items")), defaultItemRow()]);
+  }
+
+  function applyProduct(rowIndex: number, productId?: number | null) {
+    if (!productId) {
+      updateRow(rowIndex, { productId: null });
+      return;
+    }
     const product = products.find((item) => item.id === productId);
     if (!product) return;
-    const currentItems = form.getFieldValue("items") as Record<string, unknown>[];
-    const nextItems = [...(currentItems ?? [])];
-    nextItems[rowIndex] = {
-      ...nextItems[rowIndex],
+    const currentRows = normalizeRows(form.getFieldValue("items"));
+    const currentRow = currentRows[rowIndex] ?? {};
+    updateRow(rowIndex, {
       productId: product.id,
       sku: product.sku,
       productName: product.name,
       specification: product.specification,
       purchaseUnitCost: moneyValue(product.defaultPurchasePrice),
       purchaseCurrency: product.currency || "CNY",
-      purchaseExchangeRate: defaultRateForCurrency(product.currency, baseCurrency, orderCurrency, orderExchangeRate, nextItems[rowIndex]?.purchaseExchangeRate),
+      purchaseExchangeRate: defaultRateForCurrency(product.currency, baseCurrency, orderCurrency, orderExchangeRate, currentRow.purchaseExchangeRate),
       packagingUnitCost: moneyValue(product.defaultPackagingCost),
       packagingCurrency: "CNY",
       packagingExchangeRate: 1,
-    };
-    form.setFieldsValue({ items: nextItems });
+    });
   }
-
-  function addRow() {
-    const currentItems = (form.getFieldValue("items") ?? []) as Record<string, unknown>[];
-    form.setFieldValue("items", [...currentItems, { quantity: 1, saleUnitPrice: 0, purchaseUnitCost: 0, purchaseCurrency: "CNY", purchaseExchangeRate: 1, packagingUnitCost: 0, packagingCurrency: "CNY", packagingExchangeRate: 1 }]);
-  }
-
-  function removeRow(rowIndex: number) {
-    const currentItems = (form.getFieldValue("items") ?? []) as Record<string, unknown>[];
-    if (currentItems.length <= 1) return;
-    form.setFieldValue("items", currentItems.filter((_, index) => index !== rowIndex));
-  }
-
-  const rows = Array.from({ length: Math.max(currentItems.length, 1) }, (_, index) => ({ key: index, name: index }));
-  const columns: ColumnsType<FieldRow> = [
-    {
-      title: "选择产品",
-      width: 190,
-      render: (_, field) => (
-        <Form.Item name={["items", field.name, "productId"]} className="!mb-0">
-          <Select allowClear showSearch optionFilterProp="label" placeholder="选择产品" options={products.map((item) => ({ label: `${item.sku} / ${item.name}`, value: item.id }))} onChange={(value) => applyProduct(field.name, value)} />
-        </Form.Item>
-      ),
-    },
-    { title: "SKU", width: 150, render: (_, field) => <Form.Item name={["items", field.name, "sku"]} className="!mb-0"><Input placeholder="SKU" /></Form.Item> },
-    { title: "产品名称", width: 260, render: (_, field) => <Form.Item name={["items", field.name, "productName"]} className="!mb-0" rules={[{ required: true, message: "请输入商品名称" }]}><Input placeholder="商品名称" /></Form.Item> },
-    { title: "规格", width: 180, render: (_, field) => <Form.Item name={["items", field.name, "specification"]} className="!mb-0"><Input placeholder="规格" /></Form.Item> },
-    { title: "数量", width: 100, align: "right", render: (_, field) => <Form.Item name={["items", field.name, "quantity"]} className="!mb-0" rules={[{ required: true, message: "数量必填" }]}><InputNumber min={1} precision={0} className="!w-full text-right" /></Form.Item> },
-    { title: "销售单价", width: 120, align: "right", render: (_, field) => <Form.Item name={["items", field.name, "saleUnitPrice"]} className="!mb-0" rules={[{ required: true, message: "销售单价必填" }]}><InputNumber min={0} precision={2} className="!w-full text-right" /></Form.Item> },
-    { title: "销售小计", width: 130, align: "right", render: (_, field) => <Form.Item shouldUpdate noStyle>{() => <div className="text-right font-medium text-[var(--foreground)]">{rowSubtotal(form, field.name, "saleUnitPrice")}</div>}</Form.Item> },
-    { title: "采购单价", width: 120, align: "right", render: (_, field) => <Form.Item name={["items", field.name, "purchaseUnitCost"]} className="!mb-0"><InputNumber min={0} precision={2} className="!w-full text-right" /></Form.Item> },
-    { title: "采购币种", width: 110, render: (_, field) => <Form.Item name={["items", field.name, "purchaseCurrency"]} className="!mb-0"><Select options={currencyOptions} onChange={(nextCurrency) => form.setFieldValue(["items", field.name, "purchaseExchangeRate"], defaultRateForCurrency(nextCurrency, baseCurrency, orderCurrency, orderExchangeRate, form.getFieldValue(["items", field.name, "purchaseExchangeRate"])))} /></Form.Item> },
-    { title: "采购汇率", width: 110, align: "right", render: (_, field) => <Form.Item name={["items", field.name, "purchaseExchangeRate"]} className="!mb-0"><InputNumber min={0.000001} precision={6} className="!w-full text-right" /></Form.Item> },
-    { title: "采购小计", width: 130, align: "right", render: (_, field) => <Form.Item shouldUpdate noStyle>{() => <div className="text-right text-[var(--muted)]">{rowSubtotal(form, field.name, "purchaseUnitCost")}</div>}</Form.Item> },
-    { title: "采购本位币", width: 130, align: "right", render: (_, field) => <Form.Item shouldUpdate noStyle>{() => <div className="text-right text-[var(--muted)]">{baseCurrency} {rowBaseSubtotal(form, field.name, "purchaseUnitCost", "purchaseExchangeRate")}</div>}</Form.Item> },
-    { title: "包装单价", width: 120, align: "right", render: (_, field) => <Form.Item name={["items", field.name, "packagingUnitCost"]} className="!mb-0"><InputNumber min={0} precision={2} className="!w-full text-right" /></Form.Item> },
-    { title: "包装币种", width: 110, render: (_, field) => <Form.Item name={["items", field.name, "packagingCurrency"]} className="!mb-0"><Select options={currencyOptions} onChange={(nextCurrency) => form.setFieldValue(["items", field.name, "packagingExchangeRate"], defaultRateForCurrency(nextCurrency, baseCurrency, orderCurrency, orderExchangeRate, form.getFieldValue(["items", field.name, "packagingExchangeRate"])))} /></Form.Item> },
-    { title: "包装汇率", width: 110, align: "right", render: (_, field) => <Form.Item name={["items", field.name, "packagingExchangeRate"]} className="!mb-0"><InputNumber min={0.000001} precision={6} className="!w-full text-right" /></Form.Item> },
-    { title: "包装小计", width: 130, align: "right", render: (_, field) => <Form.Item shouldUpdate noStyle>{() => <div className="text-right text-[var(--muted)]">{rowSubtotal(form, field.name, "packagingUnitCost")}</div>}</Form.Item> },
-    { title: "包装本位币", width: 130, align: "right", render: (_, field) => <Form.Item shouldUpdate noStyle>{() => <div className="text-right text-[var(--muted)]">{baseCurrency} {rowBaseSubtotal(form, field.name, "packagingUnitCost", "packagingExchangeRate")}</div>}</Form.Item> },
-    {
-      title: "操作",
-      width: 72,
-      fixed: "right",
-      align: "center",
-      render: (_, field) => <Button danger type="text" icon={<DeleteOutlined />} disabled={rows.length <= 1} onClick={() => removeRow(field.name)} />,
-    },
-  ];
 
   return (
     <div className="space-y-3">
-      <Table<FieldRow>
-        rowKey="key"
-        size="small"
-        columns={columns}
-        dataSource={rows}
-        pagination={false}
-        scroll={{ x: 2260 }}
-        className="[&_.ant-table-cell]:!align-top"
-      />
+      <Form.Item name="items" noStyle>
+        <HiddenItemsField />
+      </Form.Item>
+      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+        <div className="min-w-[2260px]">
+          <div className="grid grid-cols-[190px_150px_260px_180px_100px_120px_130px_120px_110px_110px_130px_130px_120px_110px_110px_130px_130px_72px] items-center gap-0 border-b border-[var(--border)] bg-[var(--soft-bg)] text-sm font-medium text-[var(--muted)]">
+            {["选择产品", "SKU", "产品名称", "规格", "数量", "销售单价", "销售小计", "采购单价", "采购币种", "采购汇率", "采购小计", "采购本位币", "包装单价", "包装币种", "包装汇率", "包装小计", "包装本位币", "操作"].map((title) => (
+              <div key={title} className="px-3 py-3">{title}</div>
+            ))}
+          </div>
+          {rows.map((row, rowIndex) => (
+            <div key={`${row.id ?? "new"}-${rowIndex}`} className="grid grid-cols-[190px_150px_260px_180px_100px_120px_130px_120px_110px_110px_130px_130px_120px_110px_110px_130px_130px_72px] items-start border-b border-[var(--border)] last:border-b-0">
+              <div className="px-2 py-2">
+                <Select allowClear showSearch optionFilterProp="label" placeholder="选择产品" className="w-full" value={positiveId(row.productId)} options={productOptions} onChange={(value) => applyProduct(rowIndex, value)} />
+              </div>
+              <div className="px-2 py-2"><Input placeholder="SKU" value={textValue(row.sku)} onChange={(event) => updateRow(rowIndex, { sku: event.target.value })} /></div>
+              <div className="px-2 py-2"><Input status={textValue(row.productName) ? undefined : "error"} placeholder="商品名称" value={textValue(row.productName)} onChange={(event) => updateRow(rowIndex, { productName: event.target.value })} /></div>
+              <div className="px-2 py-2"><Input placeholder="规格" value={textValue(row.specification)} onChange={(event) => updateRow(rowIndex, { specification: event.target.value })} /></div>
+              <div className="px-2 py-2"><InputNumber min={1} precision={0} className="!w-full text-right" value={optionalNumber(row.quantity) ?? 1} onChange={(value) => updateRow(rowIndex, { quantity: value ?? 1 })} /></div>
+              <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.saleUnitPrice) ?? 0} onChange={(value) => updateRow(rowIndex, { saleUnitPrice: value ?? 0 })} /></div>
+              <div className="px-3 py-3 text-right font-medium text-[var(--foreground)]">{rowSubtotal(row, "saleUnitPrice")}</div>
+              <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.purchaseUnitCost) ?? 0} onChange={(value) => updateRow(rowIndex, { purchaseUnitCost: value ?? 0 })} /></div>
+              <div className="px-2 py-2">
+                <Select
+                  className="w-full"
+                  value={textValue(row.purchaseCurrency) || "CNY"}
+                  options={currencyOptions}
+                  onChange={(nextCurrency) => updateRow(rowIndex, { purchaseCurrency: nextCurrency, purchaseExchangeRate: defaultRateForCurrency(nextCurrency, baseCurrency, orderCurrency, orderExchangeRate, row.purchaseExchangeRate) })}
+                />
+              </div>
+              <div className="px-2 py-2"><InputNumber min={0.000001} precision={6} className="!w-full text-right" value={optionalNumber(row.purchaseExchangeRate) ?? 1} onChange={(value) => updateRow(rowIndex, { purchaseExchangeRate: value ?? 1 })} /></div>
+              <div className="px-3 py-3 text-right text-[var(--muted)]">{rowSubtotal(row, "purchaseUnitCost")}</div>
+              <div className="px-3 py-3 text-right text-[var(--muted)]">{baseCurrency} {rowBaseSubtotal(row, "purchaseUnitCost", "purchaseExchangeRate")}</div>
+              <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.packagingUnitCost) ?? 0} onChange={(value) => updateRow(rowIndex, { packagingUnitCost: value ?? 0 })} /></div>
+              <div className="px-2 py-2">
+                <Select
+                  className="w-full"
+                  value={textValue(row.packagingCurrency) || "CNY"}
+                  options={currencyOptions}
+                  onChange={(nextCurrency) => updateRow(rowIndex, { packagingCurrency: nextCurrency, packagingExchangeRate: defaultRateForCurrency(nextCurrency, baseCurrency, orderCurrency, orderExchangeRate, row.packagingExchangeRate) })}
+                />
+              </div>
+              <div className="px-2 py-2"><InputNumber min={0.000001} precision={6} className="!w-full text-right" value={optionalNumber(row.packagingExchangeRate) ?? 1} onChange={(value) => updateRow(rowIndex, { packagingExchangeRate: value ?? 1 })} /></div>
+              <div className="px-3 py-3 text-right text-[var(--muted)]">{rowSubtotal(row, "packagingUnitCost")}</div>
+              <div className="px-3 py-3 text-right text-[var(--muted)]">{baseCurrency} {rowBaseSubtotal(row, "packagingUnitCost", "packagingExchangeRate")}</div>
+              <div className="px-2 py-2 text-center">
+                <Button danger type="text" icon={<DeleteOutlined />} disabled={rows.length <= 1} onClick={() => removeRow(rowIndex)} />
+              </div>
+            </div>
+          ))}
+          {rows.length === 0 ? (
+            <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">暂无商品明细，请添加一行。</div>
+          ) : null}
+        </div>
+      </div>
       <Button type="dashed" block icon={<PlusOutlined />} onClick={addRow}>添加商品明细</Button>
     </div>
   );

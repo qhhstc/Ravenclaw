@@ -30,10 +30,38 @@ export const customerDetailInclude = {
     include: { owner: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "desc" },
   },
+  inquiries: {
+    include: {
+      brand: { select: { id: true, name: true, code: true } },
+      channel: {
+        select: {
+          id: true,
+          businessLine: true,
+          channelGroup: true,
+          channelName: true,
+          channelType: true,
+          store: { select: { id: true, name: true } },
+          platform: { select: { id: true, name: true } },
+        },
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+  },
+  quotes: {
+    include: {
+      inquiry: { select: { id: true, inquiryNo: true, title: true, status: true } },
+      order: { select: { id: true, orderNo: true } },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  },
   orders: {
     include: {
       items: true,
       salesperson: { select: { id: true, name: true, email: true } },
+      payments: {
+        include: { creator: { select: { id: true, name: true, email: true } } },
+        orderBy: [{ paymentDate: "desc" }, { id: "desc" }],
+      },
     },
     orderBy: { orderDate: "desc" },
   },

@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { Tag } from "antd";
+import type { OrderPaymentRecord } from "@/components/orders/orderOptions";
 
 export const customerTypeOptions = [
   { label: "个人客户", value: "individual" },
@@ -89,6 +90,8 @@ export type CustomerRecord = {
   owner?: CrmUser | null;
   contacts?: CustomerContact[];
   followups?: CustomerFollowup[];
+  inquiries?: CustomerInquiry[];
+  quotes?: CustomerQuote[];
   orders?: Array<{
     id: number;
     orderNo: string;
@@ -101,7 +104,9 @@ export type CustomerRecord = {
     grossProfit: number;
     grossMargin?: number | null;
     paidAmount: number;
+    orderStatus: string;
     paymentStatus: string;
+    payments?: OrderPaymentRecord[];
     items?: Array<{
       id?: number;
       sku?: string | null;
@@ -119,6 +124,31 @@ export type CustomerRecord = {
       packagingCostBase?: number;
     }>;
   }>;
+};
+
+export type CustomerInquiry = {
+  id: number;
+  inquiryNo: string;
+  title: string;
+  status: string;
+  countryCode?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  brand?: CrmBrand | null;
+  channel?: CrmChannel | null;
+};
+
+export type CustomerQuote = {
+  id: number;
+  quoteNo: string;
+  inquiryId?: number | null;
+  currency: string;
+  totalAmount: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  inquiry?: { id: number; inquiryNo: string; title: string; status: string } | null;
+  order?: { id: number; orderNo: string } | null;
 };
 
 export type CustomerContact = {

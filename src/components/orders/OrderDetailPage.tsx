@@ -59,6 +59,8 @@ export default function OrderDetailPage({ orderId }: Props) {
   const [costSaving, setCostSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [costModalOpen, setCostModalOpen] = useState(false);
+  const [optionsLoaded, setOptionsLoaded] = useState(false);
+  const [optionsLoading, setOptionsLoading] = useState(false);
   const [brands, setBrands] = useState<BrandOption[]>([]);
   const [platforms, setPlatforms] = useState<PlatformOption[]>([]);
   const [stores, setStores] = useState<StoreOption[]>([]);
@@ -86,6 +88,8 @@ export default function OrderDetailPage({ orderId }: Props) {
   }, [orderId]);
 
   const loadOptions = useCallback(async () => {
+    if (optionsLoaded) return true;
+    setOptionsLoading(true);
     try {
       const [brandData, platformData, storeData, channelData, countryData, currencyData, customerData, userData, productData, influencerData] = await Promise.all([
         fetchJson<OptionResponse<BrandOption>>("/api/basic/brands?pageSize=100&status=active"),
@@ -109,14 +113,18 @@ export default function OrderDetailPage({ orderId }: Props) {
       setUsers(userData.items ?? []);
       setProducts(productData.items ?? []);
       setInfluencers(influencerData.items ?? []);
+      setOptionsLoaded(true);
+      return true;
     } catch {
       message.error("基础选项加载失败");
+      return false;
+    } finally {
+      setOptionsLoading(false);
     }
-  }, []);
+  }, [optionsLoaded]);
 
   useEffect(() => {
     queueMicrotask(loadOrder);
-    queueMicrotask(loadOptions);
     queueMicrotask(async () => {
       try {
         const me = await fetchJson<{ user: { userId: number; role: string } }>("/api/auth/me");
@@ -127,7 +135,12 @@ export default function OrderDetailPage({ orderId }: Props) {
         setCurrentUserId(null);
       }
     });
-  }, [loadOrder, loadOptions]);
+  }, [loadOrder]);
+
+  async function openEditModal() {
+    const loaded = await loadOptions();
+    if (loaded) setModalOpen(true);
+  }
 
   async function saveOrder(values: Record<string, unknown>) {
     setSaving(true);
@@ -218,7 +231,7 @@ export default function OrderDetailPage({ orderId }: Props) {
               </div>
               <Space>
                 <Button icon={<ArrowLeftOutlined />} onClick={() => router.push("/orders")}>返回</Button>
-                {canEditCurrentOrder ? <Button type="primary" icon={<EditOutlined />} onClick={() => setModalOpen(true)}>编辑</Button> : null}
+                {canEditCurrentOrder ? <Button type="primary" icon={<EditOutlined />} loading={optionsLoading} onClick={openEditModal}>编辑</Button> : null}
                 {["admin", "finance"].includes(currentRole) ? <Button onClick={() => setCostModalOpen(true)}>编辑成本</Button> : null}
               </Space>
             </div>
@@ -313,31 +326,35 @@ export default function OrderDetailPage({ orderId }: Props) {
             />
           </Card>
 
-          <OrderFormModal
-            key={`detail-edit-${order.id}`}
-            open={modalOpen}
-            saving={saving}
-            editing={order}
-            brands={brands}
-            platforms={platforms}
-            stores={stores}
-            channels={channels}
-            influencers={influencers}
-            countries={countries}
-            currencies={currencies}
-            customers={customers}
-            users={users}
-            products={products}
-            onCancel={() => setModalOpen(false)}
-            onSubmit={saveOrder}
-          />
-          <OrderCostModal
-            open={costModalOpen}
-            saving={costSaving}
-            order={order}
-            onCancel={() => setCostModalOpen(false)}
-            onSubmit={saveCosts}
-          />
+          {modalOpen ? (
+            <OrderFormModal
+              key={`detail-edit-${order.id}`}
+              open={modalOpen}
+              saving={saving}
+              editing={order}
+              brands={brands}
+              platforms={platforms}
+              stores={stores}
+              channels={channels}
+              influencers={influencers}
+              countries={countries}
+              currencies={currencies}
+              customers={customers}
+              users={users}
+              products={products}
+              onCancel={() => setModalOpen(false)}
+              onSubmit={saveOrder}
+            />
+          ) : null}
+          {costModalOpen ? (
+            <OrderCostModal
+              open={costModalOpen}
+              saving={costSaving}
+              order={order}
+              onCancel={() => setCostModalOpen(false)}
+              onSubmit={saveCosts}
+            />
+          ) : null}
         </div>
       ) : null}
     </Spin>

@@ -178,6 +178,27 @@ function calculatedPaymentStatus(values: Record<string, unknown>) {
   return paymentStatusFor(salesAmount, paidAmount, orderStatus);
 }
 
+function changedRowsInclude(value: unknown, keys: string[]) {
+  return Array.isArray(value) && value.some((row) => row && typeof row === "object" && keys.some((key) => Object.prototype.hasOwnProperty.call(row, key)));
+}
+
+function changedValuesAffectCalculations(changedValues: Record<string, unknown>) {
+  const directKeys = ["paidAmount", "orderStatus", "exchangeRate", "currency", "baseCurrency"];
+  if (directKeys.some((key) => Object.prototype.hasOwnProperty.call(changedValues, key))) return true;
+  if (changedRowsInclude(changedValues.items, ["quantity", "saleUnitPrice", "purchaseUnitCost", "purchaseExchangeRate", "packagingUnitCost", "packagingExchangeRate"])) return true;
+  return changedRowsInclude(changedValues.costs, ["amount", "currency", "exchangeRate"]);
+}
+
+function orderItemsValidationMessage(items: unknown) {
+  if (!Array.isArray(items) || items.length === 0) return "商品明细未正确加载，请刷新订单详情后重试";
+  const invalidIndex = items.findIndex((item) => {
+    if (!item || typeof item !== "object") return true;
+    const row = item as Record<string, unknown>;
+    return !String(row.productName ?? "").trim() || moneyValue(row.quantity) <= 0;
+  });
+  return invalidIndex >= 0 ? `第 ${invalidIndex + 1} 行商品名称和数量不能为空` : null;
+}
+
 export function serializeOrderForm(values: Record<string, unknown>, formCosts: Record<string, unknown>[]) {
   return {
     ...values,
@@ -205,12 +226,16 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
   const manualPaymentStatusRef = useRef(false);
   const manualExchangeRateRef = useRef(false);
   const rateRequestRef = useRef(0);
-  const values = Form.useWatch([], form) ?? {};
-  const currency = String((values as Record<string, unknown>).currency || "USD");
-  const baseCurrency = String((values as Record<string, unknown>).baseCurrency || "CNY");
+  const watchedItems = Form.useWatch("items", form) as Record<string, unknown>[] | undefined;
+  const watchedCosts = Form.useWatch("costs", form) as Record<string, unknown>[] | undefined;
+  const watchedPaidAmount = Form.useWatch("paidAmount", form);
+  const watchedOrderStatus = Form.useWatch("orderStatus", form);
+  const watchedExchangeRate = Form.useWatch("exchangeRate", form);
+  const currency = String(Form.useWatch("currency", form) || "USD");
+  const baseCurrency = String(Form.useWatch("baseCurrency", form) || "CNY");
   const currencyCodes = currencies.map((item) => item.code);
-  const selectedChannelId = Number((values as Record<string, unknown>).channelId || 0);
-  const selectedBrandId = Number((values as Record<string, unknown>).brandId || 0);
+  const selectedChannelId = Number(Form.useWatch("channelId", form) || 0);
+  const selectedBrandId = Number(Form.useWatch("brandId", form) || 0);
   const selectedChannel = channels.find((item) => item.id === selectedChannelId);
   const showInfluencerSelect = isInfluencerChannel(selectedChannel);
   const influencerOptions = influencers
@@ -218,7 +243,14 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
     .filter((item) => !selectedChannelId || !item.channelId || item.channelId === selectedChannelId)
     .filter((item) => !selectedBrandId || !item.brandId || item.brandId === selectedBrandId)
     .map((item) => ({ label: influencerLabel(item), value: item.id }));
-  const computed = calculate(values as Record<string, unknown>);
+  const orderExchangeRate = moneyValue(watchedExchangeRate) || 1;
+  const computed = calculate({
+    items: watchedItems ?? [],
+    costs: watchedCosts ?? [],
+    exchangeRate: orderExchangeRate,
+    paidAmount: watchedPaidAmount,
+    orderStatus: watchedOrderStatus,
+  });
 
   function syncComputed(options: { refreshOrderCurrencyCostRates?: boolean } = {}) {
     const currentValues = form.getFieldsValue(true);
@@ -329,7 +361,13 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
       }}
       onOk={async () => {
         syncComputed();
-        const nextValues = await form.validateFields();
+        await form.validateFields();
+        const nextValues = form.getFieldsValue(true);
+        const itemsError = orderItemsValidationMessage(nextValues.items);
+        if (itemsError) {
+          message.error(itemsError);
+          return;
+        }
         const calculatedValues = calculate(nextValues);
         await onSubmit(
           serializeOrderForm(
@@ -358,8 +396,11 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
           if (Object.prototype.hasOwnProperty.call(changedValues, "currency") || Object.prototype.hasOwnProperty.call(changedValues, "baseCurrency") || Object.prototype.hasOwnProperty.call(changedValues, "orderDate")) {
             manualExchangeRateRef.current = false;
             void applyReferenceRate({ from: String(allValues.currency || "USD"), to: String(allValues.baseCurrency || "CNY"), silent: true, force: true });
+            return;
           }
-          queueMicrotask(syncComputed);
+          if (changedValuesAffectCalculations(changedValues as Record<string, unknown>)) {
+            queueMicrotask(syncComputed);
+          }
         }}
       >
         <Divider titlePlacement="start">订单基础信息</Divider>
@@ -414,7 +455,7 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
         </div>
 
         <Divider titlePlacement="start">商品明细</Divider>
-        <OrderItemsEditor form={form} products={products} currencies={currencyCodes} baseCurrency={baseCurrency} orderCurrency={currency} orderExchangeRate={moneyValue((values as Record<string, unknown>).exchangeRate) || 1} />
+        <OrderItemsEditor form={form} products={products} currencies={currencyCodes} baseCurrency={baseCurrency} orderCurrency={currency} orderExchangeRate={orderExchangeRate} onItemsChange={() => queueMicrotask(syncComputed)} />
 
         <Divider titlePlacement="start">成本分项</Divider>
         <OrderCostEditor form={form} currency={currency} baseCurrency={baseCurrency} currencies={currencyCodes} />

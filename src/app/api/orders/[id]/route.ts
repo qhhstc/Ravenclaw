@@ -27,6 +27,9 @@ export async function PATCH(request: NextRequest, context: Context) {
     const session = await requireApiSession();
     const { id } = await context.params;
     const input = (await request.json()) as Record<string, unknown>;
+    if (!Array.isArray(input.items) || input.items.length === 0) {
+      throw new Error("商品明细未正确加载，请刷新订单详情后重试");
+    }
     const item = await prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
         where: { id: Number(id) },
