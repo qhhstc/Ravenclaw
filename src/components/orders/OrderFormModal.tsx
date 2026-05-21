@@ -2,7 +2,7 @@
 
 import { Alert, Button, Card, DatePicker, Divider, Form, Input, InputNumber, Modal, Select, Typography, message } from "antd";
 import dayjs from "dayjs";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import OrderAttachmentPanel from "./OrderAttachmentPanel";
 import OrderCostEditor, { buildCostRows } from "./OrderCostEditor";
 import OrderItemsEditor from "./OrderItemsEditor";
@@ -53,9 +53,9 @@ function dayValue(value?: string | Date | null) {
 }
 
 function defaultCosts(currency = "USD", baseCurrency = "CNY") {
+  const baseCurrencyCosts = new Set(["product_purchase", "domestic_shipping", "packaging_material", "customs_fee", "port_charge", "trucking_fee"]);
   return ["product_purchase", "domestic_shipping", "packaging_material", "international_shipping", "customs_fee", "port_charge", "trucking_fee", "platform_fee", "payment_fee", "other"].map((costType) => {
-    const automaticCost = costType === "product_purchase" || costType === "packaging_material";
-    return { costType, amount: 0, currency: automaticCost ? baseCurrency : currency, exchangeRate: 1, baseAmount: 0 };
+    return { costType, amount: 0, currency: baseCurrencyCosts.has(costType) ? baseCurrency : currency, exchangeRate: 1, baseAmount: 0 };
   });
 }
 
@@ -201,11 +201,10 @@ function influencerLabel(item: InfluencerOption) {
 
 export default function OrderFormModal({ open, saving, editing, brands, platforms, stores, channels, influencers, countries, currencies, customers, users, products, onCancel, onSubmit }: Props) {
   const [form] = Form.useForm();
+  const [rateLoading, setRateLoading] = useState(false);
   const manualPaymentStatusRef = useRef(false);
   const manualExchangeRateRef = useRef(false);
   const rateRequestRef = useRef(0);
-  const previousOrderCurrencyRef = useRef("USD");
-  const pendingOrderCurrencyRef = useRef<string | null>(null);
   const values = Form.useWatch([], form) ?? {};
   const currency = String((values as Record<string, unknown>).currency || "USD");
   const baseCurrency = String((values as Record<string, unknown>).baseCurrency || "CNY");
@@ -221,14 +220,12 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
     .map((item) => ({ label: influencerLabel(item), value: item.id }));
   const computed = calculate(values as Record<string, unknown>);
 
-  function syncComputed(options: { forceManualCostCurrencyToOrder?: boolean; previousOrderCurrency?: string; refreshOrderCurrencyCostRates?: boolean } = {}) {
+  function syncComputed(options: { refreshOrderCurrencyCostRates?: boolean } = {}) {
     const currentValues = form.getFieldsValue(true);
     const nextCurrency = String(currentValues.currency || "USD");
     const nextBaseCurrency = String(currentValues.baseCurrency || "CNY");
     const orderExchangeRate = moneyValue(currentValues.exchangeRate) || 1;
     const nextCosts = buildCostRows(form, nextCurrency, nextBaseCurrency, orderExchangeRate, {
-      forceManualCurrencyToOrder: options.forceManualCostCurrencyToOrder,
-      previousOrderCurrency: options.previousOrderCurrency,
       refreshOrderCurrencyRates: options.refreshOrderCurrencyCostRates,
     });
     const next = calculate({ ...currentValues, costs: nextCosts });
@@ -274,10 +271,12 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
     const date = orderDate && typeof orderDate === "object" && "format" in orderDate ? (orderDate as dayjs.Dayjs).format("YYYY-MM-DD") : undefined;
     const requestId = ++rateRequestRef.current;
     if (from === to) {
+      setRateLoading(false);
       form.setFieldsValue({ exchangeRate: 1 });
       queueMicrotask(() => syncComputed({ refreshOrderCurrencyCostRates: true }));
       return;
     }
+    setRateLoading(true);
     try {
       const search = new URLSearchParams({ from, to });
       if (date) search.set("date", date);
@@ -286,13 +285,12 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
       if (!response.ok || !data.rate) throw new Error(data.message || "暂未获取到参考汇率");
       if (requestId !== rateRequestRef.current) return;
       form.setFieldsValue({ exchangeRate: data.rate });
-      const previousOrderCurrency = pendingOrderCurrencyRef.current || previousOrderCurrencyRef.current;
-      previousOrderCurrencyRef.current = from;
-      pendingOrderCurrencyRef.current = null;
-      queueMicrotask(() => syncComputed({ previousOrderCurrency, refreshOrderCurrencyCostRates: true }));
+      queueMicrotask(() => syncComputed({ refreshOrderCurrencyCostRates: true }));
       if (!options.silent) message.success(`已刷新参考汇率：${from}/${to} = ${Number(data.rate).toFixed(6)}`);
     } catch (error) {
       if (!options.silent) message.warning(error instanceof Error ? error.message : "暂未获取到参考汇率，请手动填写");
+    } finally {
+      if (requestId === rateRequestRef.current) setRateLoading(false);
     }
   }
 
@@ -319,8 +317,6 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
           form.resetFields();
           const initialValues = orderToFormValues(editing);
           form.setFieldsValue(initialValues);
-          previousOrderCurrencyRef.current = String(initialValues.currency || "USD");
-          pendingOrderCurrencyRef.current = null;
           queueMicrotask(() => {
             syncComputed();
             if (!editing) void applyReferenceRate({ from: String(initialValues.currency || "USD"), to: String(initialValues.baseCurrency || "CNY"), silent: true });
@@ -360,11 +356,6 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
             manualExchangeRateRef.current = true;
           }
           if (Object.prototype.hasOwnProperty.call(changedValues, "currency") || Object.prototype.hasOwnProperty.call(changedValues, "baseCurrency") || Object.prototype.hasOwnProperty.call(changedValues, "orderDate")) {
-            if (Object.prototype.hasOwnProperty.call(changedValues, "currency")) {
-              pendingOrderCurrencyRef.current = previousOrderCurrencyRef.current;
-              previousOrderCurrencyRef.current = String(allValues.currency || "USD");
-              queueMicrotask(() => syncComputed({ previousOrderCurrency: pendingOrderCurrencyRef.current || undefined, forceManualCostCurrencyToOrder: true }));
-            }
             manualExchangeRateRef.current = false;
             void applyReferenceRate({ from: String(allValues.currency || "USD"), to: String(allValues.baseCurrency || "CNY"), silent: true, force: true });
           }
@@ -392,9 +383,9 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
           <Form.Item label="汇率">
             <div className="flex gap-2">
               <Form.Item name="exchangeRate" noStyle><InputNumber min={0.000001} precision={6} className="!w-full" /></Form.Item>
-              <Button onClick={fetchReferenceRate}>刷新汇率</Button>
+              <Button loading={rateLoading} onClick={fetchReferenceRate}>刷新汇率</Button>
             </div>
-            <div className="mt-1 text-xs text-[var(--muted)]">按订单日期自动取汇率表/参考汇率，保存后作为订单快照。</div>
+            <div className="mt-1 text-xs text-[var(--muted)]">{rateLoading ? "正在刷新订单汇率…" : "按订单日期自动取汇率表/参考汇率，保存后作为订单快照。"}</div>
           </Form.Item>
           <Form.Item name="baseCurrency" label="本位币"><Select options={["CNY", "USD", "EUR", "JPY", "GBP"].map((value) => ({ label: value, value }))} /></Form.Item>
           <Form.Item name="orderDate" label="下单日期" rules={[{ required: true, message: "请选择下单日期" }]}><DatePicker className="w-full" /></Form.Item>
