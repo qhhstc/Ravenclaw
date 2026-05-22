@@ -84,9 +84,9 @@ export default function CustomerRelatedPanel({ customer }: Props) {
     { title: "下单日期", dataIndex: "orderDate", width: 120, render: formatDate },
     { title: "订单状态", dataIndex: "orderStatus", width: 120, render: (value) => <StatusTag type="order" value={value} /> },
     { title: "付款状态", dataIndex: "paymentStatus", width: 120, render: (value) => <StatusTag type="payment" value={value} /> },
-    { title: "销售额", dataIndex: "salesAmount", width: 140, align: "right", render: (value, row) => moneyText(value, row.currency) },
-    { title: "已收", dataIndex: "paidAmount", width: 140, align: "right", render: (value, row) => moneyText(value, row.currency) },
-    { title: "毛利", dataIndex: "grossProfit", width: 140, align: "right", render: (value, row) => moneyText(value, row.baseCurrency || "CNY") },
+    { title: "销售额（订单币种）", dataIndex: "salesAmount", width: 160, align: "right", render: (value, row) => moneyText(value, row.currency) },
+    { title: "已收（订单币种）", dataIndex: "paidAmount", width: 160, align: "right", render: (value, row) => moneyText(value, row.currency) },
+    { title: "毛利（本位币）", dataIndex: "grossProfit", width: 150, align: "right", render: (value, row) => moneyText(value, row.baseCurrency || "CNY") },
   ];
 
   const paymentColumns: ColumnsType<CustomerPayment> = [

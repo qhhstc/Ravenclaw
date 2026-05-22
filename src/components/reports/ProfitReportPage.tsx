@@ -14,6 +14,7 @@ type CostRow = { costType: string; name: string; amount: number; ratio: number |
 type ProductRow = { sku: string; productName: string; quantity: number; salesAmount: number; purchaseCost: number; packagingCost: number; grossProfit: number; grossMargin: number | null };
 type OrderProfitRow = { id: number; orderNo: string; customerName: string; orderDate: string; salesAmount: number; totalCost: number; grossProfit: number; grossMargin: number | null; salespersonName: string; orderStatus: string };
 type ReportData = {
+  baseCurrency: string;
   summary: Summary;
   daily: RankingRow[];
   weekly: RankingRow[];
@@ -27,6 +28,7 @@ type ReportData = {
 };
 
 const emptyReport: ReportData = {
+  baseCurrency: "CNY",
   summary: { orderCount: 0, salesAmount: 0, totalCost: 0, grossProfit: 0, grossMargin: null },
   daily: [],
   weekly: [],
@@ -56,48 +58,57 @@ async function fetchReport(filters: Filters) {
   return data;
 }
 
-const summaryColumns: ColumnsType<RankingRow> = [
+function summaryColumns(baseCurrency: string): ColumnsType<RankingRow> {
+  return [
   { title: "周期/客户", dataIndex: "name", width: 180 },
   { title: "订单数", dataIndex: "orderCount", width: 100, align: "right" },
-  { title: "销售额", dataIndex: "salesAmount", width: 140, align: "right", render: (value) => moneyText(value) },
-  { title: "总成本", dataIndex: "totalCost", width: 140, align: "right", render: (value) => moneyText(value) },
-  { title: "毛利", dataIndex: "grossProfit", width: 140, align: "right", render: (value) => <span className={Number(value) < 0 ? "font-semibold text-red-500" : ""}>{moneyText(value)}</span> },
+  { title: `销售额（${baseCurrency}）`, dataIndex: "salesAmount", width: 150, align: "right", render: (value) => moneyText(value, baseCurrency) },
+  { title: `总成本（${baseCurrency}）`, dataIndex: "totalCost", width: 150, align: "right", render: (value) => moneyText(value, baseCurrency) },
+  { title: `毛利（${baseCurrency}）`, dataIndex: "grossProfit", width: 150, align: "right", render: (value) => <span className={Number(value) < 0 ? "font-semibold text-red-500" : ""}>{moneyText(value, baseCurrency)}</span> },
   { title: "毛利率", dataIndex: "grossMargin", width: 110, align: "right", render: (value) => <MarginTag value={value} /> },
-];
+  ];
+}
 
-const productColumns: ColumnsType<ProductRow> = [
+function productColumns(baseCurrency: string): ColumnsType<ProductRow> {
+  return [
   { title: "SKU", dataIndex: "sku", width: 170 },
   { title: "产品名称", dataIndex: "productName", width: 260 },
   { title: "销售数量", dataIndex: "quantity", width: 100, align: "right" },
-  { title: "销售额", dataIndex: "salesAmount", width: 140, align: "right", render: (value) => moneyText(value) },
-  { title: "采购成本", dataIndex: "purchaseCost", width: 140, align: "right", render: (value) => moneyText(value) },
-  { title: "包装成本", dataIndex: "packagingCost", width: 140, align: "right", render: (value) => moneyText(value) },
-  { title: "毛利", dataIndex: "grossProfit", width: 140, align: "right", render: (value) => <span className={Number(value) < 0 ? "font-semibold text-red-500" : ""}>{moneyText(value)}</span> },
+  { title: `销售额（${baseCurrency}）`, dataIndex: "salesAmount", width: 150, align: "right", render: (value) => moneyText(value, baseCurrency) },
+  { title: `采购成本（${baseCurrency}）`, dataIndex: "purchaseCost", width: 150, align: "right", render: (value) => moneyText(value, baseCurrency) },
+  { title: `包装成本（${baseCurrency}）`, dataIndex: "packagingCost", width: 150, align: "right", render: (value) => moneyText(value, baseCurrency) },
+  { title: `毛利（${baseCurrency}）`, dataIndex: "grossProfit", width: 150, align: "right", render: (value) => <span className={Number(value) < 0 ? "font-semibold text-red-500" : ""}>{moneyText(value, baseCurrency)}</span> },
   { title: "毛利率", dataIndex: "grossMargin", width: 110, align: "right", render: (value) => <MarginTag value={value} /> },
-];
+  ];
+}
 
-const costColumns: ColumnsType<CostRow> = [
+function costColumns(baseCurrency: string): ColumnsType<CostRow> {
+  return [
   { title: "成本类型", dataIndex: "name", width: 220 },
-  { title: "金额", dataIndex: "amount", width: 160, align: "right", render: (value) => moneyText(value, "CNY") },
+  { title: `金额（${baseCurrency}）`, dataIndex: "amount", width: 160, align: "right", render: (value) => moneyText(value, baseCurrency) },
   { title: "占总成本比例", dataIndex: "ratio", width: 150, align: "right", render: percentText },
-];
+  ];
+}
 
-const orderColumns: ColumnsType<OrderProfitRow> = [
+function orderColumns(baseCurrency: string): ColumnsType<OrderProfitRow> {
+  return [
   { title: "订单编号", dataIndex: "orderNo", width: 160, render: (value, row) => <Link className="font-medium" href={`/orders/${row.id}`}>{value}</Link> },
   { title: "客户名称", dataIndex: "customerName", width: 210 },
   { title: "下单日期", dataIndex: "orderDate", width: 120, render: formatDate },
-  { title: "销售额", dataIndex: "salesAmount", width: 140, align: "right", render: (value) => moneyText(value) },
-  { title: "总成本", dataIndex: "totalCost", width: 140, align: "right", render: (value) => moneyText(value) },
-  { title: "毛利", dataIndex: "grossProfit", width: 140, align: "right", render: (value) => <span className={Number(value) < 0 ? "font-semibold text-red-500" : ""}>{moneyText(value)}</span> },
+  { title: `销售额（${baseCurrency}）`, dataIndex: "salesAmount", width: 150, align: "right", render: (value) => moneyText(value, baseCurrency) },
+  { title: `总成本（${baseCurrency}）`, dataIndex: "totalCost", width: 150, align: "right", render: (value) => moneyText(value, baseCurrency) },
+  { title: `毛利（${baseCurrency}）`, dataIndex: "grossProfit", width: 150, align: "right", render: (value) => <span className={Number(value) < 0 ? "font-semibold text-red-500" : ""}>{moneyText(value, baseCurrency)}</span> },
   { title: "毛利率", dataIndex: "grossMargin", width: 110, align: "right", render: (value) => <MarginTag value={value} /> },
   { title: "业务员", dataIndex: "salespersonName", width: 120 },
-];
+  ];
+}
 
 export default function ProfitReportPage() {
   const [filters, setFilters] = useState<Filters>({ year: 2026, month: 5 });
   const [loading, setLoading] = useState(false);
   const [exportingType, setExportingType] = useState<string | null>(null);
   const [report, setReport] = useState<ReportData>(emptyReport);
+  const baseCurrency = report.baseCurrency || "CNY";
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -152,7 +163,7 @@ export default function ProfitReportPage() {
       <div className="page-section-header">
         <div>
           <Typography.Title level={3} className="!mb-1 !text-[var(--foreground)]">利润报表</Typography.Title>
-          <Typography.Text type="secondary">按订单、客户与产品汇总外贸业务毛利表现。</Typography.Text>
+          <Typography.Text type="secondary">按订单、客户与产品汇总外贸业务毛利表现，金额统一换算为本位币 {baseCurrency}。</Typography.Text>
         </div>
         <Space wrap>
           <Button loading={exportingType === "daily"} icon={<DownloadOutlined />} onClick={() => exportReport("daily")}>导出日报</Button>
@@ -180,9 +191,9 @@ export default function ProfitReportPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
         <Card><Statistic title="总订单数" value={report.summary.orderCount} /></Card>
-        <Card><Statistic title="总销售额" value={compactMoneyText(report.summary.salesAmount)} /></Card>
-        <Card><Statistic title="总成本" value={compactMoneyText(report.summary.totalCost)} /></Card>
-        <Card><Statistic title="总毛利" value={compactMoneyText(report.summary.grossProfit)} valueStyle={{ color: report.summary.grossProfit < 0 ? "#ff4d4f" : "#16a34a" }} /></Card>
+        <Card><Statistic title={`总销售额（${baseCurrency}）`} value={compactMoneyText(report.summary.salesAmount, baseCurrency)} /></Card>
+        <Card><Statistic title={`总成本（${baseCurrency}）`} value={compactMoneyText(report.summary.totalCost, baseCurrency)} /></Card>
+        <Card><Statistic title={`总毛利（${baseCurrency}）`} value={compactMoneyText(report.summary.grossProfit, baseCurrency)} valueStyle={{ color: report.summary.grossProfit < 0 ? "#ff4d4f" : "#16a34a" }} /></Card>
         <Card><Statistic title="平均毛利率" value={percentText(report.summary.grossMargin)} /></Card>
       </div>
 
@@ -190,14 +201,14 @@ export default function ProfitReportPage() {
         <Tabs
           tabBarStyle={{ paddingInline: 16, marginBottom: 12 }}
           items={[
-            { key: "daily", label: "日报", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.daily} pagination={false} locale={{ emptyText: <Empty description="暂无每日利润数据" /> }} /> },
-            { key: "weekly", label: "周报", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.weekly} pagination={false} locale={{ emptyText: <Empty description="暂无每周利润数据" /> }} /> },
-            { key: "monthly", label: "月度统计", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.monthly} pagination={false} locale={{ emptyText: <Empty description="暂无月度利润数据" /> }} /> },
-            { key: "yearly", label: "年度统计", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.yearly} pagination={false} locale={{ emptyText: <Empty description="暂无年度利润数据" /> }} /> },
-            { key: "costs", label: "成本构成表", children: <Table loading={loading} rowKey="costType" columns={costColumns} dataSource={report.costComposition} pagination={false} scroll={{ x: 620 }} /> },
-            { key: "customers", label: "客户利润排行", children: <Table loading={loading} rowKey="name" columns={summaryColumns} dataSource={report.customerRanking} pagination={false} scroll={{ x: 850 }} /> },
-            { key: "products", label: "产品利润排行", children: <Table loading={loading} rowKey="sku" columns={productColumns} dataSource={report.productRanking} pagination={false} scroll={{ x: 1240 }} /> },
-            { key: "orders", label: "订单利润明细", children: <Table loading={loading} rowKey="id" columns={orderColumns} dataSource={report.orderDetails} pagination={{ pageSize: 10 }} scroll={{ x: 1180 }} /> },
+            { key: "daily", label: "日报", children: <Table loading={loading} rowKey="name" columns={summaryColumns(baseCurrency)} dataSource={report.daily} pagination={false} locale={{ emptyText: <Empty description="暂无每日利润数据" /> }} /> },
+            { key: "weekly", label: "周报", children: <Table loading={loading} rowKey="name" columns={summaryColumns(baseCurrency)} dataSource={report.weekly} pagination={false} locale={{ emptyText: <Empty description="暂无每周利润数据" /> }} /> },
+            { key: "monthly", label: "月度统计", children: <Table loading={loading} rowKey="name" columns={summaryColumns(baseCurrency)} dataSource={report.monthly} pagination={false} locale={{ emptyText: <Empty description="暂无月度利润数据" /> }} /> },
+            { key: "yearly", label: "年度统计", children: <Table loading={loading} rowKey="name" columns={summaryColumns(baseCurrency)} dataSource={report.yearly} pagination={false} locale={{ emptyText: <Empty description="暂无年度利润数据" /> }} /> },
+            { key: "costs", label: "成本构成表", children: <Table loading={loading} rowKey="costType" columns={costColumns(baseCurrency)} dataSource={report.costComposition} pagination={false} scroll={{ x: 620 }} /> },
+            { key: "customers", label: "客户利润排行", children: <Table loading={loading} rowKey="name" columns={summaryColumns(baseCurrency)} dataSource={report.customerRanking} pagination={false} scroll={{ x: 850 }} /> },
+            { key: "products", label: "产品利润排行", children: <Table loading={loading} rowKey="sku" columns={productColumns(baseCurrency)} dataSource={report.productRanking} pagination={false} scroll={{ x: 1240 }} /> },
+            { key: "orders", label: "订单利润明细", children: <Table loading={loading} rowKey="id" columns={orderColumns(baseCurrency)} dataSource={report.orderDetails} pagination={{ pageSize: 10 }} scroll={{ x: 1180 }} /> },
           ]}
         />
       </Card>

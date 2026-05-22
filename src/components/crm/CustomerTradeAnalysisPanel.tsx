@@ -47,6 +47,7 @@ function numberValue(value: unknown) {
 }
 
 export default function CustomerTradeAnalysisPanel({ orders }: Props) {
+  const baseCurrency = orders.find((order) => order.baseCurrency)?.baseCurrency || "CNY";
   const totalSales = orders.reduce((sum, order) => sum + numberValue(order.salesAmount) * (numberValue(order.exchangeRate) || 1), 0);
   const totalProfit = orders.reduce((sum, order) => sum + numberValue(order.grossProfit), 0);
   const margin = totalSales > 0 ? totalProfit / totalSales : null;
@@ -78,11 +79,11 @@ export default function CustomerTradeAnalysisPanel({ orders }: Props) {
   const orderColumns: ColumnsType<CustomerOrder> = [
     { title: "订单编号", dataIndex: "orderNo", width: 160, render: (value, row) => <Link href={`/orders/${row.id}`}>{value}</Link> },
     { title: "下单日期", dataIndex: "orderDate", width: 120, render: formatDate },
-    { title: "销售额", dataIndex: "salesAmount", width: 130, align: "right", render: (value, row) => moneyText(value, row.currency) },
-    { title: "总成本", dataIndex: "totalCost", width: 130, align: "right", render: (value, row) => moneyText(value, row.baseCurrency || "CNY") },
-    { title: "毛利", dataIndex: "grossProfit", width: 130, align: "right", render: (value, row) => moneyText(value, row.baseCurrency || "CNY") },
+    { title: "销售额（订单币种）", dataIndex: "salesAmount", width: 160, align: "right", render: (value, row) => moneyText(value, row.currency) },
+    { title: "总成本（本位币）", dataIndex: "totalCost", width: 150, align: "right", render: (value, row) => moneyText(value, row.baseCurrency || "CNY") },
+    { title: "毛利（本位币）", dataIndex: "grossProfit", width: 150, align: "right", render: (value, row) => moneyText(value, row.baseCurrency || "CNY") },
     { title: "毛利率", dataIndex: "grossMargin", width: 110, align: "right", render: (value) => <MarginTag value={value} /> },
-    { title: "已收金额", dataIndex: "paidAmount", width: 130, align: "right", render: (value, row) => moneyText(value, row.currency) },
+    { title: "已收金额（订单币种）", dataIndex: "paidAmount", width: 170, align: "right", render: (value, row) => moneyText(value, row.currency) },
     { title: "付款状态", dataIndex: "paymentStatus", width: 120 },
   ];
 
@@ -106,8 +107,8 @@ export default function CustomerTradeAnalysisPanel({ orders }: Props) {
     <div className="space-y-4">
       <Row gutter={[12, 12]}>
         <Col xs={24} md={8} xl={4}><Card><Statistic title="历史订单数" value={orders.length} /></Card></Col>
-        <Col xs={24} md={8} xl={5}><Card><Statistic title="总销售额" value={moneyText(totalSales, "CNY")} /></Card></Col>
-        <Col xs={24} md={8} xl={5}><Card><Statistic title="总毛利" value={moneyText(totalProfit, "CNY")} valueStyle={{ color: totalProfit < 0 ? "#ff4d4f" : "#16a34a" }} /></Card></Col>
+        <Col xs={24} md={8} xl={5}><Card><Statistic title={`总销售额（本位币 ${baseCurrency}）`} value={moneyText(totalSales, baseCurrency)} /></Card></Col>
+        <Col xs={24} md={8} xl={5}><Card><Statistic title={`总毛利（本位币 ${baseCurrency}）`} value={moneyText(totalProfit, baseCurrency)} valueStyle={{ color: totalProfit < 0 ? "#ff4d4f" : "#16a34a" }} /></Card></Col>
         <Col xs={24} md={8} xl={5}><Card><Statistic title="平均毛利率" value={margin == null ? "—" : `${(margin * 100).toFixed(2)}%`} /></Card></Col>
         <Col xs={24} md={8} xl={5}><Card><Statistic title="最近下单日期" value={formatDate(latestOrderDate)} /></Card></Col>
       </Row>

@@ -50,18 +50,19 @@ export async function createDashboardOverviewWorkbook(filters: DashboardOverview
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Ravenclaw";
   workbook.created = new Date();
+  const baseCurrencyLabel = "本位币 CNY";
 
   const kpiSheet = workbook.addWorksheet("经营总览", { views: [{ state: "frozen", ySplit: 1 }] });
   addHeader(kpiSheet, ["指标", "数值"]);
   [
-    ["本月销售额", data.kpis.salesAmount],
-    ["本月广告费", data.kpis.adSpend],
+    [`本月销售额（${baseCurrencyLabel}）`, data.kpis.salesAmount],
+    [`本月广告费（${baseCurrencyLabel}）`, data.kpis.adSpend],
     ["整体 ROI", data.kpis.roi],
     ["广告占比", data.kpis.adSpendRatio],
     ["渠道数量", data.kpis.channelCount],
     ["有广告费渠道数", data.kpis.paidChannelCount],
-    ["净利润", data.kpis.netProfit],
-    ["应收账款", data.kpis.receivableAmount],
+    [`净利润（${baseCurrencyLabel}）`, data.kpis.netProfit],
+    [`应收账款（${baseCurrencyLabel}）`, data.kpis.receivableAmount],
     ["应收订单数", data.kpis.receivableCount],
   ].forEach((row) => kpiSheet.addRow(row));
   setWidths(kpiSheet, [24, 18]);
@@ -77,25 +78,25 @@ export async function createDashboardOverviewWorkbook(filters: DashboardOverview
   });
 
   const trendSheet = workbook.addWorksheet("周趋势", { views: [{ state: "frozen", ySplit: 1 }] });
-  addHeader(trendSheet, ["周", "销售额", "广告费"]);
+  addHeader(trendSheet, ["周", `销售额（${baseCurrencyLabel}）`, `广告费（${baseCurrencyLabel}）`]);
   data.weeklyTrend.forEach((row) => trendSheet.addRow([row.week, row.salesAmount, row.adSpend]));
   setWidths(trendSheet, [12, 16, 16]);
   formatColumns(trendSheet, [2, 3]);
 
   const shareSheet = workbook.addWorksheet("渠道销售占比", { views: [{ state: "frozen", ySplit: 1 }] });
-  addHeader(shareSheet, ["业务线", "销售额", "占比"]);
+  addHeader(shareSheet, ["业务线", `销售额（${baseCurrencyLabel}）`, "占比"]);
   data.businessLineShare.forEach((row) => shareSheet.addRow([row.name, row.salesAmount, row.ratio]));
   setWidths(shareSheet, [24, 16, 12]);
   formatColumns(shareSheet, [2], [3]);
 
   const roiSheet = workbook.addWorksheet("ROI排行", { views: [{ state: "frozen", ySplit: 1 }] });
-  addHeader(roiSheet, ["排名", "渠道", "店铺", "销售额", "广告费", "ROI"]);
+  addHeader(roiSheet, ["排名", "渠道", "店铺", `销售额（${baseCurrencyLabel}）`, `广告费（${baseCurrencyLabel}）`, "ROI"]);
   data.roiRanking.forEach((row) => roiSheet.addRow([row.rank, row.channelName, row.storeName, row.salesAmount, row.adSpend, row.roi]));
   setWidths(roiSheet, [10, 26, 22, 16, 16, 10]);
   formatColumns(roiSheet, [4, 5], [], [6]);
 
   const weeklySheet = workbook.addWorksheet("渠道周数据", { views: [{ state: "frozen", ySplit: 1 }] });
-  addHeader(weeklySheet, ["业务线", "渠道", "店铺", "W1销售", "W1广告", "W2销售", "W2广告", "W3销售", "W3广告", "W4销售", "W4广告", "W5销售", "W5广告", "月销售", "月广告", "ROI"]);
+  addHeader(weeklySheet, ["业务线", "渠道", "店铺", `W1销售（${baseCurrencyLabel}）`, `W1广告（${baseCurrencyLabel}）`, `W2销售（${baseCurrencyLabel}）`, `W2广告（${baseCurrencyLabel}）`, `W3销售（${baseCurrencyLabel}）`, `W3广告（${baseCurrencyLabel}）`, `W4销售（${baseCurrencyLabel}）`, `W4广告（${baseCurrencyLabel}）`, `W5销售（${baseCurrencyLabel}）`, `W5广告（${baseCurrencyLabel}）`, `月销售（${baseCurrencyLabel}）`, `月广告（${baseCurrencyLabel}）`, "ROI"]);
   data.weeklyTable.forEach((row) => {
     weeklySheet.addRow([
       row.businessLine,

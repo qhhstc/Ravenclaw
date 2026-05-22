@@ -42,6 +42,8 @@ type PendingPaymentData = {
     totalAmount: number;
     paidAmount: number;
     unpaidAmount: number;
+    unpaidAmountBase?: number;
+    currency?: string;
     dueDate?: string | null;
     paymentStatus: string;
     overdue?: boolean;
@@ -1077,7 +1079,7 @@ export default function DashboardOverview() {
                       <List.Item.Meta
                         avatar={<DollarOutlined className={item.overdue ? "text-red-500" : "text-[var(--chart-blue)]"} />}
                         title={<Link href={`/orders/${item.id}`}>{item.orderNo}</Link>}
-                        description={`${item.customerName} · ${item.countryCode ?? "-"} · 未收 ${moneyFormatter(item.unpaidAmount)}`}
+                        description={`${item.customerName} · ${item.countryCode ?? "-"} · 未收 ${item.currency ?? "订单币种"} ${Number(item.unpaidAmount || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / 本位币 ${moneyFormatter(item.unpaidAmountBase ?? item.unpaidAmount)}`}
                       />
                       <span className={item.overdue ? "text-xs text-red-500" : "text-xs text-[var(--muted)]"}>{formatDateTime(item.dueDate)}</span>
                     </List.Item>

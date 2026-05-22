@@ -16,7 +16,20 @@ export async function GET() {
     const [pendingOrders, overdueOrderCount] = await Promise.all([
       prisma.order.findMany({
         where: { AND: [pendingWhere, scopeWhere] },
-        include: { customer: { select: { id: true, name: true, companyName: true } } },
+        select: {
+          id: true,
+          orderNo: true,
+          customerName: true,
+          countryCode: true,
+          totalAmount: true,
+          paidAmount: true,
+          unpaidAmount: true,
+          currency: true,
+          exchangeRate: true,
+          dueDate: true,
+          paymentStatus: true,
+          customer: { select: { id: true, name: true, companyName: true } },
+        },
         orderBy: [{ dueDate: "asc" }, { unpaidAmount: "desc" }],
       }),
       prisma.order.count({ where: { AND: [overdueWhere, scopeWhere] } }),
@@ -33,7 +46,7 @@ export async function GET() {
 
     return NextResponse.json({
       pendingOrderCount: pendingOrders.length,
-      pendingAmount: pendingOrders.reduce((sum, order) => sum + toNumber(order.unpaidAmount), 0),
+      pendingAmount: pendingOrders.reduce((sum, order) => sum + toNumber(order.unpaidAmount) * (toNumber(order.exchangeRate, 1) || 1), 0),
       overdueOrderCount,
       items: sorted.slice(0, 5).map((order) => ({
         id: order.id,
@@ -43,6 +56,8 @@ export async function GET() {
         totalAmount: toNumber(order.totalAmount),
         paidAmount: toNumber(order.paidAmount),
         unpaidAmount: toNumber(order.unpaidAmount),
+        unpaidAmountBase: toNumber(order.unpaidAmount) * (toNumber(order.exchangeRate, 1) || 1),
+        currency: order.currency,
         dueDate: order.dueDate,
         paymentStatus: order.paymentStatus,
         overdue: isOverdue(order.dueDate),

@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { Prisma } from "@prisma/client";
+import { BASE_CURRENCY } from "@/lib/order-profit-calculations";
 import { toNumber } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/permissions";
@@ -49,6 +50,10 @@ function summarizeOrders(orders: Array<{ salesAmount: unknown; totalCost: unknow
     grossProfit,
     grossMargin: salesAmount > 0 ? grossProfit / salesAmount : null,
   };
+}
+
+function reportBaseCurrency(orders: Array<{ baseCurrency?: string | null }>) {
+  return orders.find((order) => order.baseCurrency)?.baseCurrency ?? BASE_CURRENCY;
 }
 
 function startOfUtcWeek(date: Date) {
@@ -139,6 +144,7 @@ export async function getProfitReport(params: URLSearchParams, session: SessionU
   })).sort((a, b) => b.amount - a.amount);
 
   return {
+    baseCurrency: reportBaseCurrency(orders),
     summary: summarizeOrders(orders),
     daily: byOrderSummary(dailyMap.entries()),
     weekly: byOrderSummary(weeklyMap.entries()),
@@ -188,15 +194,16 @@ export async function createProfitReportWorkbook(params: URLSearchParams, sessio
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Ravenclaw";
   workbook.created = new Date();
+  const baseCurrencyLabel = `本位币 ${report.baseCurrency}`;
   const headers: Record<string, Array<[string, string]>> = {
-    daily: [["日期", "name"], ["订单数", "orderCount"], ["销售额", "salesAmount"], ["总成本", "totalCost"], ["毛利", "grossProfit"], ["毛利率", "grossMargin"]],
-    weekly: [["周", "name"], ["订单数", "orderCount"], ["销售额", "salesAmount"], ["总成本", "totalCost"], ["毛利", "grossProfit"], ["毛利率", "grossMargin"]],
-    monthly: [["月份", "name"], ["订单数", "orderCount"], ["销售额", "salesAmount"], ["总成本", "totalCost"], ["毛利", "grossProfit"], ["毛利率", "grossMargin"]],
-    yearly: [["年份", "name"], ["订单数", "orderCount"], ["销售额", "salesAmount"], ["总成本", "totalCost"], ["毛利", "grossProfit"], ["毛利率", "grossMargin"]],
-    costs: [["成本类型", "name"], ["金额", "amount"], ["占总成本比例", "ratio"]],
-    customers: [["客户名称", "name"], ["订单数", "orderCount"], ["销售额", "salesAmount"], ["总成本", "totalCost"], ["毛利", "grossProfit"], ["毛利率", "grossMargin"]],
-    products: [["SKU", "sku"], ["产品名称", "productName"], ["销售数量", "quantity"], ["销售额", "salesAmount"], ["采购成本", "purchaseCost"], ["包装成本", "packagingCost"], ["毛利", "grossProfit"], ["毛利率", "grossMargin"]],
-    orders: [["订单编号", "orderNo"], ["客户名称", "customerName"], ["下单日期", "orderDate"], ["销售额", "salesAmount"], ["总成本", "totalCost"], ["毛利", "grossProfit"], ["毛利率", "grossMargin"], ["业务员", "salespersonName"], ["订单状态", "orderStatus"]],
+    daily: [["日期", "name"], ["订单数", "orderCount"], [`销售额（${baseCurrencyLabel}）`, "salesAmount"], [`总成本（${baseCurrencyLabel}）`, "totalCost"], [`毛利（${baseCurrencyLabel}）`, "grossProfit"], ["毛利率", "grossMargin"]],
+    weekly: [["周", "name"], ["订单数", "orderCount"], [`销售额（${baseCurrencyLabel}）`, "salesAmount"], [`总成本（${baseCurrencyLabel}）`, "totalCost"], [`毛利（${baseCurrencyLabel}）`, "grossProfit"], ["毛利率", "grossMargin"]],
+    monthly: [["月份", "name"], ["订单数", "orderCount"], [`销售额（${baseCurrencyLabel}）`, "salesAmount"], [`总成本（${baseCurrencyLabel}）`, "totalCost"], [`毛利（${baseCurrencyLabel}）`, "grossProfit"], ["毛利率", "grossMargin"]],
+    yearly: [["年份", "name"], ["订单数", "orderCount"], [`销售额（${baseCurrencyLabel}）`, "salesAmount"], [`总成本（${baseCurrencyLabel}）`, "totalCost"], [`毛利（${baseCurrencyLabel}）`, "grossProfit"], ["毛利率", "grossMargin"]],
+    costs: [["成本类型", "name"], [`金额（${baseCurrencyLabel}）`, "amount"], ["占总成本比例", "ratio"]],
+    customers: [["客户名称", "name"], ["订单数", "orderCount"], [`销售额（${baseCurrencyLabel}）`, "salesAmount"], [`总成本（${baseCurrencyLabel}）`, "totalCost"], [`毛利（${baseCurrencyLabel}）`, "grossProfit"], ["毛利率", "grossMargin"]],
+    products: [["SKU", "sku"], ["产品名称", "productName"], ["销售数量", "quantity"], [`销售额（${baseCurrencyLabel}）`, "salesAmount"], [`采购成本（${baseCurrencyLabel}）`, "purchaseCost"], [`包装成本（${baseCurrencyLabel}）`, "packagingCost"], [`毛利（${baseCurrencyLabel}）`, "grossProfit"], ["毛利率", "grossMargin"]],
+    orders: [["订单编号", "orderNo"], ["客户名称", "customerName"], ["下单日期", "orderDate"], [`销售额（${baseCurrencyLabel}）`, "salesAmount"], [`总成本（${baseCurrencyLabel}）`, "totalCost"], [`毛利（${baseCurrencyLabel}）`, "grossProfit"], ["毛利率", "grossMargin"], ["业务员", "salespersonName"], ["订单状态", "orderStatus"]],
   };
   const data: Record<string, Array<Record<string, unknown>>> = {
     daily: report.daily,
