@@ -1,9 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError, buildCustomerWhere, customerInclude, normalizeCustomerInput, parsePositiveInt } from "@/lib/crm";
+import { canManageCrm, canViewCrm, forbidden, requireApiSession } from "@/lib/permissions";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await requireApiSession();
+    if (!canViewCrm(session.role)) return forbidden("当前角色不能查看客户资料");
     const params = request.nextUrl.searchParams;
     const page = parsePositiveInt(params.get("page"), 1);
     const pageSize = Math.min(parsePositiveInt(params.get("pageSize"), 10), 20);
@@ -26,6 +29,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await requireApiSession();
+    if (!canManageCrm(session.role)) return forbidden("当前角色不能维护客户资料");
     const input = (await request.json()) as Record<string, unknown>;
     const item = await prisma.customer.create({ data: normalizeCustomerInput(input), include: customerInclude });
     return NextResponse.json({ item });

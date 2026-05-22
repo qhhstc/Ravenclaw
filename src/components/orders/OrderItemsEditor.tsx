@@ -13,6 +13,7 @@ type Props = {
   baseCurrency?: string;
   orderCurrency?: string;
   orderExchangeRate?: number;
+  canEditCosts?: boolean;
   onItemsChange?: () => void;
 };
 
@@ -67,7 +68,7 @@ function HiddenItemsField() {
   return null;
 }
 
-export default function OrderItemsEditor({ form, products, currencies, baseCurrency = "CNY", orderCurrency = "USD", orderExchangeRate = 1, onItemsChange }: Props) {
+export default function OrderItemsEditor({ form, products, currencies, baseCurrency = "CNY", orderCurrency = "USD", orderExchangeRate = 1, canEditCosts = true, onItemsChange }: Props) {
   const watchedItems = Form.useWatch("items", form);
   const rows = normalizeRows(watchedItems ?? form.getFieldValue("items"));
   const currencyOptions = Array.from(new Set([baseCurrency, ...currencies, "CNY", "USD", "EUR", "JPY", "GBP"].filter(Boolean))).map((currency) => ({ label: currency, value: currency }));
@@ -81,6 +82,13 @@ export default function OrderItemsEditor({ form, products, currencies, baseCurre
       })
       .filter((item): item is { label: string; value: number } => Boolean(item)),
   ];
+  const gridClass = canEditCosts
+    ? "grid-cols-[190px_150px_260px_180px_100px_120px_130px_120px_110px_110px_130px_130px_120px_110px_110px_130px_130px_72px]"
+    : "grid-cols-[190px_150px_260px_180px_100px_120px_130px_72px]";
+  const minWidthClass = canEditCosts ? "min-w-[2260px]" : "min-w-[1200px]";
+  const headerTitles = canEditCosts
+    ? ["选择产品", "SKU", "产品名称", "规格", "数量", "销售单价", "销售小计", "采购单价", "采购币种", "采购汇率", "采购小计", "采购本位币", "包装单价", "包装币种", "包装汇率", "包装小计", "包装本位币", "操作"]
+    : ["选择产品", "SKU", "产品名称", "规格", "数量", "销售单价", "销售小计", "操作"];
 
   useEffect(() => {
     if (normalizeRows(form.getFieldValue("items")).length === 0) {
@@ -119,17 +127,22 @@ export default function OrderItemsEditor({ form, products, currencies, baseCurre
     if (!product) return;
     const currentRows = normalizeRows(form.getFieldValue("items"));
     const currentRow = currentRows[rowIndex] ?? {};
+    const costPatch = canEditCosts
+      ? {
+          purchaseUnitCost: moneyValue(product.defaultPurchasePrice),
+          purchaseCurrency: product.currency || "CNY",
+          purchaseExchangeRate: defaultRateForCurrency(product.currency, baseCurrency, orderCurrency, orderExchangeRate, currentRow.purchaseExchangeRate),
+          packagingUnitCost: moneyValue(product.defaultPackagingCost),
+          packagingCurrency: "CNY",
+          packagingExchangeRate: 1,
+        }
+      : {};
     updateRow(rowIndex, {
       productId: product.id,
       sku: product.sku,
       productName: product.name,
       specification: product.specification,
-      purchaseUnitCost: moneyValue(product.defaultPurchasePrice),
-      purchaseCurrency: product.currency || "CNY",
-      purchaseExchangeRate: defaultRateForCurrency(product.currency, baseCurrency, orderCurrency, orderExchangeRate, currentRow.purchaseExchangeRate),
-      packagingUnitCost: moneyValue(product.defaultPackagingCost),
-      packagingCurrency: "CNY",
-      packagingExchangeRate: 1,
+      ...costPatch,
     });
   }
 
@@ -139,14 +152,14 @@ export default function OrderItemsEditor({ form, products, currencies, baseCurre
         <HiddenItemsField />
       </Form.Item>
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <div className="min-w-[2260px]">
-          <div className="grid grid-cols-[190px_150px_260px_180px_100px_120px_130px_120px_110px_110px_130px_130px_120px_110px_110px_130px_130px_72px] items-center gap-0 border-b border-[var(--border)] bg-[var(--soft-bg)] text-sm font-medium text-[var(--muted)]">
-            {["选择产品", "SKU", "产品名称", "规格", "数量", "销售单价", "销售小计", "采购单价", "采购币种", "采购汇率", "采购小计", "采购本位币", "包装单价", "包装币种", "包装汇率", "包装小计", "包装本位币", "操作"].map((title) => (
+        <div className={minWidthClass}>
+          <div className={`grid ${gridClass} items-center gap-0 border-b border-[var(--border)] bg-[var(--soft-bg)] text-sm font-medium text-[var(--muted)]`}>
+            {headerTitles.map((title) => (
               <div key={title} className="px-3 py-3">{title}</div>
             ))}
           </div>
           {rows.map((row, rowIndex) => (
-            <div key={`${row.id ?? "new"}-${rowIndex}`} className="grid grid-cols-[190px_150px_260px_180px_100px_120px_130px_120px_110px_110px_130px_130px_120px_110px_110px_130px_130px_72px] items-start border-b border-[var(--border)] last:border-b-0">
+            <div key={`${row.id ?? "new"}-${rowIndex}`} className={`grid ${gridClass} items-start border-b border-[var(--border)] last:border-b-0`}>
               <div className="px-2 py-2">
                 <Select allowClear showSearch optionFilterProp="label" placeholder="选择产品" className="w-full" value={positiveId(row.productId)} options={productOptions} onChange={(value) => applyProduct(rowIndex, value)} />
               </div>
@@ -156,30 +169,34 @@ export default function OrderItemsEditor({ form, products, currencies, baseCurre
               <div className="px-2 py-2"><InputNumber min={1} precision={0} className="!w-full text-right" value={optionalNumber(row.quantity) ?? 1} onChange={(value) => updateRow(rowIndex, { quantity: value ?? 1 })} /></div>
               <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.saleUnitPrice) ?? 0} onChange={(value) => updateRow(rowIndex, { saleUnitPrice: value ?? 0 })} /></div>
               <div className="px-3 py-3 text-right font-medium text-[var(--foreground)]">{rowSubtotal(row, "saleUnitPrice")}</div>
-              <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.purchaseUnitCost) ?? 0} onChange={(value) => updateRow(rowIndex, { purchaseUnitCost: value ?? 0 })} /></div>
-              <div className="px-2 py-2">
-                <Select
-                  className="w-full"
-                  value={textValue(row.purchaseCurrency) || "CNY"}
-                  options={currencyOptions}
-                  onChange={(nextCurrency) => updateRow(rowIndex, { purchaseCurrency: nextCurrency, purchaseExchangeRate: defaultRateForCurrency(nextCurrency, baseCurrency, orderCurrency, orderExchangeRate, row.purchaseExchangeRate) })}
-                />
-              </div>
-              <div className="px-2 py-2"><InputNumber min={0.000001} precision={6} className="!w-full text-right" value={optionalNumber(row.purchaseExchangeRate) ?? 1} onChange={(value) => updateRow(rowIndex, { purchaseExchangeRate: value ?? 1 })} /></div>
-              <div className="px-3 py-3 text-right text-[var(--muted)]">{rowSubtotal(row, "purchaseUnitCost")}</div>
-              <div className="px-3 py-3 text-right text-[var(--muted)]">{baseCurrency} {rowBaseSubtotal(row, "purchaseUnitCost", "purchaseExchangeRate")}</div>
-              <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.packagingUnitCost) ?? 0} onChange={(value) => updateRow(rowIndex, { packagingUnitCost: value ?? 0 })} /></div>
-              <div className="px-2 py-2">
-                <Select
-                  className="w-full"
-                  value={textValue(row.packagingCurrency) || "CNY"}
-                  options={currencyOptions}
-                  onChange={(nextCurrency) => updateRow(rowIndex, { packagingCurrency: nextCurrency, packagingExchangeRate: defaultRateForCurrency(nextCurrency, baseCurrency, orderCurrency, orderExchangeRate, row.packagingExchangeRate) })}
-                />
-              </div>
-              <div className="px-2 py-2"><InputNumber min={0.000001} precision={6} className="!w-full text-right" value={optionalNumber(row.packagingExchangeRate) ?? 1} onChange={(value) => updateRow(rowIndex, { packagingExchangeRate: value ?? 1 })} /></div>
-              <div className="px-3 py-3 text-right text-[var(--muted)]">{rowSubtotal(row, "packagingUnitCost")}</div>
-              <div className="px-3 py-3 text-right text-[var(--muted)]">{baseCurrency} {rowBaseSubtotal(row, "packagingUnitCost", "packagingExchangeRate")}</div>
+              {canEditCosts ? (
+                <>
+                  <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.purchaseUnitCost) ?? 0} onChange={(value) => updateRow(rowIndex, { purchaseUnitCost: value ?? 0 })} /></div>
+                  <div className="px-2 py-2">
+                    <Select
+                      className="w-full"
+                      value={textValue(row.purchaseCurrency) || "CNY"}
+                      options={currencyOptions}
+                      onChange={(nextCurrency) => updateRow(rowIndex, { purchaseCurrency: nextCurrency, purchaseExchangeRate: defaultRateForCurrency(nextCurrency, baseCurrency, orderCurrency, orderExchangeRate, row.purchaseExchangeRate) })}
+                    />
+                  </div>
+                  <div className="px-2 py-2"><InputNumber min={0.000001} precision={6} className="!w-full text-right" value={optionalNumber(row.purchaseExchangeRate) ?? 1} onChange={(value) => updateRow(rowIndex, { purchaseExchangeRate: value ?? 1 })} /></div>
+                  <div className="px-3 py-3 text-right text-[var(--muted)]">{rowSubtotal(row, "purchaseUnitCost")}</div>
+                  <div className="px-3 py-3 text-right text-[var(--muted)]">{baseCurrency} {rowBaseSubtotal(row, "purchaseUnitCost", "purchaseExchangeRate")}</div>
+                  <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.packagingUnitCost) ?? 0} onChange={(value) => updateRow(rowIndex, { packagingUnitCost: value ?? 0 })} /></div>
+                  <div className="px-2 py-2">
+                    <Select
+                      className="w-full"
+                      value={textValue(row.packagingCurrency) || "CNY"}
+                      options={currencyOptions}
+                      onChange={(nextCurrency) => updateRow(rowIndex, { packagingCurrency: nextCurrency, packagingExchangeRate: defaultRateForCurrency(nextCurrency, baseCurrency, orderCurrency, orderExchangeRate, row.packagingExchangeRate) })}
+                    />
+                  </div>
+                  <div className="px-2 py-2"><InputNumber min={0.000001} precision={6} className="!w-full text-right" value={optionalNumber(row.packagingExchangeRate) ?? 1} onChange={(value) => updateRow(rowIndex, { packagingExchangeRate: value ?? 1 })} /></div>
+                  <div className="px-3 py-3 text-right text-[var(--muted)]">{rowSubtotal(row, "packagingUnitCost")}</div>
+                  <div className="px-3 py-3 text-right text-[var(--muted)]">{baseCurrency} {rowBaseSubtotal(row, "packagingUnitCost", "packagingExchangeRate")}</div>
+                </>
+              ) : null}
               <div className="px-2 py-2 text-center">
                 <Button danger type="text" icon={<DeleteOutlined />} disabled={rows.length <= 1} onClick={() => removeRow(rowIndex)} />
               </div>

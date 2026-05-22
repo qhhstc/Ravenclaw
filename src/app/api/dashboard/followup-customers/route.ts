@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { CLOSED_CUSTOMER_STATUSES, apiError, crmDateRange } from "@/lib/crm";
+import { canViewCrm, forbidden, requireApiSession } from "@/lib/permissions";
 
 export async function GET() {
   try {
+    const session = await requireApiSession();
+    if (!canViewCrm(session.role)) return forbidden("当前角色不能查看待跟进客户");
     const { now, startOfToday, endOfToday, sevenDaysLater } = crmDateRange();
-    const activeWhere = { status: { notIn: CLOSED_CUSTOMER_STATUSES } };
+    const activeWhere = {
+      status: { notIn: CLOSED_CUSTOMER_STATUSES },
+      ...(session.role === "sales" ? { ownerId: session.userId } : {}),
+    };
     const [todayCount, overdueCount, next7DaysCount, items] = await Promise.all([
       prisma.customer.count({ where: { ...activeWhere, nextFollowupAt: { gte: startOfToday, lt: endOfToday } } }),
       prisma.customer.count({ where: { ...activeWhere, nextFollowupAt: { lt: now } } }),

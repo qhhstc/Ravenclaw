@@ -42,6 +42,11 @@ const emptyReport: ReportData = {
 
 type Filters = { year: number; month?: number; dateFrom?: string; dateTo?: string };
 
+function currentMonthFilters(): Filters {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+}
+
 function query(filters: Filters, extra?: Record<string, string>) {
   const params = new URLSearchParams({ year: String(filters.year) });
   if (filters.month) params.set("month", String(filters.month));
@@ -104,11 +109,12 @@ function orderColumns(baseCurrency: string): ColumnsType<OrderProfitRow> {
 }
 
 export default function ProfitReportPage() {
-  const [filters, setFilters] = useState<Filters>({ year: 2026, month: 5 });
+  const [filters, setFilters] = useState<Filters>(currentMonthFilters);
   const [loading, setLoading] = useState(false);
   const [exportingType, setExportingType] = useState<string | null>(null);
   const [report, setReport] = useState<ReportData>(emptyReport);
   const baseCurrency = report.baseCurrency || "CNY";
+  const yearOptions = Array.from({ length: 5 }, (_, index) => new Date().getFullYear() - 2 + index);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -179,13 +185,13 @@ export default function ProfitReportPage() {
 
       <Card styles={{ body: { padding: 16 } }}>
         <Space wrap>
-          <Select value={filters.year} style={{ width: 120 }} options={[2025, 2026, 2027].map((value) => ({ label: `${value}年`, value }))} onChange={(year) => setFilters((current) => ({ ...current, year }))} />
+          <Select value={filters.year} style={{ width: 120 }} options={yearOptions.map((value) => ({ label: `${value}年`, value }))} onChange={(year) => setFilters((current) => ({ ...current, year }))} />
           <Select allowClear value={filters.month} style={{ width: 120 }} placeholder="月份" options={Array.from({ length: 12 }, (_, index) => ({ label: `${index + 1}月`, value: index + 1 }))} onChange={(month) => setFilters((current) => ({ ...current, month }))} />
           <DatePicker.RangePicker
             value={filters.dateFrom && filters.dateTo ? [dayjs(filters.dateFrom), dayjs(filters.dateTo)] : null}
             onChange={(values) => setFilters((current) => ({ ...current, dateFrom: values?.[0]?.toISOString(), dateTo: values?.[1]?.endOf("day").toISOString() }))}
           />
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setFilters({ year: 2026, month: 5 })}>重置</Button>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setFilters(currentMonthFilters())}>重置</Button>
         </Space>
       </Card>
 

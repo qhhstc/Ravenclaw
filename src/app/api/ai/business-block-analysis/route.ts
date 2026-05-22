@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 import { analyzeBusinessBlocks } from "@/lib/ai/anthropic-client";
 import { businessBlockOptions, inferBusinessBlock, ratio } from "@/lib/business-blocks";
-import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, parseOptionalInt, parsePositiveInt, quarterFromMonth, toNumber } from "@/lib/channel-data";
+import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, currentPeriod, parseOptionalInt, parsePositiveInt, quarterFromMonth, toNumber } from "@/lib/channel-data";
 import { prisma } from "@/lib/prisma";
 import { canManageAccounts, forbidden, requireApiSession } from "@/lib/permissions";
 
@@ -21,9 +21,10 @@ function previousMonth(year: number, month: number) {
 }
 
 function parseInput(input: { year?: number; month?: number; brandId?: number | string | null }) {
-  const month = Math.min(Math.max(parsePositiveInt(String(input.month || ""), 5), 1), 12);
+  const fallback = currentPeriod();
+  const month = Math.min(Math.max(parsePositiveInt(String(input.month || ""), fallback.month), 1), 12);
   return {
-    year: parsePositiveInt(String(input.year || ""), 2026),
+    year: parsePositiveInt(String(input.year || ""), fallback.year),
     month,
     quarter: quarterFromMonth(month),
     brandId: input.brandId === null || input.brandId === undefined ? undefined : parseOptionalInt(String(input.brandId)),

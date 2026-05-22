@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 import { analyzeChannelData } from "@/lib/ai/anthropic-client";
 import { inferBusinessBlock, ratio } from "@/lib/business-blocks";
-import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, parsePositiveInt, toNumber } from "@/lib/channel-data";
+import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, currentPeriod, parsePositiveInt, toNumber } from "@/lib/channel-data";
 import { prisma } from "@/lib/prisma";
 import { canManageAccounts, forbidden, requireApiSession } from "@/lib/permissions";
 
@@ -22,8 +22,9 @@ export async function POST(request: NextRequest) {
     const session = await requireApiSession();
     if (!canManageAccounts(session.role)) return forbidden("当前角色不能触发 AI 渠道分析");
     input = (await request.json()) as { year?: number; month?: number; channelId?: number | string; businessBlock?: string };
-    year = parsePositiveInt(String(input.year || ""), 2026);
-    month = Math.min(Math.max(parsePositiveInt(String(input.month || ""), 5), 1), 12);
+    const fallback = currentPeriod();
+    year = parsePositiveInt(String(input.year || ""), fallback.year);
+    month = Math.min(Math.max(parsePositiveInt(String(input.month || ""), fallback.month), 1), 12);
     channelId = Number(input.channelId);
     if (!Number.isInteger(channelId)) throw new Error("channelId 不正确");
 

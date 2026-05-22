@@ -342,6 +342,7 @@ export default function OrderDetailPage({ orderId }: Props) {
               customers={customers}
               users={users}
               products={products}
+              canEditCosts={["admin", "finance"].includes(currentRole)}
               onCancel={() => setModalOpen(false)}
               onSubmit={saveOrder}
             />

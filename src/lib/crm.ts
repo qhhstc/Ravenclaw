@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { ApiAuthError } from "@/lib/permissions";
 
 export const CUSTOMER_TYPES = ["individual", "company", "wholesaler", "distributor", "agent", "influencer", "supplier_contact", "other"] as const;
 export const CUSTOMER_LEVELS = ["A", "B", "C", "D"] as const;
@@ -68,6 +69,9 @@ export const customerDetailInclude = {
 } satisfies Prisma.CustomerInclude;
 
 export function apiError(error: unknown, fallback = "操作失败，请稍后重试") {
+  if (error instanceof ApiAuthError) {
+    return NextResponse.json({ message: error.message }, { status: error.status });
+  }
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") return NextResponse.json({ message: "数据已存在，请检查唯一字段" }, { status: 409 });
     if (error.code === "P2003") return NextResponse.json({ message: "该数据已被其他模块使用，无法删除" }, { status: 409 });

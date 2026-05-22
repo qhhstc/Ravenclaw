@@ -1,11 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError, normalizeContactInput } from "@/lib/crm";
+import { canManageCrm, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ contactId: string }> };
 
 export async function PATCH(request: NextRequest, context: Context) {
   try {
+    const session = await requireApiSession();
+    if (!canManageCrm(session.role)) return forbidden("当前角色不能维护联系人");
     const { contactId } = await context.params;
     const input = (await request.json()) as Record<string, unknown>;
     const data = normalizeContactInput(input);
@@ -28,6 +31,8 @@ export async function PUT(request: NextRequest, context: Context) {
 
 export async function DELETE(_request: NextRequest, context: Context) {
   try {
+    const session = await requireApiSession();
+    if (!canManageCrm(session.role)) return forbidden("当前角色不能删除联系人");
     const { contactId } = await context.params;
     await prisma.customerContact.delete({ where: { id: Number(contactId) } });
     return NextResponse.json({ ok: true });

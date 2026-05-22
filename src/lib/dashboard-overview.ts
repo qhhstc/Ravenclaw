@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, parseOptionalInt, parsePositiveInt, toNumber } from "@/lib/channel-data";
+import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, currentPeriod, parseOptionalInt, parsePositiveInt, toNumber } from "@/lib/channel-data";
 import { CLOSED_ORDER_STATUSES } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 
@@ -16,9 +16,10 @@ export type DashboardOverviewFilters = {
 export type DashboardOverviewData = Awaited<ReturnType<typeof getDashboardOverviewData>>;
 
 export function parseDashboardOverviewFilters(params: URLSearchParams): DashboardOverviewFilters {
+  const fallback = currentPeriod();
   return {
-    year: parsePositiveInt(params.get("year"), 2026),
-    month: Math.min(Math.max(parsePositiveInt(params.get("month"), 5), 1), 12),
+    year: parsePositiveInt(params.get("year"), fallback.year),
+    month: Math.min(Math.max(parsePositiveInt(params.get("month"), fallback.month), 1), 12),
     brandId: parseOptionalInt(params.get("brandId")),
     platformId: parseOptionalInt(params.get("platformId")),
     storeId: parseOptionalInt(params.get("storeId")),
@@ -70,6 +71,9 @@ export function hiddenDashboardOverview(filters: DashboardOverviewFilters) {
     message: "当前角色已隐藏公司整体经营数据。",
     kpis: {
       salesAmount: 0,
+      channelSalesAmount: 0,
+      orderSalesAmount: 0,
+      salesGapAmount: 0,
       adSpend: 0,
       roi: null,
       adSpendRatio: null,
@@ -126,6 +130,7 @@ export async function getDashboardOverviewData(filters: DashboardOverviewFilters
     select: {
       grossProfit: true,
       unpaidAmount: true,
+      salesAmount: true,
       exchangeRate: true,
     },
   });
@@ -138,6 +143,7 @@ export async function getDashboardOverviewData(filters: DashboardOverviewFilters
   });
 
   const totalSales = metrics.reduce((sum, metric) => sum + toNumber(metric.salesAmountBase), 0);
+  const orderSalesAmount = Number(orders.reduce((sum, order) => sum + toBaseAmount(order.salesAmount, order.exchangeRate), 0).toFixed(2));
   const totalAdSpend = metrics.reduce((sum, metric) => sum + toNumber(metric.adSpendBase), 0);
   const channelsWithData = new Set(metrics.map((metric) => metric.channelId));
   const paidChannelIds = new Set(metrics.filter((metric) => toNumber(metric.adSpendBase) > 0).map((metric) => metric.channelId));
@@ -223,6 +229,9 @@ export async function getDashboardOverviewData(filters: DashboardOverviewFilters
     filters,
     kpis: {
       salesAmount: totalSales,
+      channelSalesAmount: totalSales,
+      orderSalesAmount,
+      salesGapAmount: Number((orderSalesAmount - totalSales).toFixed(2)),
       adSpend: totalAdSpend,
       roi: ratio(totalSales, totalAdSpend),
       adSpendRatio: totalSales > 0 ? totalAdSpend / totalSales : null,

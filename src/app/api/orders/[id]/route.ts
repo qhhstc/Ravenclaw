@@ -4,9 +4,61 @@ import { syncOrderPaymentSummary, syncOrderShipmentSummary } from "@/lib/order-r
 import { decimal } from "@/lib/order-profit-calculations";
 import { syncOrderCustomer } from "@/lib/order-customer-sync";
 import { apiError, normalizeOrderInput, orderDetailInclude, orderInclude, toNumber } from "@/lib/orders";
-import { ApiAuthError, canDeleteOrder, canEditOrder, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
+import { ApiAuthError, canDeleteOrder, canEditOrder, canEditOrderCosts, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
+
+type ExistingOrderForEdit = {
+  items: {
+    id: number;
+    purchaseUnitCost: unknown;
+    purchaseCurrency: string | null;
+    purchaseExchangeRate: unknown;
+    packagingUnitCost: unknown;
+    packagingCurrency: string | null;
+    packagingExchangeRate: unknown;
+  }[];
+  costs: {
+    costType: string;
+    amount: unknown;
+    currency: string;
+    exchangeRate: unknown;
+    baseAmount: unknown;
+    remark: string | null;
+  }[];
+};
+
+function positiveId(value: unknown) {
+  const numericValue = Number(value);
+  return Number.isInteger(numericValue) && numericValue > 0 ? numericValue : null;
+}
+
+function withPreservedCostInput(input: Record<string, unknown>, existing: ExistingOrderForEdit) {
+  const items = Array.isArray(input.items) ? input.items : [];
+  const existingItemsById = new Map(existing.items.map((item) => [item.id, item]));
+  const safeItems = items.map((item, index) => {
+    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    const current = existingItemsById.get(positiveId(row.id) ?? 0) ?? existing.items[index];
+    return {
+      ...row,
+      purchaseUnitCost: current ? toNumber(current.purchaseUnitCost) : 0,
+      purchaseCurrency: current?.purchaseCurrency ?? "CNY",
+      purchaseExchangeRate: Math.max(toNumber(current?.purchaseExchangeRate, 1), 0.000001),
+      packagingUnitCost: current ? toNumber(current.packagingUnitCost) : 0,
+      packagingCurrency: current?.packagingCurrency ?? "CNY",
+      packagingExchangeRate: Math.max(toNumber(current?.packagingExchangeRate, 1), 0.000001),
+    };
+  });
+  const safeCosts = existing.costs.map((cost) => ({
+    costType: cost.costType,
+    amount: toNumber(cost.amount),
+    currency: cost.currency,
+    exchangeRate: Math.max(toNumber(cost.exchangeRate, 1), 0.000001),
+    baseAmount: toNumber(cost.baseAmount),
+    remark: cost.remark,
+  }));
+  return { ...input, items: safeItems, costs: safeCosts };
+}
 
 export async function GET(_request: NextRequest, context: Context) {
   try {
@@ -34,11 +86,33 @@ export async function PATCH(request: NextRequest, context: Context) {
     const item = await prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
         where: { id: Number(id) },
-        select: { orderNo: true, createdBy: true, salespersonId: true, orderStatus: true, _count: { select: { payments: true, shipments: true } } },
+        select: {
+          orderNo: true,
+          createdBy: true,
+          salespersonId: true,
+          orderStatus: true,
+          items: {
+            orderBy: { id: "asc" },
+            select: {
+              id: true,
+              purchaseUnitCost: true,
+              purchaseCurrency: true,
+              purchaseExchangeRate: true,
+              packagingUnitCost: true,
+              packagingCurrency: true,
+              packagingExchangeRate: true,
+            },
+          },
+          costs: {
+            orderBy: { id: "asc" },
+            select: { costType: true, amount: true, currency: true, exchangeRate: true, baseAmount: true, remark: true },
+          },
+          _count: { select: { payments: true, shipments: true } },
+        },
       });
       if (!existing) throw new Error("订单不存在或已被删除");
       if (!canEditOrder(session.role, existing, session.userId)) throw new ApiAuthError("只能编辑自己负责且未关闭的订单", 403);
-      const normalized = normalizeOrderInput(input, existing.orderNo, session);
+      const normalized = normalizeOrderInput(canEditOrderCosts(session.role) ? input : withPreservedCostInput(input, existing), existing.orderNo, session);
       const customerSync = await syncOrderCustomer(
         tx,
         {

@@ -29,10 +29,12 @@ type AiStatus = {
   modelConfigured: boolean;
 };
 
-const defaultFilters: ChannelDataFilters = {
-  year: 2026,
-  month: 5,
-};
+function currentMonthFilters(): ChannelDataFilters {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+}
+
+const defaultFilters: ChannelDataFilters = currentMonthFilters();
 
 function toQuery(filters: ChannelDataFilters) {
   const params = new URLSearchParams({ year: String(filters.year), month: String(filters.month) });

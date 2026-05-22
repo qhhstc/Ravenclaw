@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError, normalizeFollowupInput } from "@/lib/crm";
+import { canManageCrm, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ followupId: string }> };
 
@@ -17,6 +18,8 @@ async function syncCustomerFollowupState(customerId: number) {
 
 export async function PATCH(request: NextRequest, context: Context) {
   try {
+    const session = await requireApiSession();
+    if (!canManageCrm(session.role)) return forbidden("当前角色不能维护跟进记录");
     const { followupId } = await context.params;
     const input = (await request.json()) as Record<string, unknown>;
     const data = normalizeFollowupInput(input);
@@ -38,6 +41,8 @@ export async function PUT(request: NextRequest, context: Context) {
 
 export async function DELETE(_request: NextRequest, context: Context) {
   try {
+    const session = await requireApiSession();
+    if (!canManageCrm(session.role)) return forbidden("当前角色不能删除跟进记录");
     const { followupId } = await context.params;
     const item = await prisma.customerFollowup.delete({ where: { id: Number(followupId) } });
     await syncCustomerFollowupState(item.customerId);

@@ -25,7 +25,8 @@ function parseDate(value: string | null) {
 }
 
 export function profitReportWhere(params: URLSearchParams): Prisma.OrderWhereInput {
-  const year = Number(params.get("year")) || 2026;
+  const now = new Date();
+  const year = Number(params.get("year")) || now.getUTCFullYear();
   const month = params.get("month") ? Number(params.get("month")) : null;
   const dateFrom = parseDate(params.get("dateFrom")) ?? new Date(Date.UTC(year, month ? month - 1 : 0, 1));
   const dateTo = parseDate(params.get("dateTo")) ?? new Date(Date.UTC(year, month ? month : 12, 1));
@@ -230,5 +231,5 @@ export function profitExportFileName(type: string, year: string | null) {
     products: "产品利润排行",
     orders: "订单利润明细",
   };
-  return `${labelMap[type] ?? "利润报表"}_${year || "2026"}.xlsx`;
+  return `${labelMap[type] ?? "利润报表"}_${year || new Date().getUTCFullYear()}.xlsx`;
 }

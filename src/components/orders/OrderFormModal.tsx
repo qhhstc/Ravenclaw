@@ -44,6 +44,7 @@ type Props = {
   customers: CustomerOption[];
   users: UserOption[];
   products: ProductOption[];
+  canEditCosts?: boolean;
   onCancel: () => void;
   onSubmit: (values: Record<string, unknown>) => Promise<void> | void;
 };
@@ -220,7 +221,7 @@ function influencerLabel(item: InfluencerOption) {
   return `${item.influencerName}${item.accountHandle ? ` / ${item.accountHandle}` : ""} (${item.platform})`;
 }
 
-export default function OrderFormModal({ open, saving, editing, brands, platforms, stores, channels, influencers, countries, currencies, customers, users, products, onCancel, onSubmit }: Props) {
+export default function OrderFormModal({ open, saving, editing, brands, platforms, stores, channels, influencers, countries, currencies, customers, users, products, canEditCosts = true, onCancel, onSubmit }: Props) {
   const [form] = Form.useForm();
   const [rateLoading, setRateLoading] = useState(false);
   const manualPaymentStatusRef = useRef(false);
@@ -455,10 +456,14 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
         </div>
 
         <Divider titlePlacement="start">商品明细</Divider>
-        <OrderItemsEditor form={form} products={products} currencies={currencyCodes} baseCurrency={baseCurrency} orderCurrency={currency} orderExchangeRate={orderExchangeRate} onItemsChange={() => queueMicrotask(syncComputed)} />
+        <OrderItemsEditor form={form} products={products} currencies={currencyCodes} baseCurrency={baseCurrency} orderCurrency={currency} orderExchangeRate={orderExchangeRate} canEditCosts={canEditCosts} onItemsChange={() => queueMicrotask(syncComputed)} />
 
         <Divider titlePlacement="start">成本分项</Divider>
-        <OrderCostEditor form={form} currency={currency} baseCurrency={baseCurrency} currencies={currencyCodes} />
+        {canEditCosts ? (
+          <OrderCostEditor form={form} currency={currency} baseCurrency={baseCurrency} currencies={currencyCodes} />
+        ) : (
+          <Alert type="info" showIcon message="成本由财务或管理员维护" description="业务员保存订单时只能维护客户、商品销售价、数量和状态；采购、包装及其他成本会沿用已有记录，避免误改利润口径。" />
+        )}
 
         <Divider titlePlacement="start">利润计算结果</Divider>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">

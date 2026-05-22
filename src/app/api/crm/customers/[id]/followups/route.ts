@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError, normalizeFollowupInput } from "@/lib/crm";
-import { getSession } from "@/lib/auth";
+import { canManageCrm, canViewCrm, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, context: Context) {
   try {
+    const session = await requireApiSession();
+    if (!canViewCrm(session.role)) return forbidden("当前角色不能查看跟进记录");
     const { id } = await context.params;
     const items = await prisma.customerFollowup.findMany({
       where: { customerId: Number(id) },
@@ -21,9 +23,10 @@ export async function GET(_request: NextRequest, context: Context) {
 
 export async function POST(request: NextRequest, context: Context) {
   try {
+    const session = await requireApiSession();
+    if (!canManageCrm(session.role)) return forbidden("当前角色不能维护跟进记录");
     const { id } = await context.params;
     const input = (await request.json()) as Record<string, unknown>;
-    const session = await getSession();
     const data = normalizeFollowupInput({ ...input, ownerId: input.ownerId || session?.userId });
     const now = new Date();
     const item = await prisma.$transaction(async (tx) => {

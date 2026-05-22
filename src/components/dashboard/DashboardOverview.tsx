@@ -63,7 +63,12 @@ const customerStatusLabels: Record<string, string> = {
   invalid: "无效客户",
 };
 
-const defaultFilters = { year: 2026, month: 5, quarter: 2 };
+function currentDashboardFilters() {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1, quarter: Math.floor(now.getMonth() / 3) + 1 };
+}
+
+const defaultFilters = currentDashboardFilters();
 
 type DashboardFilters = {
   year: number;
@@ -80,6 +85,9 @@ type DashboardOverviewData = {
   message?: string;
   kpis: {
     salesAmount: number;
+    channelSalesAmount: number;
+    orderSalesAmount: number;
+    salesGapAmount: number;
     adSpend: number;
     roi: number | null;
     adSpendRatio: number | null;
@@ -188,7 +196,7 @@ type AiStatus = {
 };
 
 const emptyOverview: DashboardOverviewData = {
-  kpis: { salesAmount: 0, adSpend: 0, roi: null, adSpendRatio: null, channelCount: 0, paidChannelCount: 0, netProfit: 0, receivableAmount: 0, receivableCount: 0 },
+  kpis: { salesAmount: 0, channelSalesAmount: 0, orderSalesAmount: 0, salesGapAmount: 0, adSpend: 0, roi: null, adSpendRatio: null, channelCount: 0, paidChannelCount: 0, netProfit: 0, receivableAmount: 0, receivableCount: 0 },
   weeklyTrend: [],
   businessLineShare: [],
   roiRanking: [],
@@ -423,7 +431,9 @@ export default function DashboardOverview() {
   );
 
   const kpiCards = [
-    { title: "本月销售额", value: moneyFormatter(overview.kpis.salesAmount) },
+    { title: "渠道销售额", value: moneyFormatter(overview.kpis.channelSalesAmount ?? overview.kpis.salesAmount) },
+    { title: "订单销售额", value: moneyFormatter(overview.kpis.orderSalesAmount ?? 0) },
+    { title: "口径差异", value: moneyFormatter(overview.kpis.salesGapAmount ?? 0) },
     { title: "本月广告费", value: moneyFormatter(overview.kpis.adSpend) },
     { title: "整体 ROI", value: ratioFormatter(overview.kpis.roi) },
     { title: "广告占比", value: percentFormatter(overview.kpis.adSpendRatio) },

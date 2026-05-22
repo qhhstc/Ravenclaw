@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ApiAuthError, canManageProducts, forbidden, requireApiSession } from "@/lib/permissions";
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -128,12 +129,20 @@ function apiError(error: unknown) {
   return NextResponse.json({ message }, { status: 400 });
 }
 
+function apiErrorWithAuth(error: unknown) {
+  if (error instanceof ApiAuthError) {
+    return NextResponse.json({ message: error.message }, { status: error.status });
+  }
+  return apiError(error);
+}
+
 export function createCollectionHandlers(config: ResourceConfig) {
   const delegate = getDelegate(config.model);
 
   return {
     async GET(request: NextRequest) {
       try {
+        await requireApiSession();
         const params = request.nextUrl.searchParams;
         const { page, pageSize } = parsePagination(params);
         const status = params.get("status");
@@ -158,19 +167,21 @@ export function createCollectionHandlers(config: ResourceConfig) {
 
         return NextResponse.json({ items, total, page, pageSize });
       } catch (error) {
-        return apiError(error);
+        return apiErrorWithAuth(error);
       }
     },
 
     async POST(request: NextRequest) {
       try {
+        const session = await requireApiSession();
+        if (!canManageProducts(session.role)) return forbidden("当前角色不能维护基础资料");
         const input = (await request.json()) as Record<string, unknown>;
         const item = await delegate.create({
           data: config.normalizeInput(input),
         });
         return NextResponse.json({ item });
       } catch (error) {
-        return apiError(error);
+        return apiErrorWithAuth(error);
       }
     },
   };
@@ -182,6 +193,8 @@ export function createItemHandlers(config: ResourceConfig) {
   return {
     async PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
       try {
+        const session = await requireApiSession();
+        if (!canManageProducts(session.role)) return forbidden("当前角色不能维护基础资料");
         const { id } = await context.params;
         const input = (await request.json()) as Record<string, unknown>;
         const item = await delegate.update({
@@ -190,12 +203,14 @@ export function createItemHandlers(config: ResourceConfig) {
         });
         return NextResponse.json({ item });
       } catch (error) {
-        return apiError(error);
+        return apiErrorWithAuth(error);
       }
     },
 
     async PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
       try {
+        const session = await requireApiSession();
+        if (!canManageProducts(session.role)) return forbidden("当前角色不能维护基础资料");
         const { id } = await context.params;
         const input = (await request.json()) as Record<string, unknown>;
         const data = config.statusField && input.status ? { [config.statusField]: statusValue(input.status) } : config.normalizeInput(input);
@@ -205,19 +220,21 @@ export function createItemHandlers(config: ResourceConfig) {
         });
         return NextResponse.json({ item });
       } catch (error) {
-        return apiError(error);
+        return apiErrorWithAuth(error);
       }
     },
 
     async DELETE(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
       try {
+        const session = await requireApiSession();
+        if (!canManageProducts(session.role)) return forbidden("当前角色不能维护基础资料");
         const { id } = await context.params;
         await delegate.delete({
           where: { id: Number(id) },
         });
         return NextResponse.json({ ok: true });
       } catch (error) {
-        return apiError(error);
+        return apiErrorWithAuth(error);
       }
     },
   };

@@ -63,6 +63,14 @@ export function canManageProducts(role?: string | null) {
   return ["admin", "finance"].includes(role ?? "");
 }
 
+export function canViewCrm(role?: string | null) {
+  return ["admin", "sales", "finance", "viewer"].includes(role ?? "");
+}
+
+export function canManageCrm(role?: string | null) {
+  return ["admin", "sales"].includes(role ?? "");
+}
+
 export function canViewSalesFlow(role?: string | null) {
   return ["admin", "sales", "finance", "viewer"].includes(role ?? "");
 }

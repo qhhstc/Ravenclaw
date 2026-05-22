@@ -6,8 +6,8 @@ import { requireApiSession } from "@/lib/permissions";
 
 function monthRange(params: URLSearchParams) {
   const now = new Date();
-  const year = Number(params.get("year")) || 2026;
-  const month = Number(params.get("month")) || 5;
+  const year = Number(params.get("year")) || now.getFullYear();
+  const month = Number(params.get("month")) || now.getMonth() + 1;
   const from = params.get("dateFrom") ? new Date(String(params.get("dateFrom"))) : new Date(Date.UTC(year, month - 1, 1));
   const to = params.get("dateTo") ? new Date(String(params.get("dateTo"))) : new Date(Date.UTC(year, month, 1));
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {

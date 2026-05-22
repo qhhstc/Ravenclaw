@@ -50,6 +50,11 @@ export function quarterFromMonth(month: number) {
   return Math.ceil(month / 3);
 }
 
+export function currentPeriod(now = new Date()) {
+  const month = now.getMonth() + 1;
+  return { year: now.getFullYear(), month, quarter: quarterFromMonth(month) };
+}
+
 export function toNumber(value: unknown, fallback = 0) {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "object" && value !== null && "toNumber" in value) {
@@ -71,9 +76,10 @@ export function parseOptionalInt(value: string | null) {
 }
 
 export function parseChannelDataFilters(params: URLSearchParams): ChannelDataFilters {
+  const fallback = currentPeriod();
   return {
-    year: parsePositiveInt(params.get("year"), 2026),
-    month: Math.min(Math.max(parsePositiveInt(params.get("month"), 5), 1), 12),
+    year: parsePositiveInt(params.get("year"), fallback.year),
+    month: Math.min(Math.max(parsePositiveInt(params.get("month"), fallback.month), 1), 12),
     brandId: parseOptionalInt(params.get("brandId")),
     platformId: parseOptionalInt(params.get("platformId")),
     storeId: parseOptionalInt(params.get("storeId")),

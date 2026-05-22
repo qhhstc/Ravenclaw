@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { businessBlockLabel, businessBlockOptions, displayAction, displayRating, inferBusinessBlock, ratio } from "@/lib/business-blocks";
 import { logApiDuration } from "@/lib/api-logger";
-import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, parseOptionalInt, parsePositiveInt, quarterFromMonth, toNumber } from "@/lib/channel-data";
+import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, currentPeriod, parseOptionalInt, parsePositiveInt, quarterFromMonth, toNumber } from "@/lib/channel-data";
 import { prisma } from "@/lib/prisma";
 import { ApiAuthError, requireApiSession } from "@/lib/permissions";
 
@@ -23,9 +23,10 @@ type BusinessPlan = Awaited<ReturnType<typeof fetchPlans>>[number];
 type BusinessWarning = Awaited<ReturnType<typeof fetchWarnings>>[number];
 
 function parseFilters(params: URLSearchParams): BusinessDashboardFilters {
-  const month = Math.min(Math.max(parsePositiveInt(params.get("month"), 5), 1), 12);
+  const fallback = currentPeriod();
+  const month = Math.min(Math.max(parsePositiveInt(params.get("month"), fallback.month), 1), 12);
   return {
-    year: parsePositiveInt(params.get("year"), 2026),
+    year: parsePositiveInt(params.get("year"), fallback.year),
     month,
     quarter: Math.min(Math.max(parsePositiveInt(params.get("quarter"), quarterFromMonth(month)), 1), 4),
     brandId: parseOptionalInt(params.get("brandId")),
