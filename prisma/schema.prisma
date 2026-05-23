@@ -788,6 +788,8 @@ model OrderItem {
   productId   Int?
   sku         String?
   productName String
+  productNameCn String?
+  productNameEn String?
   specification String?
   quantity    Int      @default(1)
   unitPrice   Decimal  @default(0) @db.Decimal(18, 2)
@@ -816,6 +818,8 @@ model OrderItem {
   @@index([productId])
   @@index([sku])
   @@index([productName])
+  @@index([productNameCn])
+  @@index([productNameEn])
 }
 
 model OrderCost {

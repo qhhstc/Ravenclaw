@@ -51,7 +51,7 @@ export const followupTypeOptions = [
 
 export type Option = { label: string; value: string | number };
 
-export type CrmUser = { id: number; name: string; email?: string };
+export type CrmUser = { id: number; name: string; email?: string; role?: string };
 export type CrmBrand = { id: number; name: string; code?: string };
 export type CrmCountry = { id: number; name: string; code: string };
 export type CrmChannel = {

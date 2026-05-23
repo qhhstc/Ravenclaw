@@ -78,6 +78,8 @@ export default function CustomerListPage() {
   const [countries, setCountries] = useState<CrmCountry[]>([]);
   const [channels, setChannels] = useState<CrmChannel[]>([]);
   const [users, setUsers] = useState<CrmUser[]>([]);
+  const [currentUser, setCurrentUser] = useState<{ userId: number; role: string } | null>(null);
+  const isSales = currentUser?.role === "sales";
 
   const loadOptions = useCallback(async () => {
     try {
@@ -101,6 +103,17 @@ export default function CustomerListPage() {
     }
   }, []);
 
+  const loadCurrentUser = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/me");
+      const data = (await response.json()) as { user?: { userId: number; role: string }; message?: string };
+      if (!response.ok) throw new Error(data.message || "当前用户加载失败");
+      setCurrentUser(data.user ?? null);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "当前用户加载失败");
+    }
+  }, []);
+
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
@@ -117,8 +130,9 @@ export default function CustomerListPage() {
   }, [filters, page, pageSize]);
 
   useEffect(() => {
+    queueMicrotask(loadCurrentUser);
     queueMicrotask(loadOptions);
-  }, [loadOptions]);
+  }, [loadCurrentUser, loadOptions]);
 
   useEffect(() => {
     queueMicrotask(loadCustomers);
@@ -231,7 +245,7 @@ export default function CustomerListPage() {
           <Select allowClear showSearch optionFilterProp="label" placeholder="品牌" value={filters.brandId} options={brands.map((item) => ({ label: item.name, value: item.id }))} onChange={(value) => updateFilter({ brandId: value })} style={{ width: 140 }} />
           <Select allowClear showSearch optionFilterProp="label" placeholder="来源渠道" value={filters.sourceChannelId} options={channels.map((item) => ({ label: channelLabel(item), value: item.id }))} onChange={(value) => updateFilter({ sourceChannelId: value })} style={{ width: 220 }} />
           <Select allowClear showSearch optionFilterProp="label" placeholder="国家" value={filters.countryCode} options={countries.map((item) => ({ label: `${item.name} (${item.code})`, value: item.code }))} onChange={(value) => updateFilter({ countryCode: value })} style={{ width: 150 }} />
-          <Select allowClear showSearch optionFilterProp="label" placeholder="负责人" value={filters.ownerId} options={users.map((item) => ({ label: item.name, value: item.id }))} onChange={(value) => updateFilter({ ownerId: value })} style={{ width: 130 }} />
+          {!isSales ? <Select allowClear showSearch optionFilterProp="label" placeholder="负责人" value={filters.ownerId} options={users.map((item) => ({ label: item.name, value: item.id }))} onChange={(value) => updateFilter({ ownerId: value })} style={{ width: 130 }} /> : null}
           <Select placeholder="待跟进" value={filters.followupStatus ?? ""} options={followupStatusOptions} onChange={(value) => updateFilter({ followupStatus: value || undefined })} style={{ width: 140 }} />
           <Button icon={<ReloadOutlined />} loading={loading} onClick={() => { setFilters(defaultFilters); setPage(1); }}>重置</Button>
         </div>
@@ -258,6 +272,7 @@ export default function CustomerListPage() {
         countries={countries}
         channels={channels}
         users={users}
+        currentUser={currentUser}
         onCancel={() => { setModalOpen(false); setEditing(null); }}
         onSubmit={saveCustomer}
       />

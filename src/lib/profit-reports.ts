@@ -107,8 +107,9 @@ export async function getProfitReport(params: URLSearchParams, session: SessionU
     const customerName = order.customerName || order.customer?.name || "散客/平台订单";
     customerMap.set(customerName, [...(customerMap.get(customerName) ?? []), order]);
     order.items.forEach((item) => {
-      const key = item.sku || item.productName;
-      const current = productMap.get(key) ?? { sku: item.sku || "-", productName: item.productName, quantity: 0, salesAmount: 0, purchaseCost: 0, packagingCost: 0 };
+      const productName = item.productNameCn || item.productNameEn || item.productName;
+      const key = item.sku || productName;
+      const current = productMap.get(key) ?? { sku: item.sku || "-", productName, quantity: 0, salesAmount: 0, purchaseCost: 0, packagingCost: 0 };
       current.quantity += Number(item.quantity) || 0;
       current.salesAmount += baseAmount(item.salesSubtotal, order.exchangeRate);
       current.purchaseCost += toNumber(item.purchaseCostBase);

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { apiError, normalizeContactInput } from "@/lib/crm";
+import { apiError, assertCanAccessCustomer, normalizeContactInput } from "@/lib/crm";
 import { canManageCrm, canViewCrm, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
@@ -10,6 +10,7 @@ export async function GET(_request: NextRequest, context: Context) {
     const session = await requireApiSession();
     if (!canViewCrm(session.role)) return forbidden("当前角色不能查看联系人");
     const { id } = await context.params;
+    await assertCanAccessCustomer(prisma, Number(id), session);
     const items = await prisma.customerContact.findMany({
       where: { customerId: Number(id) },
       orderBy: [{ isPrimary: "desc" }, { id: "asc" }],
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest, context: Context) {
     const session = await requireApiSession();
     if (!canManageCrm(session.role)) return forbidden("当前角色不能维护联系人");
     const { id } = await context.params;
+    await assertCanAccessCustomer(prisma, Number(id), session);
     const input = (await request.json()) as Record<string, unknown>;
     const data = normalizeContactInput(input);
     const item = await prisma.$transaction(async (tx) => {

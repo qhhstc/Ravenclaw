@@ -9,6 +9,8 @@ type CustomerOrderItem = {
   id?: number;
   sku?: string | null;
   productName: string;
+  productNameCn?: string | null;
+  productNameEn?: string | null;
   quantity: number;
   saleUnitPrice: number;
   salesSubtotal?: number;
@@ -59,7 +61,7 @@ export default function CustomerTradeAnalysisPanel({ orders }: Props) {
       orderNo: order.orderNo,
       orderDate: order.orderDate,
       sku: item.sku,
-      productName: item.productName,
+      productName: item.productNameCn || item.productNameEn || item.productName,
       quantity: item.quantity,
       saleUnitPrice: item.saleUnitPrice,
       salesSubtotal: item.salesSubtotal,

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { apiError, normalizeFollowupInput } from "@/lib/crm";
+import { apiError, assertCanAccessCustomer, normalizeFollowupInput } from "@/lib/crm";
 import { canManageCrm, canViewCrm, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
@@ -10,6 +10,7 @@ export async function GET(_request: NextRequest, context: Context) {
     const session = await requireApiSession();
     if (!canViewCrm(session.role)) return forbidden("当前角色不能查看跟进记录");
     const { id } = await context.params;
+    await assertCanAccessCustomer(prisma, Number(id), session);
     const items = await prisma.customerFollowup.findMany({
       where: { customerId: Number(id) },
       include: { owner: { select: { id: true, name: true, email: true } } },
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest, context: Context) {
     const session = await requireApiSession();
     if (!canManageCrm(session.role)) return forbidden("当前角色不能维护跟进记录");
     const { id } = await context.params;
+    await assertCanAccessCustomer(prisma, Number(id), session);
     const input = (await request.json()) as Record<string, unknown>;
     const data = normalizeFollowupInput({ ...input, ownerId: input.ownerId || session?.userId });
     const now = new Date();

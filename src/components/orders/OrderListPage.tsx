@@ -82,7 +82,7 @@ function productSummary(row: OrderRecord) {
   const items = row.items ?? [];
   if (!items.length) return "-";
   const suffix = items.length >= 3 ? "..." : "";
-  return `${items.map((item) => `${item.productName}x${item.quantity}`).join("，")}${suffix}`;
+  return `${items.map((item) => `${item.productNameCn || item.productNameEn || item.productName}x${item.quantity}`).join("，")}${suffix}`;
 }
 
 export default function OrderListPage() {

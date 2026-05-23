@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { ApiAuthError } from "@/lib/permissions";
+import { ApiAuthError, type SessionUser } from "@/lib/permissions";
 
 export const CUSTOMER_TYPES = ["individual", "company", "wholesaler", "distributor", "agent", "influencer", "supplier_contact", "other"] as const;
 export const CUSTOMER_LEVELS = ["A", "B", "C", "D"] as const;
@@ -224,6 +224,44 @@ export function buildCustomerWhere(params: URLSearchParams): Prisma.CustomerWher
     ...(params.get("countryCode") ? { countryCode: params.get("countryCode")! } : {}),
     ...followupStatusWhere(params.get("followupStatus")),
   };
+}
+
+export function crmCustomerScopeWhere(session: SessionUser): Prisma.CustomerWhereInput {
+  if (session.role === "sales") return { ownerId: session.userId };
+  return {};
+}
+
+export function scopedCustomerWhere(params: URLSearchParams, session: SessionUser): Prisma.CustomerWhereInput {
+  return { AND: [buildCustomerWhere(params), crmCustomerScopeWhere(session)] };
+}
+
+export function scopedCustomerUniqueWhere(customerId: number, session: SessionUser): Prisma.CustomerWhereInput {
+  return { AND: [{ id: customerId }, crmCustomerScopeWhere(session)] };
+}
+
+export async function assertCanAccessCustomer(tx: { customer: { count: (args: { where: Prisma.CustomerWhereInput }) => Promise<number> } }, customerId: number, session: SessionUser) {
+  const count = await tx.customer.count({ where: scopedCustomerUniqueWhere(customerId, session) });
+  if (!count) throw new ApiAuthError("客户不存在或无权访问", 403);
+}
+
+export async function assertCanAccessContact(tx: { customerContact: { findUnique: (args: { where: { id: number }; select: { customerId: true } }) => Promise<{ customerId: number } | null> }; customer: { count: (args: { where: Prisma.CustomerWhereInput }) => Promise<number> } }, contactId: number, session: SessionUser) {
+  const contact = await tx.customerContact.findUnique({ where: { id: contactId }, select: { customerId: true } });
+  if (!contact) throw new ApiAuthError("联系人不存在或已被删除", 404);
+  await assertCanAccessCustomer(tx, contact.customerId, session);
+  return contact;
+}
+
+export async function assertCanAccessFollowup(tx: { customerFollowup: { findUnique: (args: { where: { id: number }; select: { customerId: true } }) => Promise<{ customerId: number } | null> }; customer: { count: (args: { where: Prisma.CustomerWhereInput }) => Promise<number> } }, followupId: number, session: SessionUser) {
+  const followup = await tx.customerFollowup.findUnique({ where: { id: followupId }, select: { customerId: true } });
+  if (!followup) throw new ApiAuthError("跟进记录不存在或已被删除", 404);
+  await assertCanAccessCustomer(tx, followup.customerId, session);
+  return followup;
+}
+
+export function normalizeCustomerInputForSession(input: Record<string, unknown>, session: SessionUser): Prisma.CustomerUncheckedCreateInput {
+  const data = normalizeCustomerInput(input);
+  if (session.role === "sales") data.ownerId = session.userId;
+  return data;
 }
 
 export function crmDateRange() {

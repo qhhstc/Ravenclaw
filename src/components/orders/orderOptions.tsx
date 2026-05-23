@@ -4,14 +4,8 @@ import { Tag } from "antd";
 import dayjs from "dayjs";
 
 export const orderSourceOptions = [
-  { label: "报价转订单", value: "quote" },
-  { label: "WordPress 批发站", value: "wordpress_wholesale" },
-  { label: "Shopify 独立站", value: "shopify" },
-  { label: "Amazon", value: "amazon" },
-  { label: "TikTok Shop", value: "tiktok_shop" },
-  { label: "手动订单", value: "manual" },
-  { label: "红人合作", value: "influencer" },
-  { label: "其他", value: "other" },
+  { label: "Calembou", value: "calembou" },
+  { label: "Kidultsbox", value: "kidultsbox" },
 ];
 
 export const orderStatusOptions = [
@@ -120,6 +114,8 @@ export type OrderItemRecord = {
   product?: { id: number; sku: string; name: string; specification?: string | null } | null;
   sku?: string | null;
   productName: string;
+  productNameCn?: string | null;
+  productNameEn?: string | null;
   specification?: string | null;
   quantity: number;
   unitPrice?: number;

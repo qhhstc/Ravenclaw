@@ -78,7 +78,7 @@ export async function createOrderListWorkbook(params: URLSearchParams, session: 
   ]);
   styleHeader(sheet.getRow(1));
   orders.forEach((order) => {
-    const productSummary = order.items.map((item) => `${item.productName}×${item.quantity}`).join("；");
+    const productSummary = order.items.map((item) => `${item.productNameCn || item.productNameEn || item.productName}×${item.quantity}`).join("；");
     const row = sheet.addRow([
       order.orderNo,
       order.customerName || order.customer?.name || "散客/平台订单",

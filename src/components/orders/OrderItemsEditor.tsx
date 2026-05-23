@@ -20,7 +20,7 @@ type Props = {
 type ItemRow = Record<string, unknown>;
 
 function defaultItemRow() {
-  return { quantity: 1, saleUnitPrice: 0, purchaseUnitCost: 0, purchaseCurrency: "CNY", purchaseExchangeRate: 1, packagingUnitCost: 0, packagingCurrency: "CNY", packagingExchangeRate: 1 };
+  return { productName: "", productNameCn: "", productNameEn: "", quantity: 1, saleUnitPrice: 0, purchaseUnitCost: 0, purchaseCurrency: "CNY", purchaseExchangeRate: 1, packagingUnitCost: 0, packagingCurrency: "CNY", packagingExchangeRate: 1 };
 }
 
 function normalizeRows(value: unknown): ItemRow[] {
@@ -64,6 +64,10 @@ function defaultRateForCurrency(rowCurrency: string | undefined, baseCurrency: s
   return moneyValue(fallbackRate) || 1;
 }
 
+function hasCjkText(value: string) {
+  return /[\u3400-\u9fff]/u.test(value);
+}
+
 function HiddenItemsField() {
   return null;
 }
@@ -102,17 +106,17 @@ export default function OrderItemsEditor({ form, products, currencies, baseCurre
       .map((row) => {
         const productId = positiveId(row.productId);
         if (!productId || products.some((item) => item.id === productId)) return null;
-        return { label: `${textValue(row.sku) || productId} / ${textValue(row.productName) || "已选产品"}`, value: productId };
+        return { label: `${textValue(row.sku) || productId} / ${textValue(row.productNameCn) || textValue(row.productNameEn) || textValue(row.productName) || "已选产品"}`, value: productId };
       })
       .filter((item): item is { label: string; value: number } => Boolean(item)),
   ];
   const gridClass = canEditCosts
-    ? "grid-cols-[190px_150px_260px_180px_100px_120px_130px_120px_110px_110px_130px_130px_120px_110px_110px_130px_130px_72px]"
-    : "grid-cols-[190px_150px_260px_180px_100px_120px_130px_72px]";
-  const minWidthClass = canEditCosts ? "min-w-[2260px]" : "min-w-[1200px]";
+    ? "grid-cols-[190px_150px_220px_260px_180px_100px_120px_130px_120px_110px_110px_130px_130px_120px_110px_110px_130px_130px_72px]"
+    : "grid-cols-[190px_150px_220px_260px_180px_100px_120px_130px_72px]";
+  const minWidthClass = canEditCosts ? "min-w-[2480px]" : "min-w-[1420px]";
   const headerTitles = canEditCosts
-    ? ["选择产品", "SKU", "产品名称", "规格", "数量", "销售单价", "销售小计", "采购单价", "采购币种", "采购汇率", "采购小计", "采购本位币", "包装单价", "包装币种", "包装汇率", "包装小计", "包装本位币", "操作"]
-    : ["选择产品", "SKU", "产品名称", "规格", "数量", "销售单价", "销售小计", "操作"];
+    ? ["选择产品", "SKU", "中文名称", "英文名称", "规格", "数量", "销售单价", "销售小计", "采购单价", "采购币种", "采购汇率", "采购小计", "采购本位币", "包装单价", "包装币种", "包装汇率", "包装小计", "包装本位币", "操作"]
+    : ["选择产品", "SKU", "中文名称", "英文名称", "规格", "数量", "销售单价", "销售小计", "操作"];
 
   useEffect(() => {
     if (normalizeRows(form.getFieldValue("items")).length === 0) {
@@ -151,6 +155,7 @@ export default function OrderItemsEditor({ form, products, currencies, baseCurre
     if (!product) return;
     const currentRows = normalizeRows(form.getFieldValue("items"));
     const currentRow = currentRows[rowIndex] ?? {};
+    const isChineseName = hasCjkText(product.name);
     const costPatch = canEditCosts
       ? {
           purchaseUnitCost: moneyValue(product.defaultPurchasePrice),
@@ -165,6 +170,8 @@ export default function OrderItemsEditor({ form, products, currencies, baseCurre
       productId: product.id,
       sku: product.sku,
       productName: product.name,
+      productNameCn: isChineseName ? product.name : textValue(currentRow.productNameCn),
+      productNameEn: isChineseName ? textValue(currentRow.productNameEn) : product.name,
       specification: product.specification,
       ...costPatch,
     });
@@ -188,7 +195,24 @@ export default function OrderItemsEditor({ form, products, currencies, baseCurre
                 <Select allowClear showSearch optionFilterProp="label" placeholder="选择产品" className="w-full" value={positiveId(row.productId)} options={productOptions} onChange={(value) => applyProduct(rowIndex, value)} />
               </div>
               <div className="px-2 py-2"><TextCellInput key={`sku-${rowIndex}-${textValue(row.productId)}`} placeholder="SKU" value={row.sku} onCommit={(value) => updateRow(rowIndex, { sku: value })} /></div>
-              <div className="px-2 py-2"><TextCellInput key={`name-${rowIndex}-${textValue(row.productId)}`} status={textValue(row.productName) ? undefined : "error"} placeholder="商品名称" value={row.productName} onCommit={(value) => updateRow(rowIndex, { productName: value })} /></div>
+              <div className="px-2 py-2">
+                <TextCellInput
+                  key={`name-cn-${rowIndex}-${textValue(row.productId)}`}
+                  status={textValue(row.productNameCn) || textValue(row.productNameEn) || textValue(row.productName) ? undefined : "error"}
+                  placeholder="中文名称"
+                  value={row.productNameCn}
+                  onCommit={(value) => updateRow(rowIndex, { productNameCn: value, productName: value || textValue(row.productNameEn) || textValue(row.productName) })}
+                />
+              </div>
+              <div className="px-2 py-2">
+                <TextCellInput
+                  key={`name-en-${rowIndex}-${textValue(row.productId)}`}
+                  status={textValue(row.productNameCn) || textValue(row.productNameEn) || textValue(row.productName) ? undefined : "error"}
+                  placeholder="English name"
+                  value={row.productNameEn}
+                  onCommit={(value) => updateRow(rowIndex, { productNameEn: value, productName: textValue(row.productNameCn) || value || textValue(row.productName) })}
+                />
+              </div>
               <div className="px-2 py-2"><TextCellInput key={`spec-${rowIndex}-${textValue(row.productId)}`} placeholder="规格" value={row.specification} onCommit={(value) => updateRow(rowIndex, { specification: value })} /></div>
               <div className="px-2 py-2"><InputNumber min={1} precision={0} className="!w-full text-right" value={optionalNumber(row.quantity) ?? 1} onChange={(value) => updateRow(rowIndex, { quantity: value ?? 1 })} /></div>
               <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.saleUnitPrice) ?? 0} onChange={(value) => updateRow(rowIndex, { saleUnitPrice: value ?? 0 })} /></div>

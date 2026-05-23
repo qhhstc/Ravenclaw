@@ -20,6 +20,8 @@ export async function PATCH(request: NextRequest, context: Context) {
         productId: row.productId,
         sku: row.sku,
         productName: row.productName,
+        productNameCn: row.productNameCn,
+        productNameEn: row.productNameEn,
         specification: row.specification,
         quantity: Number(row.quantity),
         saleUnitPrice: toNumber(row.saleUnitPrice),

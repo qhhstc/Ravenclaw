@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { BASE_CURRENCY, COST_TYPES, calculateItemProfit, calculateOrderProfit, decimal, decimalRate, normalizeCostRows, roundMoney, toNumber } from "@/lib/order-profit-calculations";
 import { ApiAuthError, canViewAllOrders, type SessionUser } from "@/lib/permissions";
 
-export const ORDER_SOURCES = ["quote", "wordpress_wholesale", "shopify", "amazon", "tiktok_shop", "manual", "influencer", "other"] as const;
+export const ORDER_SOURCES = ["calembou", "kidultsbox"] as const;
 export const ORDER_STATUSES = ["pending_payment", "paid", "preparing", "shipped", "in_transit", "customs_clearance", "delivered", "completed", "after_sales_reship", "cancelled", "refunded", "draft", "pending_confirm", "confirmed", "processing"] as const;
 export const PAYMENT_STATUSES = ["unpaid", "partial_paid", "paid", "refunded"] as const;
 export const SHIPPING_STATUSES = ["unshipped", "partial_shipped", "shipped", "delivered"] as const;
@@ -97,6 +97,8 @@ export type OrderItemInput = {
   productId?: number | null;
   sku?: string | null;
   productName: string;
+  productNameCn?: string | null;
+  productNameEn?: string | null;
   specification?: string | null;
   quantity: number;
   saleUnitPrice: number;
@@ -108,6 +110,10 @@ export type OrderItemInput = {
   packagingExchangeRate: number;
   remark?: string | null;
 };
+
+export function orderItemDisplayName(item: { productName?: string | null; productNameCn?: string | null; productNameEn?: string | null }) {
+  return textValue(item.productNameCn) ?? textValue(item.productNameEn) ?? textValue(item.productName) ?? "";
+}
 
 export type OrderCostInput = {
   costType: string;
@@ -122,14 +128,18 @@ export function normalizeOrderItems(input: unknown): OrderItemInput[] {
   if (!Array.isArray(input) || input.length === 0) throw new Error("订单至少需要 1 行商品明细");
   return input.map((item, index) => {
     const row = item as Record<string, unknown>;
-    const productName = textValue(row.productName);
-    if (!productName) throw new Error(`第 ${index + 1} 行商品名称不能为空`);
+    const productNameCn = textValue(row.productNameCn);
+    const productNameEn = textValue(row.productNameEn);
+    const productName = productNameCn ?? productNameEn ?? textValue(row.productName);
+    if (!productName) throw new Error(`第 ${index + 1} 行商品中文名称或英文名称不能为空`);
     const calculated = calculateItemProfit(row);
     if (calculated.quantity <= 0) throw new Error(`第 ${index + 1} 行数量必须大于 0`);
     return {
       productId: optionalNumber(row.productId),
       sku: textValue(row.sku),
       productName,
+      productNameCn,
+      productNameEn,
       specification: textValue(row.specification),
       quantity: calculated.quantity,
       saleUnitPrice: calculated.saleUnitPrice || optionalMoney(row.unitPrice),
@@ -194,7 +204,7 @@ export function normalizeOrderInput(input: Record<string, unknown>, forcedOrderN
     data: {
       orderNo: textValue(forcedOrderNo) ?? textValue(input.orderNo) ?? undefined,
       externalOrderNo: textValue(input.externalOrderNo),
-      orderSource: enumValue(input.orderSource, ORDER_SOURCES, "manual"),
+      orderSource: enumValue(input.orderSource, ORDER_SOURCES, "calembou"),
       customerId: optionalNumber(input.customerId),
       customerName,
       salespersonId,
@@ -241,6 +251,8 @@ export function normalizeOrderInput(input: Record<string, unknown>, forcedOrderN
         productId: item.productId,
         sku: item.sku,
         productName: item.productName,
+        productNameCn: item.productNameCn,
+        productNameEn: item.productNameEn,
         specification: item.specification,
         quantity: calculated.quantity,
         unitPrice: decimal(calculated.saleUnitPrice),
@@ -310,6 +322,8 @@ export function buildOrderWhere(params: URLSearchParams, session?: SessionUser |
       { customer: { is: { name: { contains: keyword } } } },
       { customer: { is: { companyName: { contains: keyword } } } },
       { items: { some: { productName: { contains: keyword } } } },
+      { items: { some: { productNameCn: { contains: keyword } } } },
+      { items: { some: { productNameEn: { contains: keyword } } } },
       { items: { some: { sku: { contains: keyword } } } },
     ],
   });

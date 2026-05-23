@@ -50,6 +50,7 @@ export async function POST(request: NextRequest, context: Context) {
         items: quote.items.map((item) => ({
           sku: item.sku,
           productName: item.productName,
+          productNameEn: item.productName,
           quantity: item.quantity,
           saleUnitPrice: item.unitPrice,
           purchaseUnitCost: 0,

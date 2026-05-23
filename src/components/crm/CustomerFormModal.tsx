@@ -12,6 +12,7 @@ type Props = {
   countries: CrmCountry[];
   channels: CrmChannel[];
   users: CrmUser[];
+  currentUser?: { userId: number; role: string } | null;
   onCancel: () => void;
   onSubmit: (values: Record<string, unknown>) => Promise<void> | void;
 };
@@ -32,8 +33,10 @@ export function serializeCustomerForm(values: Record<string, unknown>) {
   };
 }
 
-export default function CustomerFormModal({ open, saving, editing, brands, countries, channels, users, onCancel, onSubmit }: Props) {
+export default function CustomerFormModal({ open, saving, editing, brands, countries, channels, users, currentUser, onCancel, onSubmit }: Props) {
   const [form] = Form.useForm();
+  const isSales = currentUser?.role === "sales";
+  const salesOwnerOptions = isSales ? users.filter((item) => item.id === currentUser.userId) : users;
 
   return (
     <Modal
@@ -46,7 +49,7 @@ export default function CustomerFormModal({ open, saving, editing, brands, count
       onCancel={onCancel}
       destroyOnHidden
       afterOpenChange={(visible) => {
-        if (visible) form.setFieldsValue(customerToFormValues(editing));
+        if (visible) form.setFieldsValue({ ...customerToFormValues(editing), ...(isSales ? { ownerId: currentUser?.userId } : {}) });
       }}
       onOk={async () => {
         const values = await form.validateFields();
@@ -65,7 +68,7 @@ export default function CustomerFormModal({ open, saving, editing, brands, count
           <Form.Item name="website" label="网站"><Input allowClear /></Form.Item>
           <Form.Item name="brandId" label="所属品牌"><Select allowClear showSearch optionFilterProp="label" options={brands.map((item) => ({ label: item.name, value: item.id }))} /></Form.Item>
           <Form.Item name="sourceChannelId" label="来源渠道"><Select allowClear showSearch optionFilterProp="label" options={channels.map((item) => ({ label: channelLabel(item), value: item.id }))} /></Form.Item>
-          <Form.Item name="ownerId" label="负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ label: item.name, value: item.id }))} /></Form.Item>
+          <Form.Item name="ownerId" label="负责人"><Select disabled={isSales} allowClear={!isSales} showSearch optionFilterProp="label" options={salesOwnerOptions.map((item) => ({ label: item.name, value: item.id }))} /></Form.Item>
           <Form.Item name="level" label="客户等级" rules={[{ required: true }]}><Select options={customerLevelOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
           <Form.Item name="status" label="客户状态" rules={[{ required: true }]}><Select options={customerStatusOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
           <Form.Item name="nextFollowupAt" label="下次跟进时间"><DatePicker showTime className="w-full" /></Form.Item>

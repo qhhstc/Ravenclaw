@@ -61,11 +61,14 @@ function defaultCosts(currency = "USD", baseCurrency = "CNY") {
 }
 
 function normalizedOrderItem(item: OrderItemRecord) {
+  const fallbackName = item.productName || item.product?.name || "";
   return {
     ...item,
     productId: item.productId ?? item.product?.id ?? null,
     sku: item.sku || item.product?.sku || "",
-    productName: item.productName || item.product?.name || "",
+    productName: fallbackName,
+    productNameCn: item.productNameCn ?? "",
+    productNameEn: item.productNameEn ?? fallbackName,
     specification: item.specification || item.product?.specification || "",
     quantity: moneyValue(item.quantity) || 1,
     saleUnitPrice: moneyValue(item.saleUnitPrice ?? item.unitPrice),
@@ -84,6 +87,8 @@ function normalizedOrderItem(item: OrderItemRecord) {
 function defaultOrderItem() {
   return {
     productName: "",
+    productNameCn: "",
+    productNameEn: "",
     quantity: 1,
     saleUnitPrice: 0,
     purchaseUnitCost: 0,
@@ -98,7 +103,7 @@ function defaultOrderItem() {
 export function orderToFormValues(order?: OrderRecord | null) {
   if (!order) {
     return {
-      orderSource: "manual",
+      orderSource: "calembou",
       currency: "USD",
       exchangeRate: 1,
       baseCurrency: "CNY",
@@ -195,9 +200,10 @@ function orderItemsValidationMessage(items: unknown) {
   const invalidIndex = items.findIndex((item) => {
     if (!item || typeof item !== "object") return true;
     const row = item as Record<string, unknown>;
-    return !String(row.productName ?? "").trim() || moneyValue(row.quantity) <= 0;
+    const hasName = [row.productNameCn, row.productNameEn, row.productName].some((value) => String(value ?? "").trim());
+    return !hasName || moneyValue(row.quantity) <= 0;
   });
-  return invalidIndex >= 0 ? `第 ${invalidIndex + 1} 行商品名称和数量不能为空` : null;
+  return invalidIndex >= 0 ? `第 ${invalidIndex + 1} 行商品中文名称/英文名称和数量不能为空` : null;
 }
 
 export function serializeOrderForm(values: Record<string, unknown>, formCosts: Record<string, unknown>[]) {

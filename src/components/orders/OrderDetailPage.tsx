@@ -184,7 +184,8 @@ export default function OrderDetailPage({ orderId }: Props) {
 
   const itemColumns: ColumnsType<OrderItemRecord> = [
     { title: "SKU", dataIndex: "sku", width: 130, render: (value) => value || "-" },
-    { title: "商品名称", dataIndex: "productName", width: 240 },
+    { title: "中文名称", dataIndex: "productNameCn", width: 220, render: (value) => value || "-" },
+    { title: "英文名称", dataIndex: "productNameEn", width: 260, render: (value, row) => value || row.productName || "-" },
     { title: "规格", dataIndex: "specification", width: 160, render: (value) => value || "-" },
     { title: "数量", dataIndex: "quantity", width: 90, align: "right" },
     { title: "销售单价", dataIndex: "saleUnitPrice", width: 120, align: "right", render: (value) => moneyText(value, order?.currency) },
@@ -310,7 +311,7 @@ export default function OrderDetailPage({ orderId }: Props) {
                 {
                   key: "items",
                   label: "商品明细",
-                  children: <Table rowKey={(row) => String(row.id ?? row.productName)} columns={itemColumns} dataSource={order.items ?? []} pagination={false} scroll={{ x: 1880 }} />,
+                  children: <Table rowKey={(row) => String(row.id ?? row.productName)} columns={itemColumns} dataSource={order.items ?? []} pagination={false} scroll={{ x: 2120 }} />,
                 },
                 {
                   key: "costs",
