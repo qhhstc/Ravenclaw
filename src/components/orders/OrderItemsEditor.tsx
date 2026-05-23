@@ -3,7 +3,7 @@
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Form, Input, InputNumber, Select } from "antd";
 import type { FormInstance } from "antd";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { moneyValue, type ProductOption } from "./orderOptions";
 
 type Props = {
@@ -66,6 +66,30 @@ function defaultRateForCurrency(rowCurrency: string | undefined, baseCurrency: s
 
 function HiddenItemsField() {
   return null;
+}
+
+function TextCellInput({ value, placeholder, status, onCommit }: { value: unknown; placeholder: string; status?: "error"; onCommit: (value: string) => void }) {
+  const externalValue = textValue(value);
+  const composingRef = useRef(false);
+
+  return (
+    <Input
+      placeholder={placeholder}
+      status={status}
+      defaultValue={externalValue}
+      onCompositionStart={() => {
+        composingRef.current = true;
+      }}
+      onCompositionEnd={(event) => {
+        composingRef.current = false;
+        onCommit(event.currentTarget.value);
+      }}
+      onChange={(event) => {
+        if (!composingRef.current) onCommit(event.target.value);
+      }}
+      onBlur={(event) => onCommit(event.currentTarget.value)}
+    />
+  );
 }
 
 export default function OrderItemsEditor({ form, products, currencies, baseCurrency = "CNY", orderCurrency = "USD", orderExchangeRate = 1, canEditCosts = true, onItemsChange }: Props) {
@@ -163,9 +187,9 @@ export default function OrderItemsEditor({ form, products, currencies, baseCurre
               <div className="px-2 py-2">
                 <Select allowClear showSearch optionFilterProp="label" placeholder="选择产品" className="w-full" value={positiveId(row.productId)} options={productOptions} onChange={(value) => applyProduct(rowIndex, value)} />
               </div>
-              <div className="px-2 py-2"><Input placeholder="SKU" value={textValue(row.sku)} onChange={(event) => updateRow(rowIndex, { sku: event.target.value })} /></div>
-              <div className="px-2 py-2"><Input status={textValue(row.productName) ? undefined : "error"} placeholder="商品名称" value={textValue(row.productName)} onChange={(event) => updateRow(rowIndex, { productName: event.target.value })} /></div>
-              <div className="px-2 py-2"><Input placeholder="规格" value={textValue(row.specification)} onChange={(event) => updateRow(rowIndex, { specification: event.target.value })} /></div>
+              <div className="px-2 py-2"><TextCellInput key={`sku-${rowIndex}-${textValue(row.productId)}`} placeholder="SKU" value={row.sku} onCommit={(value) => updateRow(rowIndex, { sku: value })} /></div>
+              <div className="px-2 py-2"><TextCellInput key={`name-${rowIndex}-${textValue(row.productId)}`} status={textValue(row.productName) ? undefined : "error"} placeholder="商品名称" value={row.productName} onCommit={(value) => updateRow(rowIndex, { productName: value })} /></div>
+              <div className="px-2 py-2"><TextCellInput key={`spec-${rowIndex}-${textValue(row.productId)}`} placeholder="规格" value={row.specification} onCommit={(value) => updateRow(rowIndex, { specification: value })} /></div>
               <div className="px-2 py-2"><InputNumber min={1} precision={0} className="!w-full text-right" value={optionalNumber(row.quantity) ?? 1} onChange={(value) => updateRow(rowIndex, { quantity: value ?? 1 })} /></div>
               <div className="px-2 py-2"><InputNumber min={0} precision={2} className="!w-full text-right" value={optionalNumber(row.saleUnitPrice) ?? 0} onChange={(value) => updateRow(rowIndex, { saleUnitPrice: value ?? 0 })} /></div>
               <div className="px-3 py-3 text-right font-medium text-[var(--foreground)]">{rowSubtotal(row, "saleUnitPrice")}</div>
