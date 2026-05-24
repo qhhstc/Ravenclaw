@@ -14,11 +14,11 @@ type CustomerOrderItem = {
   quantity: number;
   saleUnitPrice: number;
   salesSubtotal?: number;
-  purchaseUnitCost: number;
+  purchaseUnitCost?: number;
   purchaseCurrency?: string;
   purchaseCostSubtotal?: number;
   purchaseCostBase?: number;
-  packagingUnitCost: number;
+  packagingUnitCost?: number;
   packagingCurrency?: string;
   packagingCostSubtotal?: number;
   packagingCostBase?: number;
@@ -32,8 +32,8 @@ type CustomerOrder = {
   exchangeRate?: number;
   baseCurrency?: string;
   salesAmount: number;
-  totalCost: number;
-  grossProfit: number;
+  totalCost?: number;
+  grossProfit?: number;
   grossMargin?: number | null;
   paidAmount: number;
   paymentStatus: string;
@@ -50,9 +50,10 @@ function numberValue(value: unknown) {
 
 export default function CustomerTradeAnalysisPanel({ orders }: Props) {
   const baseCurrency = orders.find((order) => order.baseCurrency)?.baseCurrency || "CNY";
+  const canViewProfit = orders.some((order) => order.totalCost !== undefined || order.grossProfit !== undefined);
   const totalSales = orders.reduce((sum, order) => sum + numberValue(order.salesAmount) * (numberValue(order.exchangeRate) || 1), 0);
-  const totalProfit = orders.reduce((sum, order) => sum + numberValue(order.grossProfit), 0);
-  const margin = totalSales > 0 ? totalProfit / totalSales : null;
+  const totalProfit = canViewProfit ? orders.reduce((sum, order) => sum + numberValue(order.grossProfit), 0) : null;
+  const margin = canViewProfit && totalSales > 0 && totalProfit !== null ? totalProfit / totalSales : null;
   const latestOrderDate = orders[0]?.orderDate;
   const productRows = orders.flatMap((order) =>
     (order.items ?? []).map((item) => ({
@@ -89,6 +90,8 @@ export default function CustomerTradeAnalysisPanel({ orders }: Props) {
     { title: "付款状态", dataIndex: "paymentStatus", width: 120 },
   ];
 
+  if (!canViewProfit) orderColumns.splice(3, 3);
+
   const productColumns: ColumnsType<(typeof productRows)[number]> = [
     { title: "订单", dataIndex: "orderNo", width: 150, render: (value, row) => <Link href={`/orders/${row.orderId}`}>{value}</Link> },
     { title: "日期", dataIndex: "orderDate", width: 120, render: formatDate },
@@ -103,6 +106,8 @@ export default function CustomerTradeAnalysisPanel({ orders }: Props) {
     { title: "包装成本", dataIndex: "packagingCostBase", width: 130, align: "right", render: (value, row) => moneyText(value, row.baseCurrency) },
   ];
 
+  if (!canViewProfit) productColumns.splice(7, 4);
+
   if (!orders.length) return <Empty description="暂无交易记录" />;
 
   return (
@@ -110,8 +115,8 @@ export default function CustomerTradeAnalysisPanel({ orders }: Props) {
       <Row gutter={[12, 12]}>
         <Col xs={24} md={8} xl={4}><Card><Statistic title="历史订单数" value={orders.length} /></Card></Col>
         <Col xs={24} md={8} xl={5}><Card><Statistic title={`总销售额（本位币 ${baseCurrency}）`} value={moneyText(totalSales, baseCurrency)} /></Card></Col>
-        <Col xs={24} md={8} xl={5}><Card><Statistic title={`总毛利（本位币 ${baseCurrency}）`} value={moneyText(totalProfit, baseCurrency)} valueStyle={{ color: totalProfit < 0 ? "#ff4d4f" : "#16a34a" }} /></Card></Col>
-        <Col xs={24} md={8} xl={5}><Card><Statistic title="平均毛利率" value={margin == null ? "—" : `${(margin * 100).toFixed(2)}%`} /></Card></Col>
+        {canViewProfit && totalProfit !== null ? <Col xs={24} md={8} xl={5}><Card><Statistic title={`总毛利（本位币 ${baseCurrency}）`} value={moneyText(totalProfit, baseCurrency)} valueStyle={{ color: totalProfit < 0 ? "#ff4d4f" : "#16a34a" }} /></Card></Col> : null}
+        {canViewProfit ? <Col xs={24} md={8} xl={5}><Card><Statistic title="平均毛利率" value={margin == null ? "—" : `${(margin * 100).toFixed(2)}%`} /></Card></Col> : null}
         <Col xs={24} md={8} xl={5}><Card><Statistic title="最近下单日期" value={formatDate(latestOrderDate)} /></Card></Col>
       </Row>
       <Card title="历史订单列表" styles={{ body: { padding: 0 } }}>

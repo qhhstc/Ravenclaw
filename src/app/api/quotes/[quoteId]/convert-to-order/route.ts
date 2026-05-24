@@ -7,6 +7,27 @@ const ALLOWED_QUOTE_STATUSES = new Set(["accepted", "sent", "draft"]);
 
 type Context = { params: Promise<{ quoteId: string }> };
 
+type QuoteOrderSourceContext = {
+  brand?: { name?: string | null; code?: string | null } | null;
+  store?: { name?: string | null } | null;
+  channel?: { businessLine?: string | null; channelGroup?: string | null; channelName?: string | null } | null;
+};
+
+function resolveOrderSourceFromQuote(quote: QuoteOrderSourceContext) {
+  const text = [
+    quote.brand?.name,
+    quote.brand?.code,
+    quote.store?.name,
+    quote.channel?.businessLine,
+    quote.channel?.channelGroup,
+    quote.channel?.channelName,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return text.includes("kidults") ? "kidultsbox" : "calembou";
+}
+
 export async function POST(request: NextRequest, context: Context) {
   try {
     const { quoteId } = await context.params;
@@ -16,7 +37,7 @@ export async function POST(request: NextRequest, context: Context) {
     const order = await prisma.$transaction(async (tx) => {
       const quote = await tx.quote.findUnique({
         where: { id: Number(quoteId) },
-        include: { inquiry: true, customer: true, store: true, channel: true, items: true, order: true },
+        include: { inquiry: true, customer: true, brand: { select: { name: true, code: true } }, store: true, channel: true, items: true, order: true },
       });
       if (!quote) throw new Error("报价单不存在或已删除");
       if (quote.order) throw new Error("该报价单已转订单，不能重复创建");
@@ -29,7 +50,7 @@ export async function POST(request: NextRequest, context: Context) {
       const dueDate = optionalDate(input.dueDate) ?? new Date(orderDate.getTime() + 7 * 24 * 60 * 60 * 1000);
       const orderInput = {
         orderNo,
-        orderSource: "quote",
+        orderSource: resolveOrderSourceFromQuote(quote),
         customerId: quote.customerId,
         customerName: quote.customer?.name,
         inquiryId: quote.inquiryId,

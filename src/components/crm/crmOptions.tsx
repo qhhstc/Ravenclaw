@@ -100,8 +100,8 @@ export type CustomerRecord = {
     exchangeRate?: number;
     baseCurrency?: string;
     salesAmount: number;
-    totalCost: number;
-    grossProfit: number;
+    totalCost?: number;
+    grossProfit?: number;
     grossMargin?: number | null;
     paidAmount: number;
     orderStatus: string;
@@ -114,11 +114,13 @@ export type CustomerRecord = {
       quantity: number;
       saleUnitPrice: number;
       salesSubtotal?: number;
-      purchaseUnitCost: number;
+      productNameCn?: string | null;
+      productNameEn?: string | null;
+      purchaseUnitCost?: number;
       purchaseCurrency?: string;
       purchaseCostSubtotal?: number;
       purchaseCostBase?: number;
-      packagingUnitCost: number;
+      packagingUnitCost?: number;
       packagingCurrency?: string;
       packagingCostSubtotal?: number;
       packagingCostBase?: number;

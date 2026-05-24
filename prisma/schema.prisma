@@ -615,7 +615,7 @@ model Order {
   id              Int      @id @default(autoincrement())
   orderNo         String   @unique
   externalOrderNo String?
-  orderSource     String   @default("manual")
+  orderSource     String   @default("calembou")
   customerId      Int?
   customerName    String?
   salespersonId   Int?

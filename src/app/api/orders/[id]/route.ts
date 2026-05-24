@@ -9,6 +9,9 @@ import { ApiAuthError, canDeleteOrder, canEditOrder, canEditOrderCosts, canViewA
 type Context = { params: Promise<{ id: string }> };
 
 type ExistingOrderForEdit = {
+  paidAmount: unknown;
+  paymentStatus: string | null;
+  paymentMethod: string | null;
   items: {
     id: number;
     purchaseUnitCost: unknown;
@@ -57,7 +60,14 @@ function withPreservedCostInput(input: Record<string, unknown>, existing: Existi
     baseAmount: toNumber(cost.baseAmount),
     remark: cost.remark,
   }));
-  return { ...input, items: safeItems, costs: safeCosts };
+  return {
+    ...input,
+    items: safeItems,
+    costs: safeCosts,
+    paidAmount: toNumber(existing.paidAmount),
+    paymentStatus: existing.paymentStatus ?? undefined,
+    paymentMethod: existing.paymentMethod ?? undefined,
+  };
 }
 
 export async function GET(_request: NextRequest, context: Context) {
@@ -91,6 +101,9 @@ export async function PATCH(request: NextRequest, context: Context) {
           createdBy: true,
           salespersonId: true,
           orderStatus: true,
+          paidAmount: true,
+          paymentStatus: true,
+          paymentMethod: true,
           items: {
             orderBy: { id: "asc" },
             select: {
@@ -145,7 +158,7 @@ export async function PATCH(request: NextRequest, context: Context) {
       });
       if (existing._count.payments > 0) {
         await syncOrderPaymentSummary(tx, Number(id));
-      } else if (toNumber(normalized.data.paidAmount) > 0) {
+      } else if (canEditOrderCosts(session.role) && toNumber(normalized.data.paidAmount) > 0) {
         await tx.orderPayment.create({
           data: {
             orderId: Number(id),

@@ -18,7 +18,7 @@ function withoutCostInput(input: Record<string, unknown>) {
         packagingExchangeRate: 1,
       }))
     : [];
-  return { ...input, items, costs: [] };
+  return { ...input, items, costs: [], paidAmount: 0, paymentStatus: undefined, paymentMethod: undefined };
 }
 
 export async function GET(request: NextRequest) {
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
           items: { create: normalized.items },
           costs: { create: normalized.costs },
           payments:
-            toNumber(normalized.data.paidAmount) > 0
+            canEditOrderCosts(session.role) && toNumber(normalized.data.paidAmount) > 0
               ? {
                   create: {
                     paymentDate: normalized.data.orderDate,

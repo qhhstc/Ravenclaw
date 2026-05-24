@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { ApiAuthError, type SessionUser } from "@/lib/permissions";
+import { ApiAuthError, canViewAllOrders, canViewProfitReports, type SessionUser } from "@/lib/permissions";
 
 export const CUSTOMER_TYPES = ["individual", "company", "wholesaler", "distributor", "agent", "influencer", "supplier_contact", "other"] as const;
 export const CUSTOMER_LEVELS = ["A", "B", "C", "D"] as const;
@@ -67,6 +67,83 @@ export const customerDetailInclude = {
     orderBy: { orderDate: "desc" },
   },
 } satisfies Prisma.CustomerInclude;
+
+function crmOrderScopeWhere(session: SessionUser): Prisma.OrderWhereInput {
+  if (canViewAllOrders(session.role)) return {};
+  return { OR: [{ createdBy: session.userId }, { salespersonId: session.userId }] };
+}
+
+const customerOrderSafeSelect = {
+  id: true,
+  orderNo: true,
+  orderDate: true,
+  currency: true,
+  exchangeRate: true,
+  salesAmount: true,
+  paidAmount: true,
+  orderStatus: true,
+  paymentStatus: true,
+  items: {
+    orderBy: { id: "asc" },
+    select: {
+      id: true,
+      sku: true,
+      productName: true,
+      productNameCn: true,
+      productNameEn: true,
+      quantity: true,
+      saleUnitPrice: true,
+      salesSubtotal: true,
+    },
+  },
+} satisfies Prisma.OrderSelect;
+
+const customerOrderProfitSelect = {
+  ...customerOrderSafeSelect,
+  baseCurrency: true,
+  totalCost: true,
+  grossProfit: true,
+  grossMargin: true,
+  salesperson: { select: { id: true, name: true, email: true } },
+  payments: {
+    where: { status: { not: "void" } },
+    include: { creator: { select: { id: true, name: true, email: true } } },
+    orderBy: [{ paymentDate: "desc" }, { id: "desc" }],
+  },
+  items: {
+    orderBy: { id: "asc" },
+    select: {
+      id: true,
+      sku: true,
+      productName: true,
+      productNameCn: true,
+      productNameEn: true,
+      quantity: true,
+      saleUnitPrice: true,
+      salesSubtotal: true,
+      purchaseUnitCost: true,
+      purchaseCurrency: true,
+      purchaseCostSubtotal: true,
+      purchaseCostBase: true,
+      packagingUnitCost: true,
+      packagingCurrency: true,
+      packagingCostSubtotal: true,
+      packagingCostBase: true,
+    },
+  },
+} satisfies Prisma.OrderSelect;
+
+export function customerDetailIncludeForSession(session: SessionUser): Prisma.CustomerInclude {
+  const canSeeProfit = canViewProfitReports(session.role);
+  return {
+    ...customerDetailInclude,
+    orders: {
+      where: crmOrderScopeWhere(session),
+      select: canSeeProfit ? customerOrderProfitSelect : customerOrderSafeSelect,
+      orderBy: { orderDate: "desc" },
+    },
+  };
+}
 
 export function apiError(error: unknown, fallback = "操作失败，请稍后重试") {
   if (error instanceof ApiAuthError) {

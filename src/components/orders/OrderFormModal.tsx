@@ -438,12 +438,12 @@ export default function OrderFormModal({ open, saving, editing, brands, platform
           <Form.Item name="baseCurrency" label="本位币"><Select options={["CNY", "USD", "EUR", "JPY", "GBP"].map((value) => ({ label: value, value }))} /></Form.Item>
           <Form.Item name="orderDate" label="下单日期" rules={[{ required: true, message: "请选择下单日期" }]}><DatePicker className="w-full" /></Form.Item>
           <Form.Item name="shipmentDate" label="出货日期"><DatePicker className="w-full" /></Form.Item>
-          <Form.Item name="paymentMethod" label="收款方式"><Input placeholder="PayPal / 银行 / 平台" /></Form.Item>
+          <Form.Item name="paymentMethod" label="收款方式"><Input disabled={!canEditCosts} placeholder="PayPal / 银行 / 平台" /></Form.Item>
           <Form.Item name="dueDate" label="应收款到期"><DatePicker className="w-full" /></Form.Item>
           <Form.Item name="orderStatus" label="订单状态"><Select options={orderStatusOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
-          <Form.Item name="paymentStatus" label="付款状态" extra="默认按已收金额自动判断；手动选择后会按你的选择保存。"><Select options={paymentStatusOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
+          <Form.Item name="paymentStatus" label="付款状态" extra="默认按已收金额自动判断；手动选择后会按你的选择保存。"><Select disabled={!canEditCosts} options={paymentStatusOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
           <Form.Item name="shippingStatus" label="发货状态"><Select options={shippingStatusOptions.map(({ label, value }) => ({ label, value }))} /></Form.Item>
-          <Form.Item name="paidAmount" label="已收金额"><InputNumber min={0} precision={2} className="!w-full" /></Form.Item>
+          <Form.Item name="paidAmount" label="已收金额"><InputNumber disabled={!canEditCosts} min={0} precision={2} className="!w-full" /></Form.Item>
           <Form.Item name="statusRemark" label="状态备注" className="md:col-span-2"><Input placeholder="订单状态变化时记录备注，例如客户已确认尾款、已安排出货" /></Form.Item>
           <div className="md:col-span-3 xl:col-span-4">
             <Card size="small" title="附件资料" styles={{ body: { padding: 16 } }}>

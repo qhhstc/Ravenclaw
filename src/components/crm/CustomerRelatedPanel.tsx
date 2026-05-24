@@ -53,6 +53,8 @@ export default function CustomerRelatedPanel({ customer }: Props) {
   const inquiries = customer.inquiries ?? [];
   const quotes = customer.quotes ?? [];
   const orders = customer.orders ?? [];
+  const canViewProfit = orders.some((order) => order.grossProfit !== undefined || order.totalCost !== undefined);
+  const canViewPayments = orders.some((order) => Array.isArray(order.payments));
   const payments: CustomerPayment[] = orders.flatMap((order) =>
     (order.payments ?? []).map((payment) => ({
       ...payment,
@@ -88,6 +90,7 @@ export default function CustomerRelatedPanel({ customer }: Props) {
     { title: "已收（订单币种）", dataIndex: "paidAmount", width: 160, align: "right", render: (value, row) => moneyText(value, row.currency) },
     { title: "毛利（本位币）", dataIndex: "grossProfit", width: 150, align: "right", render: (value, row) => moneyText(value, row.baseCurrency || "CNY") },
   ];
+  if (!canViewProfit) orderColumns.pop();
 
   const paymentColumns: ColumnsType<CustomerPayment> = [
     { title: "收款日期", dataIndex: "paymentDate", width: 120, render: formatDate },
@@ -110,9 +113,11 @@ export default function CustomerRelatedPanel({ customer }: Props) {
       <Card title={`订单记录（${orders.length}）`} styles={{ body: { padding: 0 } }}>
         <Table<CustomerOrder> rowKey="id" columns={orderColumns} dataSource={orders} pagination={{ pageSize: 5 }} scroll={{ x: 960 }} locale={{ emptyText: relatedEmptyText("暂无订单记录") }} />
       </Card>
-      <Card title={`收款记录（${payments.length}）`} styles={{ body: { padding: 0 } }}>
-        <Table<CustomerPayment> rowKey="id" columns={paymentColumns} dataSource={payments} pagination={{ pageSize: 5 }} scroll={{ x: 1000 }} locale={{ emptyText: relatedEmptyText("暂无收款记录") }} />
-      </Card>
+      {canViewPayments ? (
+        <Card title={`收款记录（${payments.length}）`} styles={{ body: { padding: 0 } }}>
+          <Table<CustomerPayment> rowKey="id" columns={paymentColumns} dataSource={payments} pagination={{ pageSize: 5 }} scroll={{ x: 1000 }} locale={{ emptyText: relatedEmptyText("暂无收款记录") }} />
+        </Card>
+      ) : null}
     </div>
   );
 }

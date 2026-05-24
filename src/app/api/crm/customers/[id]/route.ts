@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { apiError, customerDetailInclude, customerInclude, normalizeCustomerInputForSession, scopedCustomerUniqueWhere } from "@/lib/crm";
+import { apiError, customerDetailIncludeForSession, customerInclude, normalizeCustomerInputForSession, scopedCustomerUniqueWhere } from "@/lib/crm";
 import { canManageCrm, canViewCrm, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
@@ -10,7 +10,7 @@ export async function GET(_request: NextRequest, context: Context) {
     const session = await requireApiSession();
     if (!canViewCrm(session.role)) return forbidden("当前角色不能查看客户资料");
     const { id } = await context.params;
-    const item = await prisma.customer.findFirst({ where: scopedCustomerUniqueWhere(Number(id), session), include: customerDetailInclude });
+    const item = await prisma.customer.findFirst({ where: scopedCustomerUniqueWhere(Number(id), session), include: customerDetailIncludeForSession(session) });
     if (!item) return NextResponse.json({ message: "客户不存在或已被删除" }, { status: 404 });
     return NextResponse.json({ item });
   } catch (error) {
