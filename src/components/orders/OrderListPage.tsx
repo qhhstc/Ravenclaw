@@ -397,7 +397,8 @@ export default function OrderListPage() {
         customers={customers}
         users={users}
         products={products}
-        canEditCosts={["admin", "finance"].includes(currentRole)}
+        canEditCosts={["admin", "finance", "sales"].includes(currentRole)}
+        canEditPayments={["admin", "finance"].includes(currentRole)}
         onCancel={() => { setModalOpen(false); setEditing(null); }}
         onSubmit={saveOrder}
       />

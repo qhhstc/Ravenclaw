@@ -233,7 +233,7 @@ export default function OrderDetailPage({ orderId }: Props) {
               <Space>
                 <Button icon={<ArrowLeftOutlined />} onClick={() => router.push("/orders")}>返回</Button>
                 {canEditCurrentOrder ? <Button type="primary" icon={<EditOutlined />} loading={optionsLoading} onClick={openEditModal}>编辑</Button> : null}
-                {["admin", "finance"].includes(currentRole) ? <Button onClick={() => setCostModalOpen(true)}>编辑成本</Button> : null}
+                {["admin", "finance", "sales"].includes(currentRole) ? <Button onClick={() => setCostModalOpen(true)}>编辑成本</Button> : null}
               </Space>
             </div>
             <Descriptions bordered size="small" column={{ xs: 1, md: 2, xl: 4 }}>
@@ -343,7 +343,8 @@ export default function OrderDetailPage({ orderId }: Props) {
               customers={customers}
               users={users}
               products={products}
-              canEditCosts={["admin", "finance"].includes(currentRole)}
+              canEditCosts={["admin", "finance", "sales"].includes(currentRole)}
+              canEditPayments={["admin", "finance"].includes(currentRole)}
               onCancel={() => setModalOpen(false)}
               onSubmit={saveOrder}
             />

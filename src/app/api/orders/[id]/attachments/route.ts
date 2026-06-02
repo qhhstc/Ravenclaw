@@ -4,7 +4,7 @@ import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/orders";
-import { canEditOrder, canEditOrderCosts, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
+import { canEditOrder, canEditOrderPayments, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
@@ -17,7 +17,7 @@ async function assertOrderAccess(orderId: number, session: Awaited<ReturnType<ty
   const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true, createdBy: true, salespersonId: true, orderStatus: true } });
   if (!order) throw new Error("订单不存在或已被删除");
   if (write) {
-    if (!canEditOrder(session.role, order, session.userId) && !canEditOrderCosts(session.role)) return false;
+    if (!canEditOrder(session.role, order, session.userId) && !canEditOrderPayments(session.role)) return false;
     return true;
   }
   if (!canViewAllOrders(session.role) && order.createdBy !== session.userId && order.salespersonId !== session.userId) return false;

@@ -4,7 +4,7 @@ import { syncOrderPaymentSummary, syncOrderShipmentSummary } from "@/lib/order-r
 import { decimal } from "@/lib/order-profit-calculations";
 import { syncOrderCustomer } from "@/lib/order-customer-sync";
 import { apiError, normalizeOrderInput, orderDetailInclude, orderInclude, toNumber } from "@/lib/orders";
-import { ApiAuthError, canDeleteOrder, canEditOrder, canEditOrderCosts, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
+import { ApiAuthError, canDeleteOrder, canEditOrder, canEditOrderPayments, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -12,15 +12,6 @@ type ExistingOrderForEdit = {
   paidAmount: unknown;
   paymentStatus: string | null;
   paymentMethod: string | null;
-  items: {
-    id: number;
-    purchaseUnitCost: unknown;
-    purchaseCurrency: string | null;
-    purchaseExchangeRate: unknown;
-    packagingUnitCost: unknown;
-    packagingCurrency: string | null;
-    packagingExchangeRate: unknown;
-  }[];
   costs: {
     costType: string;
     amount: unknown;
@@ -31,27 +22,7 @@ type ExistingOrderForEdit = {
   }[];
 };
 
-function positiveId(value: unknown) {
-  const numericValue = Number(value);
-  return Number.isInteger(numericValue) && numericValue > 0 ? numericValue : null;
-}
-
-function withPreservedCostInput(input: Record<string, unknown>, existing: ExistingOrderForEdit) {
-  const items = Array.isArray(input.items) ? input.items : [];
-  const existingItemsById = new Map(existing.items.map((item) => [item.id, item]));
-  const safeItems = items.map((item, index) => {
-    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-    const current = existingItemsById.get(positiveId(row.id) ?? 0) ?? existing.items[index];
-    return {
-      ...row,
-      purchaseUnitCost: current ? toNumber(current.purchaseUnitCost) : 0,
-      purchaseCurrency: current?.purchaseCurrency ?? "CNY",
-      purchaseExchangeRate: Math.max(toNumber(current?.purchaseExchangeRate, 1), 0.000001),
-      packagingUnitCost: current ? toNumber(current.packagingUnitCost) : 0,
-      packagingCurrency: current?.packagingCurrency ?? "CNY",
-      packagingExchangeRate: Math.max(toNumber(current?.packagingExchangeRate, 1), 0.000001),
-    };
-  });
+function withPreservedPaymentInput(input: Record<string, unknown>, existing: ExistingOrderForEdit) {
   const safeCosts = existing.costs.map((cost) => ({
     costType: cost.costType,
     amount: toNumber(cost.amount),
@@ -62,8 +33,7 @@ function withPreservedCostInput(input: Record<string, unknown>, existing: Existi
   }));
   return {
     ...input,
-    items: safeItems,
-    costs: safeCosts,
+    costs: Array.isArray(input.costs) ? input.costs : safeCosts,
     paidAmount: toNumber(existing.paidAmount),
     paymentStatus: existing.paymentStatus ?? undefined,
     paymentMethod: existing.paymentMethod ?? undefined,
@@ -104,18 +74,6 @@ export async function PATCH(request: NextRequest, context: Context) {
           paidAmount: true,
           paymentStatus: true,
           paymentMethod: true,
-          items: {
-            orderBy: { id: "asc" },
-            select: {
-              id: true,
-              purchaseUnitCost: true,
-              purchaseCurrency: true,
-              purchaseExchangeRate: true,
-              packagingUnitCost: true,
-              packagingCurrency: true,
-              packagingExchangeRate: true,
-            },
-          },
           costs: {
             orderBy: { id: "asc" },
             select: { costType: true, amount: true, currency: true, exchangeRate: true, baseAmount: true, remark: true },
@@ -125,7 +83,7 @@ export async function PATCH(request: NextRequest, context: Context) {
       });
       if (!existing) throw new Error("订单不存在或已被删除");
       if (!canEditOrder(session.role, existing, session.userId)) throw new ApiAuthError("只能编辑自己负责且未关闭的订单", 403);
-      const normalized = normalizeOrderInput(canEditOrderCosts(session.role) ? input : withPreservedCostInput(input, existing), existing.orderNo, session);
+      const normalized = normalizeOrderInput(canEditOrderPayments(session.role) ? input : withPreservedPaymentInput(input, existing), existing.orderNo, session);
       const customerSync = await syncOrderCustomer(
         tx,
         {
@@ -158,7 +116,7 @@ export async function PATCH(request: NextRequest, context: Context) {
       });
       if (existing._count.payments > 0) {
         await syncOrderPaymentSummary(tx, Number(id));
-      } else if (canEditOrderCosts(session.role) && toNumber(normalized.data.paidAmount) > 0) {
+      } else if (canEditOrderPayments(session.role) && toNumber(normalized.data.paidAmount) > 0) {
         await tx.orderPayment.create({
           data: {
             orderId: Number(id),

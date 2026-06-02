@@ -2,14 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { syncOrderPaymentSummary } from "@/lib/order-records";
 import { apiError, orderDetailInclude } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
-import { canEditOrderCosts, forbidden, requireApiSession } from "@/lib/permissions";
+import { canEditOrderPayments, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string; paymentId: string }> };
 
 export async function DELETE(_request: NextRequest, context: Context) {
   try {
     const session = await requireApiSession();
-    if (!canEditOrderCosts(session.role)) return forbidden("当前角色不能作废收款记录");
+    if (!canEditOrderPayments(session.role)) return forbidden("当前角色不能作废收款记录");
     const { id, paymentId } = await context.params;
     const orderId = Number(id);
     const item = await prisma.$transaction(async (tx) => {

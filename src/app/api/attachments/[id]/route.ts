@@ -3,7 +3,7 @@ import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/orders";
-import { canEditOrder, canEditOrderCosts, forbidden, requireApiSession } from "@/lib/permissions";
+import { canEditOrder, canEditOrderPayments, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -16,7 +16,7 @@ export async function DELETE(_request: NextRequest, context: Context) {
     if (attachment.bizType === "order") {
       const order = await prisma.order.findUnique({ where: { id: attachment.bizId }, select: { createdBy: true, salespersonId: true, orderStatus: true } });
       if (!order) throw new Error("订单不存在或已被删除");
-      if (!canEditOrder(session.role, order, session.userId) && !canEditOrderCosts(session.role)) return forbidden("当前角色不能删除该附件");
+      if (!canEditOrder(session.role, order, session.userId) && !canEditOrderPayments(session.role)) return forbidden("当前角色不能删除该附件");
     }
     if (attachment.bizType === "order_status_log") {
       const log = await prisma.orderStatusLog.findUnique({
@@ -24,7 +24,7 @@ export async function DELETE(_request: NextRequest, context: Context) {
         include: { order: { select: { createdBy: true, salespersonId: true, orderStatus: true } } },
       });
       if (!log) throw new Error("状态记录不存在或已被删除");
-      if (!canEditOrder(session.role, log.order, session.userId) && !canEditOrderCosts(session.role)) return forbidden("当前角色不能删除该附件");
+      if (!canEditOrder(session.role, log.order, session.userId) && !canEditOrderPayments(session.role)) return forbidden("当前角色不能删除该附件");
     }
     await prisma.attachment.delete({ where: { id: Number(id) } });
     if (attachment.fileUrl.startsWith("/uploads/")) {

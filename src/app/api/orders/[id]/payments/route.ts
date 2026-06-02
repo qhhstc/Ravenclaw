@@ -4,7 +4,7 @@ import { decimal } from "@/lib/order-profit-calculations";
 import { numberValue, optionalDate, positiveMoney, syncOrderPaymentSummary, textValue } from "@/lib/order-records";
 import { apiError, orderDetailInclude, toNumber } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
-import { canEditOrderCosts, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
+import { canEditOrderPayments, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -33,7 +33,7 @@ export async function GET(_request: NextRequest, context: Context) {
 export async function POST(request: NextRequest, context: Context) {
   try {
     const session = await requireApiSession();
-    if (!canEditOrderCosts(session.role)) return forbidden("当前角色不能登记收款");
+    if (!canEditOrderPayments(session.role)) return forbidden("当前角色不能登记收款");
     const { id } = await context.params;
     const orderId = Number(id);
     const input = (await request.json()) as Record<string, unknown>;

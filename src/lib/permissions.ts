@@ -44,6 +44,14 @@ export function canEditOrder(role?: string | null, order?: { createdBy?: number 
 }
 
 export function canEditOrderCosts(role?: string | null) {
+  return ["admin", "finance", "sales"].includes(role ?? "");
+}
+
+export function canEditOrderItemCosts(role?: string | null) {
+  return canEditOrderCosts(role);
+}
+
+export function canEditOrderPayments(role?: string | null) {
   return ["admin", "finance"].includes(role ?? "");
 }
 

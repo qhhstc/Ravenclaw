@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError, calculateOrderAmounts, normalizeOrderCosts, toNumber } from "@/lib/orders";
 import { decimal, decimalRate } from "@/lib/order-profit-calculations";
-import { canEditOrderCosts, forbidden, requireApiSession } from "@/lib/permissions";
+import { ApiAuthError, canEditOrder, canEditOrderCosts, forbidden, requireApiSession } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -16,6 +16,9 @@ export async function PATCH(request: NextRequest, context: Context) {
     const item = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
       if (!order) throw new Error("订单不存在或已被删除");
+      if (session.role === "sales" && !canEditOrder(session.role, order, session.userId)) {
+        throw new ApiAuthError("只能修改自己负责且未关闭订单的成本", 403);
+      }
       const items = order.items.map((row) => ({
         productId: row.productId,
         sku: row.sku,

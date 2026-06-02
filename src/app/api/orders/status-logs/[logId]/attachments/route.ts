@@ -4,7 +4,7 @@ import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/orders";
-import { canEditOrder, canEditOrderCosts, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
+import { canEditOrder, canEditOrderPayments, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, context: Context) {
     const numericLogId = Number(logId);
     const log = await getLogWithOrder(numericLogId);
     if (!log) return NextResponse.json({ message: "状态记录不存在或已删除" }, { status: 404 });
-    if (!canEditOrder(session.role, log.order, session.userId) && !canEditOrderCosts(session.role)) return forbidden("当前角色不能上传该状态附件");
+    if (!canEditOrder(session.role, log.order, session.userId) && !canEditOrderPayments(session.role)) return forbidden("当前角色不能上传该状态附件");
 
     const formData = await request.formData();
     const file = formData.get("file");

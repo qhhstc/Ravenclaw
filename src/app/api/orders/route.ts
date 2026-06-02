@@ -4,22 +4,12 @@ import { logApiDuration } from "@/lib/api-logger";
 import { decimal } from "@/lib/order-profit-calculations";
 import { syncOrderCustomer } from "@/lib/order-customer-sync";
 import { apiError, buildOrderWhere, nextOrderNo, normalizeOrderInput, orderInclude, parsePositiveInt, toNumber } from "@/lib/orders";
-import { canCreateOrder, canEditOrderCosts, forbidden, requireApiSession } from "@/lib/permissions";
+import { canCreateOrder, canEditOrderPayments, forbidden, requireApiSession } from "@/lib/permissions";
 
-function withoutCostInput(input: Record<string, unknown>) {
-  const items = Array.isArray(input.items)
-    ? input.items.map((item) => ({
-        ...(item && typeof item === "object" ? (item as Record<string, unknown>) : {}),
-        purchaseUnitCost: 0,
-        purchaseCurrency: "CNY",
-        purchaseExchangeRate: 1,
-        packagingUnitCost: 0,
-        packagingCurrency: "CNY",
-        packagingExchangeRate: 1,
-      }))
-    : [];
-  return { ...input, items, costs: [], paidAmount: 0, paymentStatus: undefined, paymentMethod: undefined };
+function withoutPaymentInput(input: Record<string, unknown>) {
+  return { ...input, paidAmount: 0, paymentStatus: undefined, paymentMethod: undefined };
 }
+
 
 export async function GET(request: NextRequest) {
   const startedAt = performance.now();
@@ -49,7 +39,7 @@ export async function POST(request: NextRequest) {
     const item = await prisma.$transaction(async (tx) => {
       const manualOrderNo = typeof input.orderNo === "string" && input.orderNo.trim() ? input.orderNo.trim() : null;
       const orderNo = manualOrderNo ?? await nextOrderNo(tx);
-      const normalized = normalizeOrderInput({ ...(canEditOrderCosts(session.role) ? input : withoutCostInput(input)), createdBy: session.userId }, orderNo, session);
+      const normalized = normalizeOrderInput({ ...(canEditOrderPayments(session.role) ? input : withoutPaymentInput(input)), createdBy: session.userId }, orderNo, session);
       const customerSync = await syncOrderCustomer(
         tx,
         {
@@ -74,7 +64,7 @@ export async function POST(request: NextRequest) {
           items: { create: normalized.items },
           costs: { create: normalized.costs },
           payments:
-            canEditOrderCosts(session.role) && toNumber(normalized.data.paidAmount) > 0
+            canEditOrderPayments(session.role) && toNumber(normalized.data.paidAmount) > 0
               ? {
                   create: {
                     paymentDate: normalized.data.orderDate,
