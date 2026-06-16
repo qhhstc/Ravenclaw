@@ -131,6 +131,16 @@ type BusinessBlocksData = {
     grossMargin: number | null;
     roi: number | null;
   } | null;
+  companyReview?: {
+    overallRating: string | null;
+    overallSummary: string | null;
+    topPriority: string | null;
+    capitalShiftSuggestion: string | null;
+    riskNotes: string[];
+    aiModel: string | null;
+    aiConfidence: string | null;
+    aiAnalyzedAt: string | null;
+  } | null;
   blockPerformance: Array<{
     businessBlock: string;
     blockName: string;
@@ -149,6 +159,10 @@ type BusinessBlocksData = {
     aiSummary?: string | null;
     aiRiskNotes?: string[];
     aiAnalyzedAt?: string | null;
+    aiModel?: string | null;
+    aiConfidence?: string | null;
+    aiRatingReason?: string | null;
+    decisionStatus?: string | null;
     nextBudget?: number | null;
     budgetAdjustReason?: string | null;
     remark?: string | null;
@@ -206,11 +220,28 @@ const emptyOverview: DashboardOverviewData = {
 const emptyBusinessBlocks: BusinessBlocksData = {
   visibility: { role: "viewer", scope: "limited", canViewGlobal: false, canViewProfit: false, canViewBudget: false, canEditDecisions: false },
   totals: null,
+  companyReview: null,
   blockPerformance: [],
   warnings: [],
   budgetSuggestions: [],
   fieldDefinitions: [],
 };
+
+// AI 状态本地化(与渠道表一致),避免看板显示英文 completed/pending
+function aiStatusLabel(value?: string | null) {
+  const labels: Record<string, string> = { pending: "待分析", analyzing: "分析中", completed: "已完成", failed: "失败" };
+  return labels[value || ""] ?? "待分析";
+}
+
+function aiStatusColor(value?: string | null) {
+  return value === "completed" ? "green" : value === "failed" ? "red" : value === "analyzing" ? "blue" : "default";
+}
+
+// 置信度本地化标签
+function confidenceLabel(value?: string | null) {
+  const labels: Record<string, string> = { high: "高", medium: "中", low: "低" };
+  return value && labels[value] ? `置信度${labels[value]}` : "";
+}
 
 function moneyFormatter(value: number) {
   return `¥${Math.round(value || 0).toLocaleString("zh-CN")}`;
@@ -806,6 +837,39 @@ export default function DashboardOverview() {
                   <Col xs={24} md={6}><Card className="h-full" size="small"><Statistic title="经营毛利" value={moneyFormatter(businessBlocks.totals?.grossProfit ?? 0)} valueStyle={{ color: (businessBlocks.totals?.grossProfit ?? 0) < 0 ? "var(--danger)" : "var(--foreground)" }} /></Card></Col>
                   <Col xs={24} md={6}><Card className="h-full" size="small"><Statistic title="整体毛利率" value={percentFormatter(businessBlocks.totals?.grossMargin ?? null)} /></Card></Col>
                 </Row>
+                {businessBlocks.companyReview ? (
+                  <Card
+                    size="small"
+                    className="mb-4 border-l-4"
+                    style={{ borderLeftColor: "var(--ai, #722ed1)" }}
+                    title={
+                      <Space size={8} wrap>
+                        <span>🏆 公司经营总评</span>
+                        {businessBlocks.companyReview.overallRating ? <Tag color="purple">综合评级 {businessBlocks.companyReview.overallRating}</Tag> : null}
+                        {confidenceLabel(businessBlocks.companyReview.aiConfidence) ? <Tag color="cyan">{confidenceLabel(businessBlocks.companyReview.aiConfidence)}</Tag> : null}
+                      </Space>
+                    }
+                    extra={
+                      <Space size={8} className="text-xs text-[var(--muted)]">
+                        {businessBlocks.companyReview.aiModel ? <span>模型：{businessBlocks.companyReview.aiModel}</span> : null}
+                        {businessBlocks.companyReview.aiAnalyzedAt ? <span>{dayjs(businessBlocks.companyReview.aiAnalyzedAt).format("MM-DD HH:mm")}</span> : null}
+                      </Space>
+                    }
+                  >
+                    <div className="space-y-2 text-sm">
+                      <div className="dashboard-ai-summary text-[var(--foreground)]">{businessBlocks.companyReview.overallSummary || "暂无总评"}</div>
+                      {businessBlocks.companyReview.topPriority ? (
+                        <div><Tag color="red">第一优先</Tag><span className="text-[var(--menu-text)]">{businessBlocks.companyReview.topPriority}</span></div>
+                      ) : null}
+                      {businessBlocks.companyReview.capitalShiftSuggestion ? (
+                        <div><Tag color="gold">预算挪动</Tag><span className="text-[var(--menu-text)]">{businessBlocks.companyReview.capitalShiftSuggestion}</span></div>
+                      ) : null}
+                      {businessBlocks.companyReview.riskNotes?.length ? (
+                        <div className="text-[var(--muted)]">公司风险：{businessBlocks.companyReview.riskNotes.join("；")}</div>
+                      ) : null}
+                    </div>
+                  </Card>
+                ) : null}
                 {businessBlocks.blockPerformance.length ? (
                   <div className="overflow-x-auto">
                     <div className="grid min-w-[1060px] grid-cols-4 gap-4">
@@ -814,7 +878,10 @@ export default function DashboardOverview() {
                           <div className="mb-4 flex items-start justify-between gap-3">
                             <div>
                               <Typography.Text strong>{block.blockName}</Typography.Text>
-                              <div className="mt-1 text-xs text-[var(--muted)]">AI 状态：{block.aiAnalysisStatus || "待分析"}</div>
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                <Tag color={aiStatusColor(block.aiAnalysisStatus)} className="!m-0">{aiStatusLabel(block.aiAnalysisStatus)}</Tag>
+                                {confidenceLabel(block.aiConfidence) ? <Tag className="!m-0" color="cyan">{confidenceLabel(block.aiConfidence)}</Tag> : null}
+                              </div>
                             </div>
                             <Tag color={block.rating.source === "none" ? "default" : "purple"}>{block.rating.label}</Tag>
                           </div>
@@ -978,9 +1045,16 @@ export default function DashboardOverview() {
           <div className="space-y-4">
             <Space wrap>
               <Tag color={blockDetail.rating.source === "none" ? "default" : "purple"}>{blockDetail.rating.label}</Tag>
-              <Tag>{blockDetail.aiAnalysisStatus || "pending"}</Tag>
+              <Tag color={aiStatusColor(blockDetail.aiAnalysisStatus)}>{aiStatusLabel(blockDetail.aiAnalysisStatus)}</Tag>
+              {confidenceLabel(blockDetail.aiConfidence) ? <Tag color="cyan">{confidenceLabel(blockDetail.aiConfidence)}</Tag> : null}
+              {blockDetail.aiModel ? <span className="text-sm text-[var(--muted)]">模型：{blockDetail.aiModel}</span> : null}
               <span className="text-sm text-[var(--muted)]">分析时间：{formatDateTime(blockDetail.aiAnalyzedAt)}</span>
             </Space>
+            {blockDetail.aiRatingReason ? (
+              <Card size="small" title="评级依据">
+                <Typography.Paragraph className="mb-0">{blockDetail.aiRatingReason}</Typography.Paragraph>
+              </Card>
+            ) : null}
             <Card size="small" title="AI 总结">
               <Typography.Paragraph className="mb-0">{blockDetail.aiSummary || "待分析"}</Typography.Paragraph>
             </Card>

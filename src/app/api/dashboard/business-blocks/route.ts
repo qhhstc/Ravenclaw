@@ -85,6 +85,12 @@ async function fetchWarnings(filters: BusinessDashboardFilters) {
   });
 }
 
+async function fetchCompanyReview(filters: BusinessDashboardFilters) {
+  return prisma.companyMonthlyReview.findFirst({
+    where: { year: filters.year, month: filters.month, brandId: filters.brandId ?? null },
+  });
+}
+
 function metricBlock(metric: MetricWithChannel) {
   return inferBusinessBlock({
     businessBlock: metric.businessBlock,
@@ -157,6 +163,10 @@ function aggregateByBlock(metrics: MetricWithChannel[], previousSalesByBlock: Ma
       aiSummary: plan?.aiSummary ?? "",
       aiRiskNotes: parseRiskNotes(plan?.aiRiskNotes),
       aiAnalyzedAt: plan?.aiAnalyzedAt?.toISOString() ?? null,
+      aiModel: plan?.aiModel ?? "",
+      aiConfidence: plan?.aiConfidence ?? "",
+      aiRatingReason: plan?.aiRatingReason ?? "",
+      decisionStatus: plan?.decisionStatus ?? "ai_suggested",
       nextBudget: plan?.nextBudgetBase === null || plan?.nextBudgetBase === undefined ? null : toNumber(plan.nextBudgetBase),
       budgetAdjustReason: plan?.budgetAdjustReason ?? "",
       remark: plan?.remark ?? "",
@@ -201,14 +211,14 @@ function buildFallbackWarnings(metrics: MetricWithChannel[]) {
     .slice(0, 20);
 }
 
-function buildWarnings(warnings: BusinessWarning[], metrics: MetricWithChannel[]) {
+function buildWarnings(warnings: BusinessWarning[], metrics: MetricWithChannel[], channelNameMap: Map<number, string>) {
   if (!warnings.length) return buildFallbackWarnings(metrics);
   return warnings.map((warning) => ({
     id: warning.id,
     businessBlock: warning.businessBlock,
     blockName: businessBlockLabel(warning.businessBlock),
     channelId: warning.channelId,
-    channelName: "-",
+    channelName: warning.channelId ? channelNameMap.get(warning.channelId) ?? "-" : "-",
     warningType: warning.warningType,
     currentValue: roundMoney(toNumber(warning.currentValue)),
     monthOverMonth: warning.monthOverMonth === null || warning.monthOverMonth === undefined ? null : toNumber(warning.monthOverMonth),
@@ -279,16 +289,22 @@ export async function GET(request: NextRequest) {
     }
 
     const previous = previousMonth(filters);
-    const [metrics, previousMetrics, plans, warnings] = await Promise.all([
+    const [metrics, previousMetrics, plans, warnings, companyReview] = await Promise.all([
       fetchMetrics(filters),
       fetchMetrics(filters, previous.year, previous.month),
       fetchPlans(filters),
       fetchWarnings(filters),
+      fetchCompanyReview(filters),
     ]);
     const previousSalesByBlock = new Map<string, number>();
     previousMetrics.forEach((metric) => {
       const block = metricBlock(metric);
       previousSalesByBlock.set(block, (previousSalesByBlock.get(block) ?? 0) + toNumber(metric.salesAmountBase));
+    });
+    // 渠道名映射,供预警表把 channelId 还原成渠道名(否则渠道列永远显示 -)
+    const channelNameMap = new Map<number, string>();
+    metrics.forEach((metric) => {
+      if (metric.channel?.id) channelNameMap.set(metric.channel.id, metric.channel.channelName);
     });
 
     const blockPerformance = aggregateByBlock(metrics, previousSalesByBlock, plans);
@@ -310,8 +326,20 @@ export async function GET(request: NextRequest) {
         grossMargin: ratio(totalGrossProfit, totalSales),
         roi: ratio(totalSales, totalAdSpend),
       },
+      companyReview: companyReview
+        ? {
+            overallRating: companyReview.overallRating,
+            overallSummary: companyReview.overallSummary,
+            topPriority: companyReview.topPriority,
+            capitalShiftSuggestion: companyReview.capitalShiftSuggestion,
+            riskNotes: parseRiskNotes(companyReview.aiRiskNotes),
+            aiModel: companyReview.aiModel,
+            aiConfidence: companyReview.aiConfidence,
+            aiAnalyzedAt: companyReview.aiAnalyzedAt?.toISOString() ?? null,
+          }
+        : null,
       blockPerformance,
-      warnings: buildWarnings(warnings, metrics),
+      warnings: buildWarnings(warnings, metrics, channelNameMap),
       budgetSuggestions: canViewBudget ? buildBudgetSuggestions(blockPerformance, plans) : [],
       fieldDefinitions,
     });

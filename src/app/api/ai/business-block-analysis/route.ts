@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
-import { analyzeBusinessBlocks } from "@/lib/ai/anthropic-client";
+import { analyzeBusinessBlocks, analyzeCompanyReview, getAiModelName } from "@/lib/ai/anthropic-client";
 import { businessBlockOptions, inferBusinessBlock, ratio } from "@/lib/business-blocks";
 import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, currentPeriod, parseOptionalInt, parsePositiveInt, quarterFromMonth, toNumber } from "@/lib/channel-data";
 import { prisma } from "@/lib/prisma";
@@ -202,11 +202,13 @@ export async function POST(request: NextRequest) {
     const snapshots = buildBlockSnapshots(metrics, previousMetrics);
     await Promise.all(snapshots.map((snapshot) => updatePlanStatus(filters!, snapshot, "analyzing")));
 
+    const aiModel = getAiModelName() || null;
     const analyses = await analyzeBusinessBlocks({ year: filters.year, month: filters.month, blocks: snapshots });
     const validAnalyses = analyses.filter((item) => businessBlockOptions.some((option) => option.value === item.businessBlock));
     const analysisMap = new Map(validAnalyses.map((analysis) => [analysis.businessBlock, analysis]));
 
-    await prisma.businessWarning.deleteMany({ where: { year: filters.year, month: filters.month, brandId: filters.brandId ?? null } });
+    // 只清板块级预警(channelId=null),渠道级预警由 channel-analysis 维护,不在此清除
+    await prisma.businessWarning.deleteMany({ where: { year: filters.year, month: filters.month, brandId: filters.brandId ?? null, channelId: null } });
 
     await Promise.all(
       snapshots.map(async (snapshot) => {
@@ -238,6 +240,9 @@ export async function POST(request: NextRequest) {
           aiRiskNotes: analysis.riskNotes,
           aiAnalysisStatus: "completed",
           aiAnalyzedAt: new Date(),
+          aiModel,
+          aiConfidence: analysis.confidence,
+          aiRatingReason: analysis.ratingReason || null,
           nextBudgetBase: decimal(nextBudget),
           budgetAdjustAmount: decimal(adjustAmount),
           budgetAdjustRatio: snapshot.adSpend > 0 && adjustAmount !== null ? decimal(adjustAmount / snapshot.adSpend) : null,
@@ -249,8 +254,63 @@ export async function POST(request: NextRequest) {
       }),
     );
 
+    // 公司级总评:把全公司汇总 + 四板块对比喂给 AI,产出整体评价/第一优先动作/预算挪动建议
+    const totalSales = snapshots.reduce((sum, snapshot) => sum + snapshot.salesAmount, 0);
+    const totalAdSpend = snapshots.reduce((sum, snapshot) => sum + snapshot.adSpend, 0);
+    const totalGrossProfit = snapshots.reduce((sum, snapshot) => sum + snapshot.grossProfit, 0);
+    let companyReview = null;
+    try {
+      const review = await analyzeCompanyReview({
+        year: filters.year,
+        month: filters.month,
+        totals: {
+          salesAmount: roundMoney(totalSales),
+          adSpend: roundMoney(totalAdSpend),
+          grossProfit: roundMoney(totalGrossProfit),
+          grossMargin: ratio(totalGrossProfit, totalSales),
+          roi: ratio(totalSales, totalAdSpend),
+        },
+        blocks: snapshots.map((snapshot) => ({
+          blockName: snapshot.blockName,
+          salesAmount: snapshot.salesAmount,
+          salesShare: snapshot.salesShare,
+          adSpend: snapshot.adSpend,
+          grossProfit: snapshot.grossProfit,
+          grossMargin: snapshot.grossMargin,
+          roi: snapshot.roi,
+          monthOverMonth: snapshot.monthOverMonth,
+        })),
+      });
+      const reviewData = {
+        brandId: filters.brandId ?? null,
+        salesAmountBase: money(totalSales),
+        adSpendBase: money(totalAdSpend),
+        grossProfitBase: money(totalGrossProfit),
+        grossMargin: decimal(ratio(totalGrossProfit, totalSales)),
+        roi: decimal(ratio(totalSales, totalAdSpend)),
+        overallRating: review.overallRating,
+        overallSummary: review.overallSummary,
+        topPriority: review.topPriority || null,
+        capitalShiftSuggestion: review.capitalShiftSuggestion || null,
+        aiRiskNotes: review.riskNotes,
+        aiModel,
+        aiConfidence: review.confidence,
+        aiAnalysisStatus: "completed",
+        aiAnalyzedAt: new Date(),
+      };
+      const existingReview = await prisma.companyMonthlyReview.findFirst({
+        where: { year: filters.year, month: filters.month, brandId: filters.brandId ?? null },
+        select: { id: true },
+      });
+      if (existingReview) await prisma.companyMonthlyReview.update({ where: { id: existingReview.id }, data: reviewData });
+      else await prisma.companyMonthlyReview.create({ data: { year: filters.year, month: filters.month, ...reviewData } });
+      companyReview = review;
+    } catch (reviewError) {
+      console.error("[AI] company review failed", reviewError instanceof Error ? reviewError.message : reviewError);
+    }
+
     console.info(`[AI] business-block-analysis completed duration=${Math.round(performance.now() - startedAt)}ms blocks=${validAnalyses.length}`);
-    return NextResponse.json({ blockAnalyses: validAnalyses, message: `已完成 ${validAnalyses.length} 个板块 AI 分析` });
+    return NextResponse.json({ blockAnalyses: validAnalyses, companyReview, message: `已完成 ${validAnalyses.length} 个板块 AI 分析` });
   } catch (error) {
     if (filters) {
       await prisma.businessBlockPlan.updateMany({

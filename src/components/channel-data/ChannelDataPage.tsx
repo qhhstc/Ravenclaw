@@ -1,14 +1,14 @@
 "use client";
 
-import { Card, Empty, Spin, Typography, message } from "antd";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Card, Empty, Modal, Spin, Typography, message } from "antd";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChannelFilters from "./ChannelFilters";
 import ChannelImportModal from "./ChannelImportModal";
 import ChannelKpiCards from "./ChannelKpiCards";
 import MonthlySummaryTable from "./MonthlySummaryTable";
 import QuarterSummary from "./QuarterSummary";
 import WeeklyMetricTable from "./WeeklyMetricTable";
-import { rowAdSpend, rowSales } from "./channelDataUtils";
+import { rowAdSpend, rowAdSpendBase, rowSalesBase } from "./channelDataUtils";
 import type { BasicOption, ChannelDataFilters, ChannelDataOptionState, ChannelDataResponse, ChannelDataRow, ChannelSummaryResponse } from "./channelDataTypes";
 
 type BasicListResponse<T> = {
@@ -63,12 +63,32 @@ export default function ChannelDataPage() {
   const [currentRole, setCurrentRole] = useState("viewer");
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  // 编辑防丢失:记录最近一次 fetch/save 后的快照,用于判断是否有未保存改动
+  const pristineRef = useRef<string>("[]");
+  const [dirty, setDirty] = useState(false);
+
+  // rows 变化时与快照比对,得出 dirty(仅周报录入字段,序列化对比足够)
+  useEffect(() => {
+    setDirty(JSON.stringify(rows) !== pristineRef.current);
+  }, [rows]);
+
+  // 有未保存改动时,拦截刷新/关闭页面
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
 
   const monthlyTotals = useMemo(() => {
-    const salesAmount = rows.reduce((total, row) => total + rowSales(row), 0);
-    const adSpend = rows.reduce((total, row) => total + rowAdSpend(row), 0);
+    // KPI 跨渠道汇总统一用本位币(base = 原币×汇率),避免不同币种原币直接相加得到无意义数字
+    const salesAmount = rows.reduce((total, row) => total + rowSalesBase(row), 0);
+    const adSpend = rows.reduce((total, row) => total + rowAdSpendBase(row), 0);
     const advertisedChannelCount = rows.filter((row) => rowAdSpend(row) > 0).length;
-    return { salesAmount, adSpend, channelCount: rows.length, advertisedChannelCount };
+    return { salesAmount, adSpend, channelCount: rows.length, advertisedChannelCount, currency: "CNY" };
   }, [rows]);
 
   const fetchOptions = useCallback(async () => {
@@ -125,6 +145,7 @@ export default function ChannelDataPage() {
       if (!summaryResponse.ok) throw new Error(nextSummary.message || "渠道汇总加载失败");
 
       setRows(data.rows);
+      pristineRef.current = JSON.stringify(data.rows); // 记录干净快照
       setSummary(nextSummary);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "渠道数据加载失败");
@@ -161,6 +182,30 @@ export default function ChannelDataPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // 切月份/筛选/重置前,若有未保存改动先二次确认,避免静默丢弃录入
+  function guardChange(action: () => void) {
+    if (!dirty) {
+      action();
+      return;
+    }
+    Modal.confirm({
+      title: "有未保存的修改",
+      content: "当前周报数据尚未保存,切换月份或筛选会丢弃这些改动。确定放弃吗?",
+      okText: "放弃改动",
+      cancelText: "返回保存",
+      okButtonProps: { danger: true },
+      onOk: action,
+    });
+  }
+
+  function requestFilters(next: ChannelDataFilters) {
+    guardChange(() => setFilters(next));
+  }
+
+  function resetFilters() {
+    guardChange(() => setFilters(defaultFilters));
   }
 
   async function triggerDownload(url: string) {
@@ -213,25 +258,56 @@ export default function ChannelDataPage() {
       message.info("当前筛选范围暂无渠道数据");
       return;
     }
+    // AI 分析会以服务端数据覆盖当前表格,先提示保存未保存的手工编辑
+    if (dirty) {
+      message.warning("有未保存的手工编辑,请先点『保存本月数据』再做 AI 分析,否则编辑会被覆盖");
+      return;
+    }
     setAiAnalyzing(true);
+    const targets = [...rows];
+    const concurrency = 4;
+    let done = 0;
+    let success = 0;
+    const failedChannels: string[] = [];
+    const progressKey = "channel-ai-progress"; // 固定 key:原地更新同一条提示,避免每轮新建导致提示堆积不消失
+    message.open({ key: progressKey, type: "loading", content: `AI 分析中 0/${targets.length}`, duration: 0 });
     try {
-      let successCount = 0;
-      for (const row of rows) {
-        const response = await fetch("/api/ai/channel-analysis", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ year: filters.year, month: filters.month, channelId: row.channelId, businessBlock: row.businessBlock }),
+      // 带并发上限的批处理:单个渠道失败只记录不中断,结束后汇总
+      for (let i = 0; i < targets.length; i += concurrency) {
+        const batch = targets.slice(i, i + concurrency);
+        const results = await Promise.allSettled(
+          batch.map((row) =>
+            fetch("/api/ai/channel-analysis", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ year: filters.year, month: filters.month, channelId: row.channelId, businessBlock: row.businessBlock }),
+            }).then(async (response) => {
+              if (!response.ok) {
+                const data = (await response.json().catch(() => ({}))) as { message?: string };
+                throw new Error(data.message || `${row.channelName} 分析失败`);
+              }
+            }),
+          ),
+        );
+        results.forEach((result, index) => {
+          done += 1;
+          if (result.status === "fulfilled") success += 1;
+          else failedChannels.push(batch[index].channelName);
         });
-        const data = (await response.json()) as { message?: string };
-        if (!response.ok) throw new Error(data.message || `${row.channelName} AI 分析失败`);
-        successCount += 1;
+        // 原地更新同一条提示的进度文案,不新建
+        if (i + concurrency < targets.length) {
+          message.open({ key: progressKey, type: "loading", content: `AI 分析中 ${done}/${targets.length}`, duration: 0 });
+        }
       }
-      message.success(`已完成 ${successCount} 个渠道 AI 分析`);
-      await fetchChannelData(filters);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : "渠道 AI 分析失败");
-      await fetchChannelData(filters);
+      message.destroy(progressKey); // 进度提示先关掉,再弹结果
+      if (failedChannels.length === 0) {
+        message.success(`已完成全部 ${success} 个渠道 AI 分析`);
+      } else {
+        message.warning(`完成 ${success} 个,失败 ${failedChannels.length} 个:${failedChannels.slice(0, 5).join("、")}${failedChannels.length > 5 ? " 等" : ""}`);
+      }
     } finally {
+      message.destroy(progressKey); // 兜底:异常时也确保进度提示被关闭
+      await fetchChannelData(filters);
       setAiAnalyzing(false);
     }
   }
@@ -254,8 +330,8 @@ export default function ChannelDataPage() {
           saving={saving}
           aiAnalyzing={aiAnalyzing}
           canRunAiAnalysis={canRunAiAnalysis}
-          onSearch={setFilters}
-          onReset={() => setFilters(defaultFilters)}
+          onSearch={requestFilters}
+          onReset={resetFilters}
           onSave={saveRows}
           onDownloadTemplate={downloadTemplate}
           onImport={() => setImportOpen(true)}
@@ -270,10 +346,17 @@ export default function ChannelDataPage() {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <Typography.Title level={4} className="!mb-1">渠道周报录入</Typography.Title>
-            <Typography.Text type="secondary">W1-W5 可直接编辑，保存后按渠道和周次 upsert 到数据库。</Typography.Text>
+            <Typography.Text type="secondary">W1-W5 可直接编辑，保存后按渠道和周次 upsert 到数据库。金额按各渠道录入的原始币种显示。</Typography.Text>
           </div>
+          {dirty ? <Typography.Text type="warning">● 有未保存的修改</Typography.Text> : null}
         </div>
-        {rows.length ? <WeeklyMetricTable rows={rows} loading={loading} onChange={setRows} /> : <Empty description="暂无渠道数据" />}
+        {loading && !rows.length ? (
+          <div className="grid place-items-center py-16"><Spin tip="加载中..." /></div>
+        ) : rows.length ? (
+          <WeeklyMetricTable rows={rows} loading={loading} onChange={setRows} />
+        ) : (
+          <Empty description="暂无渠道数据" />
+        )}
       </Card>
 
       <Card styles={{ body: { padding: 16 } }}>

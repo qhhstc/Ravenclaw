@@ -2,22 +2,25 @@
 
 import { Card, Col, Row, Statistic } from "antd";
 import { BarChartOutlined, DollarOutlined, PercentageOutlined, RiseOutlined, ShopOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { currencyMoney, percent, ratio } from "./channelDataUtils";
+import { currencyMoney, money, percent, ratio } from "./channelDataUtils";
 
 type ChannelKpiCardsProps = {
   salesAmount: number;
   adSpend: number;
   channelCount: number;
   advertisedChannelCount: number;
+  currency?: string | null;
 };
 
-export default function ChannelKpiCards({ salesAmount, adSpend, channelCount, advertisedChannelCount }: ChannelKpiCardsProps) {
+export default function ChannelKpiCards({ salesAmount, adSpend, channelCount, advertisedChannelCount, currency }: ChannelKpiCardsProps) {
   const roi = adSpend > 0 ? salesAmount / adSpend : null;
   const adRatio = salesAmount > 0 ? adSpend / salesAmount : 0;
+  // 销售额/广告费为原币聚合:整表同币种时带符号,混币种则不标符号
+  const formatMoney = (value: number) => (currency ? currencyMoney(value, currency) : money(value));
 
   const items = [
-    { title: "本月销售额", value: currencyMoney(salesAmount), icon: <DollarOutlined />, color: "var(--chart-blue)" },
-    { title: "本月广告费", value: currencyMoney(adSpend), icon: <BarChartOutlined />, color: "var(--ai)" },
+    { title: "本月销售额(本位币¥)", value: formatMoney(salesAmount), icon: <DollarOutlined />, color: "var(--chart-blue)" },
+    { title: "本月广告费(本位币¥)", value: formatMoney(adSpend), icon: <BarChartOutlined />, color: "var(--ai)" },
     { title: "整体 ROI", value: ratio(roi), icon: <RiseOutlined />, color: "var(--success)" },
     { title: "广告占比", value: percent(adRatio), icon: <PercentageOutlined />, color: "var(--warning)" },
     { title: "渠道数量", value: channelCount, icon: <ShopOutlined />, color: "var(--chart-teal)" },

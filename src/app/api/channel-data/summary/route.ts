@@ -5,8 +5,10 @@ import { ApiAuthError, forbidden, requireApiSession } from "@/lib/permissions";
 function sumRows(rows: Awaited<ReturnType<typeof getMonthlyRows>>) {
   return rows.reduce(
     (summary, row) => {
-      const rowSales = row.weeks.reduce((total, week) => total + week.salesAmountOriginal, 0);
-      const rowAdSpend = row.weeks.reduce((total, week) => total + week.adSpendOriginal, 0);
+      // 跨渠道汇总统一按本位币(原币×汇率),避免不同币种直接相加
+      const rate = Number(row.exchangeRate) > 0 ? Number(row.exchangeRate) : 1;
+      const rowSales = row.weeks.reduce((total, week) => total + week.salesAmountOriginal * rate, 0);
+      const rowAdSpend = row.weeks.reduce((total, week) => total + week.adSpendOriginal * rate, 0);
       return {
         salesAmount: summary.salesAmount + rowSales,
         adSpend: summary.adSpend + rowAdSpend,

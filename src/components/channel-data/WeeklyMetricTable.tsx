@@ -4,7 +4,7 @@ import { Button, DatePicker, Input, InputNumber, Modal, Select, Space, Table, Ta
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { useState } from "react";
-import { actionSourceText, actionText, blockLabel, channelTypeLabel, currencyMoney, getWeek, money, percent, PercentText, ratingSourceText, ratingText, RoiTag, rowAdSpend, rowKey, rowSales, safeRatio, weekNumbers, withUpdatedWeek } from "./channelDataUtils";
+import { actionSourceText, actionText, blockColor, blockLabel, channelTypeLabel, currencyMoney, getWeek, money, PercentText, ratingSourceText, ratingText, RoiTag, rowAdSpend, rowAdSpendBase, rowKey, rowSales, rowSalesBase, safeRatio, weekNumbers, withUpdatedWeek } from "./channelDataUtils";
 import type { ChannelDataRow } from "./channelDataTypes";
 
 type WeeklyMetricTableProps = {
@@ -64,12 +64,15 @@ function formatDateTime(value?: string | null) {
 
 export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMetricTableProps) {
   const [detailRow, setDetailRow] = useState<ChannelDataRow | null>(null);
-  const totalSales = rows.reduce((total, row) => total + rowSales(row), 0);
-  const totalAdSpend = rows.reduce((total, row) => total + rowAdSpend(row), 0);
+  // 跨渠道汇总一律用本位币(base),避免不同币种原币直接相加;逐行金额仍按原币显示
+  const totalSalesBase = rows.reduce((total, row) => total + rowSalesBase(row), 0);
+  const totalAdSpendBase = rows.reduce((total, row) => total + rowAdSpendBase(row), 0);
   const totalQuarterSales = rows.reduce((total, row) => total + Number(row.quarter?.salesAmount || 0), 0);
   const totalQuarterAdSpend = rows.reduce((total, row) => total + Number(row.quarter?.adSpend || 0), 0);
-  const totalRoi = safeRatio(totalSales, totalAdSpend);
-  const totalAdRatio = totalSales > 0 ? totalAdSpend / totalSales : 0;
+  const totalRoi = safeRatio(totalSalesBase, totalAdSpendBase);
+  const totalAdRatio = totalSalesBase > 0 ? totalAdSpendBase / totalSalesBase : 0;
+  // 合计/占比统一本位币 ¥(season 列与 KPI 同口径),逐行原币仅用于录入展示
+  const totalMoney = (value: number) => currencyMoney(value, "CNY");
 
   function updateRow(channelId: number, updater: (row: ChannelDataRow) => ChannelDataRow) {
     onChange(rows.map((row) => (row.channelId === channelId ? updater(row) : row)));
@@ -119,7 +122,7 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
   ]);
 
   const columns: ColumnsType<ChannelDataRow> = [
-    { title: "板块", dataIndex: "businessBlock", fixed: "left", width: 108, render: (value) => <Tag color="blue">{blockLabel(value)}</Tag> },
+    { title: "板块", dataIndex: "businessBlock", fixed: "left", width: 108, render: (value) => <Tag color={blockColor(value)}>{blockLabel(value)}</Tag> },
     { title: "二级", dataIndex: "businessLine", fixed: "left", width: 130, render: (value) => <Typography.Text strong>{value}</Typography.Text> },
     {
       title: "店铺/站点",
@@ -159,16 +162,16 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
       ),
     },
     ...weeklyColumns,
-    { title: "月销售额", key: "monthSales", width: 130, align: "right", render: (_, row) => currencyMoney(rowSales(row)) },
-    { title: "月广告", key: "monthAd", width: 130, align: "right", render: (_, row) => currencyMoney(rowAdSpend(row)) },
+    { title: "月销售额", key: "monthSales", width: 130, align: "right", render: (_, row) => currencyMoney(rowSales(row), row.currency) },
+    { title: "月广告", key: "monthAd", width: 130, align: "right", render: (_, row) => currencyMoney(rowAdSpend(row), row.currency) },
     { title: "月ROI", key: "roi", width: 92, align: "right", render: (_, row) => <RoiTag value={safeRatio(rowSales(row), rowAdSpend(row))} /> },
     { title: "月广告占销", key: "adRatio", width: 120, align: "right", render: (_, row) => <PercentText value={rowSales(row) > 0 ? rowAdSpend(row) / rowSales(row) : 0} /> },
-    { title: "月销售占比", key: "salesShare", width: 120, align: "right", render: (_, row) => <PercentText value={totalSales > 0 ? rowSales(row) / totalSales : 0} /> },
-    { title: "季销售额", key: "quarterSales", width: 130, align: "right", render: (_, row) => currencyMoney(Number(row.quarter?.salesAmount || 0)) },
-    { title: "季广告", key: "quarterAd", width: 130, align: "right", render: (_, row) => currencyMoney(Number(row.quarter?.adSpend || 0)) },
+    { title: "月销售占比", key: "salesShare", width: 120, align: "right", render: (_, row) => <PercentText tone="share" value={totalSalesBase > 0 ? rowSalesBase(row) / totalSalesBase : 0} /> },
+    { title: "季销售额", key: "quarterSales", width: 130, align: "right", render: (_, row) => currencyMoney(Number(row.quarter?.salesAmount || 0), "CNY") },
+    { title: "季广告", key: "quarterAd", width: 130, align: "right", render: (_, row) => currencyMoney(Number(row.quarter?.adSpend || 0), "CNY") },
     { title: "季ROI", key: "quarterRoi", width: 92, align: "right", render: (_, row) => <RoiTag value={safeRatio(Number(row.quarter?.salesAmount || 0), Number(row.quarter?.adSpend || 0))} /> },
     { title: "季广告占销", key: "quarterAdRatio", width: 120, align: "right", render: (_, row) => <PercentText value={Number(row.quarter?.salesAmount || 0) > 0 ? Number(row.quarter?.adSpend || 0) / Number(row.quarter?.salesAmount || 0) : 0} /> },
-    { title: "季销售占比", key: "quarterSalesShare", width: 120, align: "right", render: (_, row) => <PercentText value={totalQuarterSales > 0 ? Number(row.quarter?.salesAmount || 0) / totalQuarterSales : 0} /> },
+    { title: "季销售占比", key: "quarterSalesShare", width: 120, align: "right", render: (_, row) => <PercentText tone="share" value={totalQuarterSales > 0 ? Number(row.quarter?.salesAmount || 0) / totalQuarterSales : 0} /> },
     {
       title: "评级",
       dataIndex: "manualRating",
@@ -233,7 +236,7 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
       },
     },
     {
-      title: "决策 deadline",
+      title: "决策期限",
       dataIndex: "decisionDeadline",
       width: 130,
       render: (value, row) => (
@@ -282,8 +285,9 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
                 <Typography.Text strong>合计</Typography.Text>
               </Table.Summary.Cell>
               {weekNumbers.flatMap((weekNumber, index) => {
-                const sales = rows.reduce((total, row) => total + getWeek(row, weekNumber).salesAmountOriginal, 0);
-                const adSpend = rows.reduce((total, row) => total + getWeek(row, weekNumber).adSpendOriginal, 0);
+                // 周列合计也按本位币:各行该周原币 × 汇率求和,与月/季合计同口径
+                const sales = rows.reduce((total, row) => total + getWeek(row, weekNumber).salesAmountOriginal * (Number(row.exchangeRate) > 0 ? Number(row.exchangeRate) : 1), 0);
+                const adSpend = rows.reduce((total, row) => total + getWeek(row, weekNumber).adSpendOriginal * (Number(row.exchangeRate) > 0 ? Number(row.exchangeRate) : 1), 0);
                 return [
                   <Table.Summary.Cell index={5 + index * 2} key={`sales-${weekNumber}`} align="right">
                     {money(sales)}
@@ -293,16 +297,16 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
                   </Table.Summary.Cell>,
                 ];
               })}
-              <Table.Summary.Cell index={15} align="right"><Typography.Text strong>{currencyMoney(totalSales)}</Typography.Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={16} align="right"><Typography.Text strong>{currencyMoney(totalAdSpend)}</Typography.Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={15} align="right"><Typography.Text strong>{totalMoney(totalSalesBase)}</Typography.Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={16} align="right"><Typography.Text strong>{totalMoney(totalAdSpendBase)}</Typography.Text></Table.Summary.Cell>
               <Table.Summary.Cell index={17} align="right"><RoiTag value={totalRoi} /></Table.Summary.Cell>
               <Table.Summary.Cell index={18} align="right"><PercentText value={totalAdRatio} /></Table.Summary.Cell>
-              <Table.Summary.Cell index={19} align="right">{percent(1)}</Table.Summary.Cell>
-              <Table.Summary.Cell index={20} align="right"><Typography.Text strong>{currencyMoney(totalQuarterSales)}</Typography.Text></Table.Summary.Cell>
-              <Table.Summary.Cell index={21} align="right"><Typography.Text strong>{currencyMoney(totalQuarterAdSpend)}</Typography.Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={19} align="right"><PercentText tone="share" value={1} /></Table.Summary.Cell>
+              <Table.Summary.Cell index={20} align="right"><Typography.Text strong>{totalMoney(totalQuarterSales)}</Typography.Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={21} align="right"><Typography.Text strong>{totalMoney(totalQuarterAdSpend)}</Typography.Text></Table.Summary.Cell>
               <Table.Summary.Cell index={22} align="right"><RoiTag value={safeRatio(totalQuarterSales, totalQuarterAdSpend)} /></Table.Summary.Cell>
               <Table.Summary.Cell index={23} align="right"><PercentText value={totalQuarterSales > 0 ? totalQuarterAdSpend / totalQuarterSales : 0} /></Table.Summary.Cell>
-              <Table.Summary.Cell index={24} align="right">100.0%</Table.Summary.Cell>
+              <Table.Summary.Cell index={24} align="right"><PercentText tone="share" value={1} /></Table.Summary.Cell>
               <Table.Summary.Cell index={25} />
               <Table.Summary.Cell index={26} />
               <Table.Summary.Cell index={27} />
@@ -333,9 +337,20 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
               <div>评级：{detailRow.aiRating ? <Tag color="purple">{detailRow.aiRating}</Tag> : "待分析"}</div>
               <div>状态：<Tag>{aiStatusText(detailRow.aiAnalysisStatus)}</Tag></div>
               <div>负责人：{detailRow.decisionOwner || "—"}</div>
-              <div>决策 deadline：{detailRow.decisionDeadline ? dayjs(detailRow.decisionDeadline).format("YYYY-MM-DD") : "—"}</div>
+              <div>决策期限：{detailRow.decisionDeadline ? dayjs(detailRow.decisionDeadline).format("YYYY-MM-DD") : "—"}</div>
+              <div>置信度：{detailRow.aiConfidence ? <Tag color="cyan">{({ high: "高", medium: "中", low: "低" } as Record<string, string>)[detailRow.aiConfidence] ?? detailRow.aiConfidence}</Tag> : "—"}</div>
+              <div>分析模型：{detailRow.aiModel || "—"}</div>
+              <div className="col-span-2">数据覆盖：{detailRow.aiDataCoverage || "—"}</div>
               <div className="col-span-2">分析时间：{formatDateTime(detailRow.aiAnalyzedAt)}</div>
             </div>
+            {detailRow.aiRatingReason ? (
+              <div>
+                <Typography.Text strong>评级依据</Typography.Text>
+                <div className="mt-2 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+                  {detailRow.aiRatingReason}
+                </div>
+              </div>
+            ) : null}
             <div>
               <Typography.Text strong>AI 总结</Typography.Text>
               <div className="mt-2 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
@@ -361,7 +376,7 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
             <div>
               <Typography.Text strong>预算建议</Typography.Text>
               <div className="mt-2 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
-                {detailRow.nextBudgetBase ? `${currencyMoney(Number(detailRow.nextBudgetBase))} · ${detailRow.budgetAdjustReason || "暂无调整原因"}` : "暂无预算建议"}
+                {detailRow.nextBudgetBase ? `${currencyMoney(Number(detailRow.nextBudgetBase), "CNY")} · ${detailRow.budgetAdjustReason || "暂无调整原因"}` : "暂无预算建议"}
               </div>
             </div>
             <div>

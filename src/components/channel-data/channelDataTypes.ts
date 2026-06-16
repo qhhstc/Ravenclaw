@@ -27,6 +27,7 @@ export type ChannelDataRow = {
   } | null;
   countryCode?: string | null;
   currency: string;
+  exchangeRate?: number;
   productCostBase?: number;
   otherCostBase?: number;
   manualRating?: string | null;
@@ -44,6 +45,10 @@ export type ChannelDataRow = {
   nextBudgetBase?: number | null;
   budgetAdjustReason?: string | null;
   aiAnalyzedAt?: string | null;
+  aiModel?: string | null;
+  aiConfidence?: string | null;
+  aiDataCoverage?: string | null;
+  aiRatingReason?: string | null;
   quarter?: {
     salesAmount: number;
     adSpend: number;

@@ -75,6 +75,13 @@ export async function POST(request: NextRequest) {
     });
     const channelMap = new Map(channels.map((channel) => [channel.id, channel]));
 
+    // 已存的汇率(按渠道取 week1):当前端 row 未回传 exchangeRate 时用它兜底,避免静默把汇率重置成 1 污染 base
+    const existingRateMetrics = await prisma.channelMetricPeriod.findMany({
+      where: { year, month, periodType: PERIOD_TYPE_WEEK, weekNumber: 1, channelId: { in: channelIds } },
+      select: { channelId: true, exchangeRate: true },
+    });
+    const existingRateMap = new Map(existingRateMetrics.map((metric) => [metric.channelId, toNumber(metric.exchangeRate, 1)]));
+
     await prisma.$transaction(
       rows.flatMap((row) => {
         const channel = channelMap.get(row.channelId);
@@ -83,7 +90,9 @@ export async function POST(request: NextRequest) {
         const brandId = channel.brandId;
         const platformId = channel.platformId;
         const currency = row.currency || channel.store?.defaultCurrency || channel.brand?.defaultCurrency || "CNY";
-        const exchangeRate = Math.max(toNumber(row.exchangeRate, 1), 0) || 1;
+        // 优先用 row 回传的汇率;缺失时退回数据库已存汇率,仍无则才用 1。绝不在有历史汇率时静默重置为 1。
+        const rowRate = toNumber(row.exchangeRate, 0);
+        const exchangeRate = rowRate > 0 ? rowRate : existingRateMap.get(row.channelId) || 1;
         const countryCode = row.countryCode || channel.store?.primaryMarketCode || null;
         const businessBlock = inferBusinessBlock({
           businessBlock: row.businessBlock,

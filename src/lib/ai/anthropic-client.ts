@@ -1,7 +1,7 @@
 import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { aiSystemPrompt, buildBusinessBlocksAnalysisPrompt, buildChannelAnalysisPrompt, type AiAnalysisResult, type BusinessBlockAnalysisPromptInput, type ChannelAnalysisPromptInput } from "./prompts";
+import { aiSystemPrompt, buildBusinessBlocksAnalysisPrompt, buildChannelAnalysisPrompt, buildCompanyReviewPrompt, companyReviewSchemaHint, type AiAnalysisResult, type BusinessBlockAnalysisPromptInput, type ChannelAnalysisPromptInput, type CompanyReviewPromptInput, type CompanyReviewResult } from "./prompts";
 
 export type AiConfigStatus = {
   enabled: boolean;
@@ -18,7 +18,13 @@ export type CallClaudeJsonInput = {
   systemPrompt: string;
   userPrompt: string;
   schemaHint?: string;
+  maxTokens?: number;
 };
+
+// 当前生效的模型名,供路由记录到分析结果(可追溯哪条结论由哪个模型产出)
+export function getAiModelName() {
+  return envValue("ANTHROPIC_MODEL");
+}
 
 type ClaudeCompatibleResponse = {
   content?: Array<{ type?: string; text?: string }>;
@@ -105,15 +111,41 @@ function extractJsonText(response: ClaudeCompatibleResponse) {
     || response.choices?.[0]?.text
     || response.message
     || "";
-  const trimmed = text.trim();
+  let trimmed = text.trim();
   if (trimmed.startsWith("```")) {
-    return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+    trimmed = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
   }
+  // 从第一个 { 或 [ 开始,用括号配平扫描出第一个完整 JSON,剥掉前缀和尾随说明文字
   const firstBrace = trimmed.indexOf("{");
   const firstBracket = trimmed.indexOf("[");
-  const start = [firstBrace, firstBracket].filter((index) => index >= 0).sort((a, b) => a - b)[0] ?? -1;
-  if (start > 0) return trimmed.slice(start);
-  return trimmed;
+  const candidates = [firstBrace, firstBracket].filter((index) => index >= 0).sort((a, b) => a - b);
+  const start = candidates[0] ?? -1;
+  if (start < 0) return trimmed;
+  const open = trimmed[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < trimmed.length; i += 1) {
+    const char = trimmed[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === open) depth += 1;
+    else if (char === close) {
+      depth -= 1;
+      if (depth === 0) return trimmed.slice(start, i + 1);
+    }
+  }
+  return trimmed.slice(start); // 未配平(可能被截断),返回剩余部分让上层解析报错
+}
+
+function normalizeConfidence(value: unknown): "high" | "medium" | "low" {
+  return value === "high" || value === "medium" || value === "low" ? value : "medium";
 }
 
 function normalizeAnalysisResult(value: unknown): AiAnalysisResult {
@@ -123,6 +155,8 @@ function normalizeAnalysisResult(value: unknown): AiAnalysisResult {
   const budget = input.budgetSuggestion && typeof input.budgetSuggestion === "object" ? input.budgetSuggestion : null;
   return {
     rating,
+    ratingReason: typeof input.ratingReason === "string" && input.ratingReason.trim() ? input.ratingReason.trim() : "",
+    confidence: normalizeConfidence(input.confidence),
     summary: typeof input.summary === "string" && input.summary.trim() ? input.summary.trim() : "数据不足，建议补充销售、广告和成本数据",
     riskNotes,
     actionSuggestion: typeof input.actionSuggestion === "string" && input.actionSuggestion.trim() ? input.actionSuggestion.trim() : "请先完善 W1-W5 销售、广告、产品成本和其他成本",
@@ -130,16 +164,17 @@ function normalizeAnalysisResult(value: unknown): AiAnalysisResult {
   };
 }
 
-export async function callClaudeJson<T = unknown>({ systemPrompt, userPrompt, schemaHint }: CallClaudeJsonInput): Promise<T> {
+export async function callClaudeJson<T = unknown>({ systemPrompt, userPrompt, schemaHint, maxTokens }: CallClaudeJsonInput): Promise<T> {
   const config = requireAiConfig();
   const startedAt = performance.now();
   console.info(`[AI] Claude request start provider=${getAiStatus().provider} model=${config.model} baseUrlConfigured=${Boolean(config.baseUrl)} endpoint=${config.apiEndpoint}`);
 
   try {
     const userContent = `${userPrompt}\n\n请严格按以下 JSON 结构输出，不要输出 Markdown：\n${schemaHint || "{}"}`;
+    const tokenLimit = maxTokens && maxTokens > 0 ? maxTokens : 1200;
     const anthropicBody = {
       model: config.model,
-      max_tokens: 1200,
+      max_tokens: tokenLimit,
       temperature: 0.2,
       system: systemPrompt,
       messages: [{ role: "user" as const, content: userContent }],
@@ -147,7 +182,7 @@ export async function callClaudeJson<T = unknown>({ systemPrompt, userPrompt, sc
     const compatibleBody = isOpenAiChatEndpoint(config.apiEndpoint)
       ? {
           model: config.model,
-          max_tokens: 1200,
+          max_tokens: tokenLimit,
           temperature: 0.2,
           messages: [
             { role: "system", content: systemPrompt },
@@ -158,7 +193,7 @@ export async function callClaudeJson<T = unknown>({ systemPrompt, userPrompt, sc
 
     let json: ClaudeCompatibleResponse;
     if (!config.baseUrl && config.apiKey && config.authMode === "x_api_key") {
-      const client = new Anthropic({ apiKey: config.apiKey });
+      const client = new Anthropic({ apiKey: config.apiKey, timeout: 60_000, maxRetries: 1 });
       json = (await client.messages.create(anthropicBody)) as ClaudeCompatibleResponse;
     } else {
       const response = await fetch(joinUrl(config.baseUrl, config.apiEndpoint), {
@@ -168,7 +203,11 @@ export async function callClaudeJson<T = unknown>({ systemPrompt, userPrompt, sc
         signal: AbortSignal.timeout(60_000),
       });
       json = (await response.json().catch(() => ({}))) as ClaudeCompatibleResponse;
-      if (!response.ok) throw new Error(json.error?.message || json.message || `Claude API 请求失败：${response.status}`);
+      if (!response.ok) {
+        // 上游/中转站原始错误只记日志,不透传给前端(可能含 endpoint、限流、key 片段等内部信息)
+        console.error(`[AI] upstream error status=${response.status}`, json.error?.message || json.message || "");
+        throw new Error("AI 服务暂时不可用，请稍后重试");
+      }
     }
 
     const text = extractJsonText(json);
@@ -191,7 +230,8 @@ export async function analyzeChannelData(input: ChannelAnalysisPromptInput) {
   const result = await callClaudeJson<unknown>({
     systemPrompt: aiSystemPrompt,
     userPrompt: buildChannelAnalysisPrompt(input),
-    schemaHint: "{\"rating\":\"S|A|B|C|null\",\"summary\":\"一句话总结\",\"riskNotes\":[\"风险\"],\"actionSuggestion\":\"建议动作\",\"budgetSuggestion\":{\"nextBudget\":0,\"reason\":\"原因\"}}",
+    schemaHint: "{\"rating\":\"S|A|B|C|null\",\"ratingReason\":\"评级依据\",\"confidence\":\"high|medium|low\",\"summary\":\"2-3句带数字总结\",\"riskNotes\":[\"风险\"],\"actionSuggestion\":\"建议动作\",\"budgetSuggestion\":{\"nextBudget\":0,\"reason\":\"原因\"}}",
+    maxTokens: 1500,
   });
   return normalizeAnalysisResult(result);
 }
@@ -200,9 +240,34 @@ export async function analyzeBusinessBlocks(input: BusinessBlockAnalysisPromptIn
   const result = await callClaudeJson<unknown>({
     systemPrompt: aiSystemPrompt,
     userPrompt: buildBusinessBlocksAnalysisPrompt(input),
-    schemaHint: "[{\"businessBlock\":\"amazon\",\"rating\":\"S|A|B|C|null\",\"summary\":\"一句话总结\",\"riskNotes\":[\"风险\"],\"actionSuggestion\":\"建议动作\",\"budgetSuggestion\":{\"nextBudget\":0,\"reason\":\"原因\"}}]",
+    schemaHint: "[{\"businessBlock\":\"amazon\",\"rating\":\"S|A|B|C|null\",\"ratingReason\":\"评级依据\",\"confidence\":\"high|medium|low\",\"summary\":\"2-3句带数字总结\",\"riskNotes\":[\"风险\"],\"actionSuggestion\":\"建议动作\",\"budgetSuggestion\":{\"nextBudget\":0,\"reason\":\"原因\"}}]",
+    maxTokens: 4096, // 四板块数组,提高 token 上限避免截断
   });
   const resultObject = result && typeof result === "object" ? result as { blockAnalyses?: unknown; results?: unknown } : {};
   const array = Array.isArray(result) ? result : Array.isArray(resultObject.blockAnalyses) ? resultObject.blockAnalyses : Array.isArray(resultObject.results) ? resultObject.results : [];
   return array.map((item) => ({ businessBlock: String((item as { businessBlock?: unknown }).businessBlock || ""), ...normalizeAnalysisResult(item) }));
+}
+
+function normalizeCompanyReview(value: unknown): CompanyReviewResult {
+  const input = (value && typeof value === "object" ? value : {}) as Partial<CompanyReviewResult>;
+  const overallRating = input.overallRating === "S" || input.overallRating === "A" || input.overallRating === "B" || input.overallRating === "C" ? input.overallRating : null;
+  const riskNotes = Array.isArray(input.riskNotes) ? input.riskNotes.filter((item): item is string => typeof item === "string").slice(0, 3) : [];
+  return {
+    overallRating,
+    overallSummary: typeof input.overallSummary === "string" && input.overallSummary.trim() ? input.overallSummary.trim() : "数据不足，建议先完善各板块销售、广告与成本数据",
+    topPriority: typeof input.topPriority === "string" && input.topPriority.trim() ? input.topPriority.trim() : "",
+    capitalShiftSuggestion: typeof input.capitalShiftSuggestion === "string" && input.capitalShiftSuggestion.trim() ? input.capitalShiftSuggestion.trim() : "",
+    confidence: normalizeConfidence(input.confidence),
+    riskNotes,
+  };
+}
+
+export async function analyzeCompanyReview(input: CompanyReviewPromptInput) {
+  const result = await callClaudeJson<unknown>({
+    systemPrompt: aiSystemPrompt,
+    userPrompt: buildCompanyReviewPrompt(input),
+    schemaHint: companyReviewSchemaHint,
+    maxTokens: 1500,
+  });
+  return normalizeCompanyReview(result);
 }

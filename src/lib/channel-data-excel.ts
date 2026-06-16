@@ -569,7 +569,9 @@ function findCustomerHeaderRow(sheet: ExcelJS.Worksheet) {
 function isCustomerTotalRow(block: string, line: string, channelName: string) {
   const text = `${block} ${line} ${channelName}`.trim();
   if (!text) return true;
-  return /合计|总计|subtotal|total/i.test(text);
+  // 客户原表的合计行可能用空格隔开（如「全 公 司 合 计」），匹配前先去掉所有空格再判断
+  const compact = text.replace(/\s/g, "");
+  return /合计|总计|小计|subtotal|total/i.test(compact);
 }
 
 function customerWeekMappings(sheet: ExcelJS.Worksheet, headerRowNumber: number, year: number, targetMonth?: number) {
@@ -1065,31 +1067,33 @@ export async function importChannelRows({
   const failedErrors: ChannelImportErrorRow[] = [...errorRows];
   const isCustomerOriginalImport = validRows.some((row) => row.sourceType === "customer_original");
 
-  if (isCustomerOriginalImport && importMonths.size > 0) {
+  // 先解析(并对客户原表按需创建/更新)本次文件涉及的所有渠道,
+  // 这样在决定"替换哪些数据"之前,就能确切知道本次导入命中了哪些渠道,避免重复解析。
+  const resolvedByRow = new Map<
+    ChannelImportRow,
+    Awaited<ReturnType<typeof ensureCustomerImportChannel>> | Awaited<ReturnType<typeof resolveImportRow>>
+  >();
+  const importedChannelIds = new Set<number>();
+  for (const row of validRows) {
+    const resolved = row.sourceType === "customer_original" ? await ensureCustomerImportChannel(row) : await resolveImportRow(row);
+    resolvedByRow.set(row, resolved);
+    if (resolved.channel?.id) importedChannelIds.add(resolved.channel.id);
+  }
+
+  // 仅替换本次文件实际命中的渠道在导入月份的周数据。绝不删除文件中不存在的渠道,
+  // 也不再按 createdBy 宽泛删除(那会误删同月其它渠道/店铺渠道的数据,造成不可逆丢失)。
+  if (isCustomerOriginalImport && importMonths.size > 0 && importedChannelIds.size > 0) {
     const monthPairs = Array.from(importMonths).map((importMonth) => {
       const [year, month] = importMonth.split("-").map((value) => Number(value));
       return { year, month };
     });
-    const importedManualChannels = await prisma.channel.findMany({
-      where: {
-        channelType: "manual",
-        storeId: null,
-      },
-      select: { id: true },
-    });
-    const importedManualChannelIds = importedManualChannels.map((channel) => channel.id);
-    const replaceConditions = monthPairs.flatMap(({ year, month }) => [
-      ...(importedManualChannelIds.length ? [{ year, month, channelId: { in: importedManualChannelIds } }] : []),
-      ...(createdBy ? [{ year, month, createdBy }] : []),
-    ]);
-    if (replaceConditions.length > 0) {
+    const channelIdList = Array.from(importedChannelIds);
     await prisma.channelMetricPeriod.deleteMany({
       where: {
         periodType: PERIOD_TYPE_WEEK,
-          OR: replaceConditions,
+        OR: monthPairs.map(({ year, month }) => ({ year, month, channelId: { in: channelIdList } })),
       },
     });
-    }
     await prisma.metricImportBatch.deleteMany({
       where: {
         sourceType: "customer_original",
@@ -1099,7 +1103,7 @@ export async function importChannelRows({
   }
 
   for (const row of validRows) {
-    const resolved = row.sourceType === "customer_original" ? await ensureCustomerImportChannel(row) : await resolveImportRow(row);
+    const resolved = resolvedByRow.get(row)!;
     const channel = resolved.channel;
     if (!channel || resolved.errors.length > 0 || !channel.brandId || !channel.platformId) {
       failedErrors.push({ rowNumber: row.rowNumber, errors: resolved.errors.length ? resolved.errors : ["渠道数据不完整"], rawSummary: row.rawSummary });

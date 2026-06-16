@@ -1,6 +1,9 @@
 import { Prisma } from "@prisma/client";
-import { inferBusinessBlock } from "@/lib/business-blocks";
+import { businessBlockOptions, inferBusinessBlock } from "@/lib/business-blocks";
 import { prisma } from "@/lib/prisma";
+
+// 板块业务排序:亚马逊 → 独立站 → TikTok → B端(沿用 businessBlockOptions 的定义顺序)
+const BUSINESS_BLOCK_ORDER = businessBlockOptions.map((option) => option.value) as string[];
 
 export const WEEK_NUMBERS = [1, 2, 3, 4, 5] as const;
 export const PERIOD_TYPE_WEEK = "week";
@@ -192,6 +195,8 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
       ) ??
       channelMetrics.find((metric) => metric.weekNumber === 1) ??
       channelMetrics[0];
+    // 成本/预算/汇率只写在 week1 行,读取必须固定取 week1,不能用偏向"有内容"的 firstMetric(可能命中 week3 导致读成 0)
+    const week1Metric = channelMetrics.find((metric) => metric.weekNumber === 1) ?? firstMetric;
     const businessBlock = inferBusinessBlock({
       businessBlock: firstMetric?.businessBlock,
       businessLine: channel.businessLine,
@@ -214,9 +219,12 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
       platform: channel.platform,
       store: channel.store,
       countryCode: channel.store?.primaryMarketCode ?? null,
-      currency: channel.store?.defaultCurrency ?? channel.brand?.defaultCurrency ?? "CNY",
-      productCostBase: toNumber(firstMetric?.productCostBase),
-      otherCostBase: toNumber(firstMetric?.otherCostBase),
+      // 币种以实际录入的 metric 为准(原表导入的手动渠道常为 USD),无录入时再退回渠道推断
+      currency: firstMetric?.currency ?? channel.store?.defaultCurrency ?? channel.brand?.defaultCurrency ?? "CNY",
+      // 汇率随行回传,保存时才能正确重算 base(否则 POST 会把 exchangeRate 当 undefined 回落到 1,污染 salesAmountBase)
+      exchangeRate: toNumber(week1Metric?.exchangeRate, 1) || 1,
+      productCostBase: toNumber(week1Metric?.productCostBase),
+      otherCostBase: toNumber(week1Metric?.otherCostBase),
       manualRating: firstMetric?.manualRating ?? "",
       aiRating: firstMetric?.aiRating ?? "",
       ratingSource: firstMetric?.ratingSource ?? "none",
@@ -229,14 +237,30 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
       warningLevel: firstMetric?.warningLevel ?? "",
       decisionOwner: firstMetric?.decisionOwner ?? "",
       decisionDeadline: firstMetric?.decisionDeadline?.toISOString() ?? null,
-      nextBudgetBase: firstMetric?.nextBudgetBase === null || firstMetric?.nextBudgetBase === undefined ? null : toNumber(firstMetric.nextBudgetBase),
+      nextBudgetBase: week1Metric?.nextBudgetBase === null || week1Metric?.nextBudgetBase === undefined ? null : toNumber(week1Metric.nextBudgetBase),
       budgetAdjustReason: firstMetric?.budgetAdjustReason ?? "",
       aiAnalyzedAt: firstMetric?.aiAnalyzedAt?.toISOString() ?? null,
+      aiModel: firstMetric?.aiModel ?? "",
+      aiConfidence: firstMetric?.aiConfidence ?? "",
+      aiDataCoverage: firstMetric?.aiDataCoverage ?? "",
+      aiRatingReason: firstMetric?.aiRatingReason ?? "",
       quarter: quarterTotals,
       remark: firstMetric?.remark ?? "",
       weeks,
     };
   }).sort((firstRow, secondRow) => {
+    // 先按归一化板块聚拢(让"亚马逊/Amazon"、"独立站/Shopify"等中英文同板块合到一起),
+    // 再按板块原始名(channelGroup)、二级(businessLine),最后用 sortOrder 做同组内稳定次序。
+    const blockOrder = (block: string) => {
+      const index = BUSINESS_BLOCK_ORDER.indexOf(block);
+      return index === -1 ? BUSINESS_BLOCK_ORDER.length : index;
+    };
+    const blockCompare = blockOrder(firstRow.businessBlock) - blockOrder(secondRow.businessBlock);
+    if (blockCompare !== 0) return blockCompare;
+    const groupCompare = (firstRow.channelGroup ?? "").localeCompare(secondRow.channelGroup ?? "", "zh-Hans-CN");
+    if (groupCompare !== 0) return groupCompare;
+    const lineCompare = (firstRow.businessLine ?? "").localeCompare(secondRow.businessLine ?? "", "zh-Hans-CN");
+    if (lineCompare !== 0) return lineCompare;
     if (firstRow.sortOrder !== secondRow.sortOrder) return firstRow.sortOrder - secondRow.sortOrder;
     return `${firstRow.businessLine}-${firstRow.channelName}`.localeCompare(`${secondRow.businessLine}-${secondRow.channelName}`, "zh-Hans-CN");
   });
