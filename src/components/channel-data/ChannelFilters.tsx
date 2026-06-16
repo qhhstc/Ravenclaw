@@ -3,6 +3,7 @@
 import { DownloadOutlined, FileExcelOutlined, ReloadOutlined, RobotOutlined, SaveOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import { Button, Card, DatePicker, Form, Select, Space } from "antd";
 import dayjs from "dayjs";
+import { useEffect } from "react";
 import { businessLineOptions, channelTypeOptions } from "@/lib/basic-options";
 import type { ChannelDataFilters, ChannelDataOptionState } from "./channelDataTypes";
 
@@ -49,6 +50,17 @@ export default function ChannelFilters({
   onAnalyzeAi,
 }: ChannelFiltersProps) {
   const [form] = Form.useForm<FormValues>();
+
+  useEffect(() => {
+    form.setFieldsValue({
+      month: dayjs(`${filters.year}-${String(filters.month).padStart(2, "0")}-01`),
+      brandId: filters.brandId,
+      platformId: filters.platformId,
+      storeId: filters.storeId,
+      businessLine: filters.businessLine,
+      channelType: filters.channelType,
+    });
+  }, [filters, form]);
 
   function submit(values: FormValues) {
     onSearch({

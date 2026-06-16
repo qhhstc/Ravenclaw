@@ -285,7 +285,18 @@ export default function ChannelDataPage() {
       </Card>
 
       <QuarterSummary summary={summary} />
-      <ChannelImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={() => fetchChannelData(filters)} />
+      <ChannelImportModal
+        open={importOpen}
+        filters={filters}
+        onClose={() => setImportOpen(false)}
+        onImported={(importedFilters) => {
+          if (importedFilters) {
+            setFilters((current) => ({ ...current, ...importedFilters }));
+            return;
+          }
+          return fetchChannelData(filters);
+        }}
+      />
     </div>
   );
 }

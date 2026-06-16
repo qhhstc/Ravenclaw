@@ -5,9 +5,11 @@ import { Alert, Button, Descriptions, Modal, Space, Table, Upload, message } fro
 import type { ColumnsType } from "antd/es/table";
 import type { UploadProps } from "antd";
 import { useState } from "react";
+import type { ChannelDataFilters } from "./channelDataTypes";
 
 export type ChannelImportPreviewRow = {
   rowNumber: number;
+  sourceType?: "standard" | "customer_original";
   businessBlock: string;
   businessLine: string;
   brandName: string;
@@ -33,6 +35,10 @@ export type ChannelImportErrorRow = {
 
 type ChannelImportPreview = {
   fileName: string;
+  sourceType: "standard" | "customer_original";
+  importYear?: number;
+  importMonth?: number;
+  weekMappings: Array<{ sourceLabel: string; weekNumber: number }>;
   totalRows: number;
   validRows: ChannelImportPreviewRow[];
   errorRows: ChannelImportErrorRow[];
@@ -40,13 +46,14 @@ type ChannelImportPreview = {
 
 type ChannelImportModalProps = {
   open: boolean;
+  filters: ChannelDataFilters;
   onClose: () => void;
-  onImported: () => Promise<void> | void;
+  onImported: (filters?: Pick<ChannelDataFilters, "year" | "month">) => Promise<void> | void;
 };
 
 const maxFileSize = 10 * 1024 * 1024;
 
-export default function ChannelImportModal({ open, onClose, onImported }: ChannelImportModalProps) {
+export default function ChannelImportModal({ open, filters, onClose, onImported }: ChannelImportModalProps) {
   const [preview, setPreview] = useState<ChannelImportPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -65,6 +72,8 @@ export default function ChannelImportModal({ open, onClose, onImported }: Channe
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("year", String(filters.year));
+      formData.append("month", String(filters.month));
       const response = await fetch("/api/channel-data/import/preview", {
         method: "POST",
         body: formData,
@@ -99,9 +108,10 @@ export default function ChannelImportModal({ open, onClose, onImported }: Channe
       const data = (await response.json()) as { message?: string; successRows?: number; failedRows?: number };
       if (!response.ok) throw new Error(data.message || "导入失败");
       message.success(`导入完成：成功 ${data.successRows ?? 0} 行，失败 ${data.failedRows ?? 0} 行`);
+      const latestImportedRow = [...preview.validRows].sort((a, b) => a.year - b.year || a.month - b.month).at(-1);
       setPreview(null);
       onClose();
-      await onImported();
+      await onImported(latestImportedRow ? { year: latestImportedRow.year, month: latestImportedRow.month } : undefined);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "导入失败");
     } finally {
@@ -151,12 +161,23 @@ export default function ChannelImportModal({ open, onClose, onImported }: Channe
 
       {preview ? (
         <div className="space-y-4">
+          {(() => {
+            const months = Array.from(new Set(preview.validRows.map((row) => `${row.year}-${String(row.month).padStart(2, "0")}`))).sort();
+            const detectedMonth = months.length ? months.join("、") : preview.importYear && preview.importMonth ? `${preview.importYear}-${String(preview.importMonth).padStart(2, "0")}` : `${filters.year}-${String(filters.month).padStart(2, "0")}`;
+            return (
           <Descriptions bordered size="small" column={4}>
             <Descriptions.Item label="总行数">{preview.totalRows}</Descriptions.Item>
             <Descriptions.Item label="可导入行数">{preview.validRows.length}</Descriptions.Item>
             <Descriptions.Item label="错误行数">{preview.errorRows.length}</Descriptions.Item>
             <Descriptions.Item label="文件名">{preview.fileName}</Descriptions.Item>
+            <Descriptions.Item label="识别类型">{preview.sourceType === "customer_original" ? "客户原渠道效率表" : "系统标准模板"}</Descriptions.Item>
+            <Descriptions.Item label="导入月份">{detectedMonth}</Descriptions.Item>
+            <Descriptions.Item label="周段映射" span={2}>
+              {preview.weekMappings.length ? preview.weekMappings.map((item) => `${item.sourceLabel} → W${item.weekNumber}`).join("；") : "按 W1-W5 表头导入"}
+            </Descriptions.Item>
           </Descriptions>
+            );
+          })()}
 
           {preview.errorRows.length ? (
             <Table<ChannelImportErrorRow>

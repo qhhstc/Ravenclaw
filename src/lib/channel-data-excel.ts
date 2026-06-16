@@ -89,6 +89,7 @@ type MonthlyRow = Awaited<ReturnType<typeof getMonthlyRows>>[number];
 
 export type ChannelImportRow = {
   rowNumber: number;
+  sourceType?: "standard" | "customer_original";
   businessBlock: string;
   businessLine: string;
   brandName: string;
@@ -98,12 +99,19 @@ export type ChannelImportRow = {
   decisionOwner: string;
   year: number;
   month: number;
+  currency?: string;
+  exchangeRate?: number;
   weeks: Array<{ weekNumber: number; salesAmountOriginal: number; adSpendOriginal: number }>;
   manualRating: string;
   manualActionSuggestion: string;
   decisionDeadline: string;
   remark: string;
   rawSummary: string;
+};
+
+export type ChannelImportWeekMapping = {
+  sourceLabel: string;
+  weekNumber: number;
 };
 
 export type ChannelImportErrorRow = {
@@ -114,6 +122,10 @@ export type ChannelImportErrorRow = {
 
 export type ChannelImportPreview = {
   fileName: string;
+  sourceType: "standard" | "customer_original";
+  importYear?: number;
+  importMonth?: number;
+  weekMappings: ChannelImportWeekMapping[];
   totalRows: number;
   validRows: ChannelImportRow[];
   errorRows: ChannelImportErrorRow[];
@@ -494,17 +506,104 @@ function parseAmount(value: unknown) {
   return Number.isFinite(numericValue) ? numericValue : NaN;
 }
 
+function parseCustomerSourceYearMonth(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet, fallbackYear?: number, fallbackMonth?: number) {
+  const textParts: string[] = [];
+  for (let rowNumber = 1; rowNumber <= Math.min(sheet.rowCount, 3); rowNumber += 1) {
+    for (let columnNumber = 1; columnNumber <= Math.min(sheet.columnCount, 6); columnNumber += 1) {
+      const text = normalizeText(sheet.getRow(rowNumber).getCell(columnNumber).value);
+      if (text) textParts.push(text);
+    }
+  }
+  const text = [workbook.subject, workbook.title, ...textParts].filter(Boolean).join(" ");
+  const yearMatch = text.match(/(20\d{2})\s*年?/);
+  const monthRangeMatch = text.match(/(\d{1,2})\s*[-~至]\s*(\d{1,2})\s*[_\s-]*月/);
+  const singleMonthMatch = text.match(/(\d{1,2})\s*月/);
+  return {
+    year: fallbackYear ?? (yearMatch ? Number(yearMatch[1]) : new Date().getFullYear()),
+    month: fallbackMonth ?? (monthRangeMatch ? Number(monthRangeMatch[2]) : singleMonthMatch ? Number(singleMonthMatch[1]) : new Date().getMonth() + 1),
+  };
+}
+
+function parseCustomerCurrencyAndRate(sheet: ExcelJS.Worksheet) {
+  const textParts: string[] = [];
+  for (let rowNumber = 1; rowNumber <= Math.min(sheet.rowCount, 3); rowNumber += 1) {
+    for (let columnNumber = 1; columnNumber <= Math.min(sheet.columnCount, 8); columnNumber += 1) {
+      const text = normalizeText(sheet.getRow(rowNumber).getCell(columnNumber).value);
+      if (text) textParts.push(text);
+    }
+  }
+  const text = textParts.join(" ");
+  const currency = /美金|美元|USD/i.test(text) ? "USD" : "CNY";
+  const usdRate = text.match(/USD\s*[=：:]\s*(\d+(?:\.\d+)?)/i);
+  return { currency, exchangeRate: usdRate ? Number(usdRate[1]) : 1 };
+}
+
+function parseCustomerWeekEndMonth(label: string, year: number) {
+  const compact = label.replace(/\s/g, "");
+  const range = compact.match(/(\d{1,2})[./月-](\d{1,2})(?:日)?[-~至](?:(\d{1,2})[./月-])?(\d{1,2})(?:日)?/);
+  if (!range) return null;
+  const startMonth = Number(range[1]);
+  const endMonth = Number(range[3] || range[1]);
+  const endDay = Number(range[4]);
+  if (!Number.isInteger(startMonth) || !Number.isInteger(endMonth) || !Number.isInteger(endDay)) return null;
+  if (startMonth < 1 || startMonth > 12 || endMonth < 1 || endMonth > 12 || endDay < 1 || endDay > 31) return null;
+  return { year, month: endMonth, day: endDay };
+}
+
+function findCustomerHeaderRow(sheet: ExcelJS.Worksheet) {
+  for (let rowNumber = 1; rowNumber <= Math.min(sheet.rowCount, 10); rowNumber += 1) {
+    const values = Array.from({ length: Math.min(sheet.columnCount, 35) }, (_, index) => normalizeText(sheet.getRow(rowNumber).getCell(index + 1).value));
+    const hasBlock = values.includes("板块");
+    const hasLine = values.includes("二级");
+    const hasChannel = values.includes("渠道");
+    const hasMonthSales = values.includes("月销售额");
+    if (hasBlock && hasLine && hasChannel && hasMonthSales) return rowNumber;
+  }
+  return null;
+}
+
+function isCustomerTotalRow(block: string, line: string, channelName: string) {
+  const text = `${block} ${line} ${channelName}`.trim();
+  if (!text) return true;
+  return /合计|总计|subtotal|total/i.test(text);
+}
+
+function customerWeekMappings(sheet: ExcelJS.Worksheet, headerRowNumber: number, year: number, targetMonth?: number) {
+  const row = sheet.getRow(headerRowNumber);
+  const mappings: Array<{ sourceLabel: string; year: number; month: number; weekNumber: number; salesColumn: number; adColumn: number }> = [];
+  for (let columnNumber = 1; columnNumber <= sheet.columnCount - 1; columnNumber += 1) {
+    const salesHeader = normalizeText(row.getCell(columnNumber).value);
+    const adHeader = normalizeText(row.getCell(columnNumber + 1).value);
+    if (!/(销售|售)/.test(salesHeader) || !adHeader.includes("广告")) continue;
+    const endDate = parseCustomerWeekEndMonth(salesHeader, year);
+    if (!endDate || (targetMonth && endDate.month !== targetMonth)) continue;
+    const weekNumber = Math.min(Math.max(Math.ceil(endDate.day / 7), 1), 5);
+    mappings.push({
+      sourceLabel: salesHeader.replace(/销售|售/g, ""),
+      year: endDate.year,
+      month: endDate.month,
+      weekNumber,
+      salesColumn: columnNumber,
+      adColumn: columnNumber + 1,
+    });
+  }
+  return mappings;
+}
+
 function buildRawSummary(row: Partial<ChannelImportRow>) {
-  return [row.brandName, row.platformName, row.storeName || "-", row.channelName, row.year, row.month]
+  return [row.brandName, row.platformName, row.storeName || "-", row.businessLine, row.channelName, row.year, row.month]
     .filter((value) => value !== undefined && value !== null && value !== "")
     .join(" / ");
 }
 
 function validateImportRowBasics(row: ChannelImportRow) {
   const errors: string[] = [];
-  if (!row.brandName) errors.push("所属品牌为空");
-  if (!row.platformName) errors.push("平台为空");
-  if (!row.storeName) errors.push("店铺/站点为空");
+  if (row.sourceType !== "customer_original") {
+    if (!row.brandName) errors.push("所属品牌为空");
+    if (!row.platformName) errors.push("平台为空");
+    if (!row.storeName) errors.push("店铺/站点为空");
+  }
+  if (!row.businessLine) errors.push("二级为空");
   if (!row.channelName) errors.push("渠道名称为空");
   if (!Number.isInteger(row.year) || row.year < 2000 || row.year > 2100) errors.push("年份格式不正确");
   if (!Number.isInteger(row.month) || row.month < 1 || row.month > 12) errors.push("月份必须在 1-12 之间");
@@ -535,7 +634,7 @@ export function validateImportFile(file: File) {
   }
 }
 
-export async function parseChannelImportWorkbook(fileName: string, buffer: ArrayBuffer): Promise<ChannelImportPreview> {
+export async function parseChannelImportWorkbook(fileName: string, buffer: ArrayBuffer, options: { year?: number; month?: number } = {}): Promise<ChannelImportPreview> {
   const bytes = new Uint8Array(buffer);
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
     throw new Error("文件格式不正确，请上传有效的 .xlsx 文件");
@@ -548,83 +647,185 @@ export async function parseChannelImportWorkbook(fileName: string, buffer: Array
     throw new Error("Excel 解析失败，请检查文件是否为有效的 xlsx 文件");
   }
 
-  const sheet = workbook.getWorksheet("渠道数据导入") ?? workbook.worksheets[0];
+  const sheet = workbook.getWorksheet("渠道数据导入") ?? workbook.getWorksheet("渠道效率总表") ?? workbook.worksheets[0];
   if (!sheet) throw new Error("Excel 文件中没有可读取的工作表");
 
   const headerRow = sheet.getRow(1);
   const headers = importHeaders.map((_, index) => normalizeText(headerRow.getCell(index + 1).value));
   const missingHeaders = importHeaders.filter((header, index) => headers[index] !== header);
-  if (missingHeaders.length > 0) {
-    throw new Error(`导入模板表头不正确，请不要修改表头。异常字段：${missingHeaders.join("、")}`);
-  }
-
   const parsedRows: ChannelImportRow[] = [];
   const rowErrors: ChannelImportErrorRow[] = [];
 
-  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
-    const excelRow = sheet.getRow(rowNumber);
-    const values = importHeaders.map((_, index) => getCellValue(excelRow, index));
-    const hasValue = values.some((value) => normalizeText(value));
-    if (!hasValue) continue;
+  if (missingHeaders.length === 0) {
+    for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
+      const excelRow = sheet.getRow(rowNumber);
+      const values = importHeaders.map((_, index) => getCellValue(excelRow, index));
+      const hasValue = values.some((value) => normalizeText(value));
+      if (!hasValue) continue;
 
-    const draft: ChannelImportRow = {
-      rowNumber,
-      brandName: normalizeText(values[0]),
-      platformName: normalizeText(values[1]),
-      storeName: normalizeText(values[2]),
-      businessBlock: normalizeText(values[3]),
-      businessLine: normalizeText(values[4]),
-      channelName: normalizeText(values[5]),
-      decisionOwner: normalizeText(values[6]),
-      year: 0,
-      month: 0,
-      weeks: [],
-      manualRating: normalizeText(values[29]),
-      manualActionSuggestion: normalizeText(values[30]),
-      decisionDeadline: normalizeText(values[31]),
-      remark: normalizeText(values[32]),
-      rawSummary: "",
-    };
-    const errors: string[] = [];
-
-    if (!draft.brandName) errors.push("所属品牌为空");
-    if (!draft.platformName) errors.push("平台为空");
-    if (!draft.storeName) errors.push("店铺/站点为空");
-    if (!draft.channelName) errors.push("渠道名称为空");
-
-    const year = parseInteger(values[7]);
-    const month = parseInteger(values[8]);
-    if (year === null) errors.push("年份为空");
-    else if (!Number.isInteger(year) || year < 2000 || year > 2100) errors.push("年份格式不正确");
-    if (month === null) errors.push("月份为空");
-    else if (!Number.isInteger(month) || month < 1 || month > 12) errors.push("月份必须在 1-12 之间");
-
-    draft.year = Number.isFinite(year) ? Number(year) : 0;
-    draft.month = Number.isFinite(month) ? Number(month) : 0;
-
-    draft.weeks = WEEK_NUMBERS.map((weekNumber, index) => {
-      const sales = parseAmount(values[9 + index * 2]);
-      const adSpend = parseAmount(values[10 + index * 2]);
-      if (!Number.isFinite(sales)) errors.push(`W${weekNumber}销售不是数字`);
-      if (!Number.isFinite(adSpend)) errors.push(`W${weekNumber}广告不是数字`);
-      return {
-        weekNumber,
-        salesAmountOriginal: Number.isFinite(sales) ? sales : 0,
-        adSpendOriginal: Number.isFinite(adSpend) ? adSpend : 0,
+      const draft: ChannelImportRow = {
+        rowNumber,
+        sourceType: "standard",
+        brandName: normalizeText(values[0]),
+        platformName: normalizeText(values[1]),
+        storeName: normalizeText(values[2]),
+        businessBlock: normalizeText(values[3]),
+        businessLine: normalizeText(values[4]),
+        channelName: normalizeText(values[5]),
+        decisionOwner: normalizeText(values[6]),
+        year: 0,
+        month: 0,
+        currency: undefined,
+        exchangeRate: undefined,
+        weeks: [],
+        manualRating: normalizeText(values[29]),
+        manualActionSuggestion: normalizeText(values[30]),
+        decisionDeadline: normalizeText(values[31]),
+        remark: normalizeText(values[32]),
+        rawSummary: "",
       };
-    });
-    draft.rawSummary = buildRawSummary(draft);
+      const errors: string[] = [];
 
-    if (errors.length > 0) {
-      rowErrors.push({ rowNumber, errors, rawSummary: draft.rawSummary });
-    } else {
-      parsedRows.push(draft);
+      if (!draft.brandName) errors.push("所属品牌为空");
+      if (!draft.platformName) errors.push("平台为空");
+      if (!draft.storeName) errors.push("店铺/站点为空");
+      if (!draft.channelName) errors.push("渠道名称为空");
+
+      const year = parseInteger(values[7]);
+      const month = parseInteger(values[8]);
+      if (year === null) errors.push("年份为空");
+      else if (!Number.isInteger(year) || year < 2000 || year > 2100) errors.push("年份格式不正确");
+      if (month === null) errors.push("月份为空");
+      else if (!Number.isInteger(month) || month < 1 || month > 12) errors.push("月份必须在 1-12 之间");
+
+      draft.year = Number.isFinite(year) ? Number(year) : 0;
+      draft.month = Number.isFinite(month) ? Number(month) : 0;
+
+      draft.weeks = WEEK_NUMBERS.map((weekNumber, index) => {
+        const sales = parseAmount(values[9 + index * 2]);
+        const adSpend = parseAmount(values[10 + index * 2]);
+        if (!Number.isFinite(sales)) errors.push(`W${weekNumber}销售不是数字`);
+        if (!Number.isFinite(adSpend)) errors.push(`W${weekNumber}广告不是数字`);
+        return {
+          weekNumber,
+          salesAmountOriginal: Number.isFinite(sales) ? sales : 0,
+          adSpendOriginal: Number.isFinite(adSpend) ? adSpend : 0,
+        };
+      });
+      draft.rawSummary = buildRawSummary(draft);
+
+      if (errors.length > 0) {
+        rowErrors.push({ rowNumber, errors, rawSummary: draft.rawSummary });
+      } else {
+        parsedRows.push(draft);
+      }
     }
+
+    const { validRows, errorRows } = await validateImportRows(parsedRows);
+    return {
+      fileName,
+      sourceType: "standard",
+      importYear: validRows[0]?.year,
+      importMonth: validRows[0]?.month,
+      weekMappings: WEEK_NUMBERS.map((weekNumber) => ({ sourceLabel: `W${weekNumber}`, weekNumber })),
+      totalRows: parsedRows.length + rowErrors.length,
+      validRows,
+      errorRows: [...rowErrors, ...errorRows].sort((a, b) => a.rowNumber - b.rowNumber),
+    };
+  }
+
+  const customerHeaderRow = findCustomerHeaderRow(sheet);
+  if (!customerHeaderRow) {
+    throw new Error(`导入模板表头不正确，请上传系统模板或客户渠道效率追踪表。异常字段：${missingHeaders.join("、")}`);
+  }
+
+  const { year } = parseCustomerSourceYearMonth(workbook, sheet, options.year, options.month);
+  const customerCurrency = parseCustomerCurrencyAndRate(sheet);
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    throw new Error("无法识别导入年份，请检查客户原表标题或文件信息");
+  }
+  const mappings = customerWeekMappings(sheet, customerHeaderRow, year);
+  if (mappings.length === 0) {
+    throw new Error("客户原表中没有识别到有效周销售/广告列");
+  }
+  const overflowMonth = Array.from(new Set(mappings.map((item) => item.month))).find((mappingMonth) => mappings.filter((item) => item.month === mappingMonth).length > WEEK_NUMBERS.length);
+  if (overflowMonth) {
+    throw new Error(`客户原表中 ${year}-${String(overflowMonth).padStart(2, "0")} 识别到超过 W1-W5 的周段，请确认表格周期`);
+  }
+
+  const customerHeader = sheet.getRow(customerHeaderRow);
+  const headerValues = Array.from({ length: sheet.columnCount }, (_, index) => normalizeText(customerHeader.getCell(index + 1).value));
+  const ratingColumn = headerValues.findIndex((value) => value === "SABC" || value === "评级") + 1;
+  const actionColumn = headerValues.findIndex((value) => value === "建议动作") + 1;
+  const remarkColumn = headerValues.findIndex((value) => value === "备注") + 1;
+
+  for (let rowNumber = customerHeaderRow + 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
+    const excelRow = sheet.getRow(rowNumber);
+    const businessBlock = normalizeText(excelRow.getCell(1).value);
+    const businessLine = normalizeText(excelRow.getCell(2).value);
+    const channelName = normalizeText(excelRow.getCell(3).value);
+    if (!businessBlock && !businessLine && !channelName) continue;
+    if (isCustomerTotalRow(businessBlock, businessLine, channelName)) continue;
+
+    const errors: string[] = [];
+    if (!businessLine) errors.push("二级为空");
+    if (!channelName) errors.push("渠道为空");
+    const months = Array.from(new Set(mappings.map((item) => item.month))).sort((a, b) => a - b);
+    months.forEach((mappingMonth) => {
+      const monthMappings = mappings.filter((item) => item.month === mappingMonth);
+      const weeks = WEEK_NUMBERS.map((weekNumber) => {
+        const mapping = monthMappings.find((item) => item.weekNumber === weekNumber);
+        if (!mapping) return { weekNumber, salesAmountOriginal: 0, adSpendOriginal: 0 };
+        const sales = parseAmount(excelRow.getCell(mapping.salesColumn).value);
+        const adSpend = parseAmount(excelRow.getCell(mapping.adColumn).value);
+        if (!Number.isFinite(sales)) errors.push(`${mapping.sourceLabel}销售不是数字`);
+        if (!Number.isFinite(adSpend)) errors.push(`${mapping.sourceLabel}广告不是数字`);
+        return {
+          weekNumber,
+          salesAmountOriginal: Number.isFinite(sales) ? sales : 0,
+          adSpendOriginal: Number.isFinite(adSpend) ? adSpend : 0,
+        };
+      });
+
+      const hasMonthValue = weeks.some((week) => week.salesAmountOriginal > 0 || week.adSpendOriginal > 0);
+      if (!hasMonthValue) return;
+
+      const draft: ChannelImportRow = {
+        rowNumber,
+        sourceType: "customer_original",
+        brandName: "",
+        platformName: "",
+        storeName: "",
+        businessBlock,
+        businessLine,
+        channelName,
+        decisionOwner: "",
+        year,
+        month: mappingMonth,
+        currency: customerCurrency.currency,
+        exchangeRate: customerCurrency.exchangeRate,
+        weeks,
+        manualRating: ratingColumn > 0 ? normalizeText(excelRow.getCell(ratingColumn).value) : "",
+        manualActionSuggestion: actionColumn > 0 ? normalizeText(excelRow.getCell(actionColumn).value) : "",
+        decisionDeadline: "",
+        remark: remarkColumn > 0 ? normalizeText(excelRow.getCell(remarkColumn).value) : "",
+        rawSummary: "",
+      };
+      draft.rawSummary = buildRawSummary(draft);
+      if (errors.length > 0) rowErrors.push({ rowNumber, errors, rawSummary: draft.rawSummary });
+      else parsedRows.push(draft);
+    });
   }
 
   const { validRows, errorRows } = await validateImportRows(parsedRows);
+  const importedMonths = Array.from(new Set(validRows.map((row) => row.month))).sort((a, b) => a - b);
+  const latestMonth = importedMonths.at(-1);
   return {
     fileName,
+    sourceType: "customer_original",
+    importYear: year,
+    importMonth: latestMonth,
+    weekMappings: mappings.map((item) => ({ sourceLabel: `${year}-${String(item.month).padStart(2, "0")} ${item.sourceLabel}`, weekNumber: item.weekNumber })),
     totalRows: parsedRows.length + rowErrors.length,
     validRows,
     errorRows: [...rowErrors, ...errorRows].sort((a, b) => a.rowNumber - b.rowNumber),
@@ -659,6 +860,48 @@ async function findStore(storeName: string, brandId: number, platformId: number)
 
 async function resolveImportRow(row: ChannelImportRow) {
   const errors: string[] = [];
+  if (row.sourceType === "customer_original") {
+    const select = {
+      id: true,
+      brandId: true,
+      platformId: true,
+      storeId: true,
+      businessLine: true,
+      channelGroup: true,
+      channelType: true,
+      channelName: true,
+      platform: { select: { id: true, name: true } },
+      store: { select: { id: true, name: true, primaryMarketCode: true, defaultCurrency: true, storeType: true } },
+      brand: { select: { id: true, name: true, defaultCurrency: true } },
+    } satisfies Prisma.ChannelSelect;
+    const text = (value: string | null | undefined) => (value || "").trim().toLowerCase();
+    const compact = (value: string | null | undefined) => text(value).replace(/[（(].*?[）)]/g, "").replace(/[\s/_-]/g, "");
+    const includes = (source: string | null | undefined, target: string) => {
+      const sourceText = compact(source);
+      const targetText = compact(target);
+      return Boolean(sourceText && targetText && (sourceText.includes(targetText) || targetText.includes(sourceText)));
+    };
+    const candidates = await prisma.channel.findMany({
+      where: {
+        status: "active",
+      },
+      select,
+    });
+    const exactStoreMatches = candidates.filter((channel) => includes(channel.store?.name, row.businessLine) && (includes(channel.channelName, row.channelName) || includes(channel.channelGroup, row.channelName)));
+    const lineMatches = candidates.filter((channel) => includes(channel.businessLine, row.businessLine) && includes(channel.channelName, row.channelName));
+    const channelMatches = candidates.filter((channel) => channel.channelName === row.channelName || includes(channel.channelGroup, row.channelName));
+    const channels = exactStoreMatches.length ? exactStoreMatches : lineMatches.length ? lineMatches : channelMatches;
+    if (channels.length === 0) errors.push("未找到匹配渠道，请检查基础资料中的店铺/二级/渠道名称");
+    if (channels.length > 1) errors.push("渠道匹配不唯一，请使用系统标准模板补充品牌/平台/店铺后导入");
+    return {
+      errors,
+      channel: channels[0] ?? null,
+      brand: channels[0]?.brand ? { id: channels[0].brand.id, name: channels[0].brand.name, defaultCurrency: channels[0].brand.defaultCurrency } : null,
+      platform: channels[0]?.platform ?? null,
+      store: channels[0]?.store ?? null,
+    };
+  }
+
   const brand = await findBrand(row.brandName);
   if (!brand) errors.push("未找到匹配品牌");
   const platform = await findPlatform(row.platformName);
@@ -698,6 +941,71 @@ async function resolveImportRow(row: ChannelImportRow) {
   return { errors, channel: channels[0] ?? null, brand, platform, store };
 }
 
+async function getImportFallbackBase() {
+  const [brand, platform] = await Promise.all([
+    prisma.brand.findFirst({ where: { status: "active" }, orderBy: { id: "asc" }, select: { id: true, name: true, defaultCurrency: true } }),
+    prisma.platform.findFirst({ where: { status: "active" }, orderBy: { id: "asc" }, select: { id: true, name: true } }),
+  ]);
+  if (!brand || !platform) throw new Error("缺少可用品牌或平台，请先维护基础资料");
+  return { brand, platform };
+}
+
+async function ensureCustomerImportChannel(row: ChannelImportRow) {
+  const resolved = await resolveImportRow(row);
+  if (resolved.channel && resolved.errors.length === 0 && resolved.channel.brandId && resolved.channel.platformId) return resolved;
+  if (row.sourceType !== "customer_original") return resolved;
+  if (resolved.errors.some((error) => error.includes("不唯一"))) return resolved;
+
+  const { brand, platform } = await getImportFallbackBase();
+  const existing = await prisma.channel.findFirst({
+    where: {
+      businessLine: row.businessLine,
+      channelName: row.channelName,
+      storeId: null,
+    },
+    select: {
+      id: true,
+      brandId: true,
+      platformId: true,
+      storeId: true,
+      businessLine: true,
+      channelGroup: true,
+      channelType: true,
+      channelName: true,
+      platform: { select: { id: true, name: true } },
+      store: { select: { id: true, name: true, primaryMarketCode: true, defaultCurrency: true, storeType: true } },
+      brand: { select: { id: true, name: true, defaultCurrency: true } },
+    },
+  });
+  const channel = existing ?? await prisma.channel.create({
+    data: {
+      brandId: brand.id,
+      platformId: platform.id,
+      storeId: null,
+      businessLine: row.businessLine,
+      channelGroup: row.businessBlock || row.businessLine,
+      channelName: row.channelName,
+      channelType: "manual",
+      status: "active",
+    },
+    select: {
+      id: true,
+      brandId: true,
+      platformId: true,
+      storeId: true,
+      businessLine: true,
+      channelGroup: true,
+      channelType: true,
+      channelName: true,
+      platform: { select: { id: true, name: true } },
+      store: { select: { id: true, name: true, primaryMarketCode: true, defaultCurrency: true, storeType: true } },
+      brand: { select: { id: true, name: true, defaultCurrency: true } },
+    },
+  });
+
+  return { errors: [], channel, brand, platform, store: null };
+}
+
 export async function validateImportRows(rows: ChannelImportRow[]) {
   const validRows: ChannelImportRow[] = [];
   const errorRows: ChannelImportErrorRow[] = [];
@@ -706,6 +1014,11 @@ export async function validateImportRows(rows: ChannelImportRow[]) {
     const basicErrors = validateImportRowBasics(row);
     if (basicErrors.length > 0) {
       errorRows.push({ rowNumber: row.rowNumber, errors: basicErrors, rawSummary: row.rawSummary || buildRawSummary(row) });
+      continue;
+    }
+
+    if (row.sourceType === "customer_original") {
+      validRows.push(row);
       continue;
     }
 
@@ -739,7 +1052,7 @@ export async function importChannelRows({
   const failedErrors: ChannelImportErrorRow[] = [...errorRows];
 
   for (const row of validRows) {
-    const resolved = await resolveImportRow(row);
+    const resolved = row.sourceType === "customer_original" ? await ensureCustomerImportChannel(row) : await resolveImportRow(row);
     const channel = resolved.channel;
     if (!channel || resolved.errors.length > 0 || !channel.brandId || !channel.platformId) {
       failedErrors.push({ rowNumber: row.rowNumber, errors: resolved.errors.length ? resolved.errors : ["渠道数据不完整"], rawSummary: row.rawSummary });
@@ -750,7 +1063,8 @@ export async function importChannelRows({
       const quarter = quarterFromMonth(row.month);
       const brandId = channel.brandId;
       const platformId = channel.platformId;
-      const currency = channel.store?.defaultCurrency ?? channel.brand?.defaultCurrency ?? "CNY";
+      const currency = row.currency || channel.store?.defaultCurrency || channel.brand?.defaultCurrency || "CNY";
+      const exchangeRate = Math.max(toNumber(row.exchangeRate, 1), 0) || 1;
       const countryCode = channel.store?.primaryMarketCode ?? null;
       const parsedDecisionDeadline = row.decisionDeadline ? new Date(row.decisionDeadline) : null;
       const decisionDeadline = parsedDecisionDeadline && Number.isFinite(parsedDecisionDeadline.getTime()) ? parsedDecisionDeadline : null;
@@ -788,9 +1102,9 @@ export async function importChannelRows({
               currency,
               salesAmountOriginal: toDecimal(salesAmount),
               adSpendOriginal: toDecimal(adSpend),
-              exchangeRate: new Prisma.Decimal("1"),
-              salesAmountBase: toDecimal(salesAmount),
-              adSpendBase: toDecimal(adSpend),
+              exchangeRate: new Prisma.Decimal(exchangeRate.toFixed(6)),
+              salesAmountBase: toDecimal(salesAmount * exchangeRate),
+              adSpendBase: toDecimal(adSpend * exchangeRate),
               businessBlock,
               manualRating,
               ratingSource: manualRating ? "manual" : "none",
@@ -815,9 +1129,9 @@ export async function importChannelRows({
               currency,
               salesAmountOriginal: toDecimal(salesAmount),
               adSpendOriginal: toDecimal(adSpend),
-              exchangeRate: new Prisma.Decimal("1"),
-              salesAmountBase: toDecimal(salesAmount),
-              adSpendBase: toDecimal(adSpend),
+              exchangeRate: new Prisma.Decimal(exchangeRate.toFixed(6)),
+              salesAmountBase: toDecimal(salesAmount * exchangeRate),
+              adSpendBase: toDecimal(adSpend * exchangeRate),
               businessBlock,
               manualRating,
               ratingSource: manualRating ? "manual" : "none",
