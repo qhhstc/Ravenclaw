@@ -129,7 +129,7 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
       render: (value, row) => (
         <div>
           <div className="font-medium text-[var(--foreground)]">{value || "-"}</div>
-          <div className="text-xs text-[var(--muted)]">{row.platform?.name || row.store?.defaultCurrency || "-"}</div>
+          <div className="text-xs text-[var(--muted)]">{row.channelType === "manual" && !row.store ? "原表导入" : row.platform?.name || row.store?.defaultCurrency || "-"}</div>
         </div>
       ),
     },

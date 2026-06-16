@@ -506,6 +506,10 @@ function parseAmount(value: unknown) {
   return Number.isFinite(numericValue) ? numericValue : NaN;
 }
 
+function hasExplicitValue(value: unknown) {
+  return normalizeText(value) !== "";
+}
+
 function parseCustomerSourceYearMonth(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet, fallbackYear?: number, fallbackMonth?: number) {
   const textParts: string[] = [];
   for (let rowNumber = 1; rowNumber <= Math.min(sheet.rowCount, 3); rowNumber += 1) {
@@ -773,11 +777,15 @@ export async function parseChannelImportWorkbook(fileName: string, buffer: Array
     const months = Array.from(new Set(mappings.map((item) => item.month))).sort((a, b) => a - b);
     months.forEach((mappingMonth) => {
       const monthMappings = mappings.filter((item) => item.month === mappingMonth);
+      let hasMonthInput = false;
       const weeks = WEEK_NUMBERS.map((weekNumber) => {
         const mapping = monthMappings.find((item) => item.weekNumber === weekNumber);
         if (!mapping) return { weekNumber, salesAmountOriginal: 0, adSpendOriginal: 0 };
-        const sales = parseAmount(excelRow.getCell(mapping.salesColumn).value);
-        const adSpend = parseAmount(excelRow.getCell(mapping.adColumn).value);
+        const salesCellValue = excelRow.getCell(mapping.salesColumn).value;
+        const adCellValue = excelRow.getCell(mapping.adColumn).value;
+        if (hasExplicitValue(salesCellValue) || hasExplicitValue(adCellValue)) hasMonthInput = true;
+        const sales = parseAmount(salesCellValue);
+        const adSpend = parseAmount(adCellValue);
         if (!Number.isFinite(sales)) errors.push(`${mapping.sourceLabel}销售不是数字`);
         if (!Number.isFinite(adSpend)) errors.push(`${mapping.sourceLabel}广告不是数字`);
         return {
@@ -787,8 +795,7 @@ export async function parseChannelImportWorkbook(fileName: string, buffer: Array
         };
       });
 
-      const hasMonthValue = weeks.some((week) => week.salesAmountOriginal > 0 || week.adSpendOriginal > 0);
-      if (!hasMonthValue) return;
+      if (!hasMonthInput) return;
 
       const draft: ChannelImportRow = {
         rowNumber,
@@ -942,42 +949,59 @@ async function resolveImportRow(row: ChannelImportRow) {
 }
 
 async function getImportFallbackBase() {
-  const [brand, platform] = await Promise.all([
+  const [brand, manualPlatform, fallbackPlatform] = await Promise.all([
     prisma.brand.findFirst({ where: { status: "active" }, orderBy: { id: "asc" }, select: { id: true, name: true, defaultCurrency: true } }),
+    prisma.platform.findFirst({
+      where: { status: "active", OR: [{ code: "MANUAL" }, { type: "manual" }, { name: "Manual" }] },
+      orderBy: { id: "asc" },
+      select: { id: true, name: true },
+    }),
     prisma.platform.findFirst({ where: { status: "active" }, orderBy: { id: "asc" }, select: { id: true, name: true } }),
   ]);
+  const platform = manualPlatform ?? fallbackPlatform;
   if (!brand || !platform) throw new Error("缺少可用品牌或平台，请先维护基础资料");
   return { brand, platform };
 }
 
 async function ensureCustomerImportChannel(row: ChannelImportRow) {
-  const resolved = await resolveImportRow(row);
-  if (resolved.channel && resolved.errors.length === 0 && resolved.channel.brandId && resolved.channel.platformId) return resolved;
-  if (row.sourceType !== "customer_original") return resolved;
-  if (resolved.errors.some((error) => error.includes("不唯一"))) return resolved;
+  if (row.sourceType !== "customer_original") return resolveImportRow(row);
 
   const { brand, platform } = await getImportFallbackBase();
+  const select = {
+    id: true,
+    brandId: true,
+    platformId: true,
+    storeId: true,
+    businessLine: true,
+    channelGroup: true,
+    channelType: true,
+    channelName: true,
+    sortOrder: true,
+    platform: { select: { id: true, name: true } },
+    store: { select: { id: true, name: true, primaryMarketCode: true, defaultCurrency: true, storeType: true } },
+    brand: { select: { id: true, name: true, defaultCurrency: true } },
+  } satisfies Prisma.ChannelSelect;
   const existing = await prisma.channel.findFirst({
     where: {
       businessLine: row.businessLine,
       channelName: row.channelName,
       storeId: null,
     },
-    select: {
-      id: true,
-      brandId: true,
-      platformId: true,
-      storeId: true,
-      businessLine: true,
-      channelGroup: true,
-      channelType: true,
-      channelName: true,
-      platform: { select: { id: true, name: true } },
-      store: { select: { id: true, name: true, primaryMarketCode: true, defaultCurrency: true, storeType: true } },
-      brand: { select: { id: true, name: true, defaultCurrency: true } },
-    },
+    select,
   });
-  const channel = existing ?? await prisma.channel.create({
+  const channel = existing
+    ? await prisma.channel.update({
+        where: { id: existing.id },
+        data: {
+          brandId: existing.brandId ?? brand.id,
+          platformId: existing.platformId ?? platform.id,
+          channelGroup: row.businessBlock || row.businessLine,
+          sortOrder: row.rowNumber,
+          status: "active",
+        },
+        select,
+      })
+    : await prisma.channel.create({
     data: {
       brandId: brand.id,
       platformId: platform.id,
@@ -986,21 +1010,10 @@ async function ensureCustomerImportChannel(row: ChannelImportRow) {
       channelGroup: row.businessBlock || row.businessLine,
       channelName: row.channelName,
       channelType: "manual",
+      sortOrder: row.rowNumber,
       status: "active",
     },
-    select: {
-      id: true,
-      brandId: true,
-      platformId: true,
-      storeId: true,
-      businessLine: true,
-      channelGroup: true,
-      channelType: true,
-      channelName: true,
-      platform: { select: { id: true, name: true } },
-      store: { select: { id: true, name: true, primaryMarketCode: true, defaultCurrency: true, storeType: true } },
-      brand: { select: { id: true, name: true, defaultCurrency: true } },
-    },
+    select,
   });
 
   return { errors: [], channel, brand, platform, store: null };
@@ -1050,6 +1063,40 @@ export async function importChannelRows({
   const importMonths = new Set(validRows.map((row) => `${row.year}-${String(row.month).padStart(2, "0")}`));
   let successRows = 0;
   const failedErrors: ChannelImportErrorRow[] = [...errorRows];
+  const isCustomerOriginalImport = validRows.some((row) => row.sourceType === "customer_original");
+
+  if (isCustomerOriginalImport && importMonths.size > 0) {
+    const monthPairs = Array.from(importMonths).map((importMonth) => {
+      const [year, month] = importMonth.split("-").map((value) => Number(value));
+      return { year, month };
+    });
+    const importedManualChannels = await prisma.channel.findMany({
+      where: {
+        channelType: "manual",
+        storeId: null,
+      },
+      select: { id: true },
+    });
+    const importedManualChannelIds = importedManualChannels.map((channel) => channel.id);
+    const replaceConditions = monthPairs.flatMap(({ year, month }) => [
+      ...(importedManualChannelIds.length ? [{ year, month, channelId: { in: importedManualChannelIds } }] : []),
+      ...(createdBy ? [{ year, month, createdBy }] : []),
+    ]);
+    if (replaceConditions.length > 0) {
+    await prisma.channelMetricPeriod.deleteMany({
+      where: {
+        periodType: PERIOD_TYPE_WEEK,
+          OR: replaceConditions,
+      },
+    });
+    }
+    await prisma.metricImportBatch.deleteMany({
+      where: {
+        sourceType: "customer_original",
+        importMonth: { in: Array.from(importMonths) },
+      },
+    });
+  }
 
   for (const row of validRows) {
     const resolved = row.sourceType === "customer_original" ? await ensureCustomerImportChannel(row) : await resolveImportRow(row);

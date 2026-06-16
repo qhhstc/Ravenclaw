@@ -126,7 +126,7 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
         },
       },
     },
-    orderBy: [{ businessLine: "asc" }, { brand: { name: "asc" } }, { platform: { name: "asc" } }, { store: { name: "asc" } }, { sortOrder: "asc" }],
+    orderBy: [{ sortOrder: "asc" }, { businessLine: "asc" }, { channelName: "asc" }, { brand: { name: "asc" } }, { platform: { name: "asc" } }, { store: { name: "asc" } }],
   });
 
   const metrics = await prisma.channelMetricPeriod.findMany({
@@ -236,6 +236,9 @@ export async function getMonthlyRows(filters: ChannelDataFilters) {
       remark: firstMetric?.remark ?? "",
       weeks,
     };
+  }).sort((firstRow, secondRow) => {
+    if (firstRow.sortOrder !== secondRow.sortOrder) return firstRow.sortOrder - secondRow.sortOrder;
+    return `${firstRow.businessLine}-${firstRow.channelName}`.localeCompare(`${secondRow.businessLine}-${secondRow.channelName}`, "zh-Hans-CN");
   });
 }
 
