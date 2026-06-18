@@ -46,7 +46,6 @@ export const channelTypeOptions = [
 ];
 
 export const businessLineOptions = [
-  { label: "默认业务线", value: "默认业务线" },
   { label: "Amazon", value: "Amazon" },
   { label: "Shopify独立站", value: "Shopify独立站" },
   { label: "WordPress批发", value: "WordPress批发" },

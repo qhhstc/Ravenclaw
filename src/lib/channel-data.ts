@@ -94,6 +94,9 @@ export function parseChannelDataFilters(params: URLSearchParams): ChannelDataFil
 export function buildChannelWhere(filters: ChannelDataFilters): Prisma.ChannelWhereInput {
   return {
     status: "active",
+    NOT: {
+      AND: [{ businessLine: "默认业务线" }, { channelName: "默认渠道" }],
+    },
     ...(filters.brandId ? { brandId: filters.brandId } : {}),
     ...(filters.platformId ? { platformId: filters.platformId } : {}),
     ...(filters.storeId ? { storeId: filters.storeId } : {}),

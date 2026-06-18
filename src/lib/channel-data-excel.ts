@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { Prisma } from "@prisma/client";
+import JSZip from "jszip";
 import { businessBlockLabel, inferBusinessBlock } from "@/lib/business-blocks";
 import {
   PERIOD_TYPE_WEEK,
@@ -485,6 +486,8 @@ function normalizeText(value: unknown) {
   if (typeof value === "object") {
     if ("text" in value && typeof value.text === "string") return value.text.trim();
     if ("result" in value) return normalizeText(value.result);
+    if ("formula" in value && typeof value.formula === "string") return `=${value.formula.trim()}`;
+    if ("sharedFormula" in value && typeof value.sharedFormula === "string") return `=${value.sharedFormula.trim()}`;
     if ("richText" in value && Array.isArray(value.richText)) {
       return value.richText.map((item: { text?: string }) => item.text ?? "").join("").trim();
     }
@@ -502,6 +505,15 @@ function parseInteger(value: unknown) {
 function parseAmount(value: unknown) {
   const text = normalizeText(value).replace(/,/g, "").replace(/[￥¥$€£\s]/g, "");
   if (!text) return 0;
+  if (/^=[0-9+\-*/().]+$/.test(text)) {
+    const expression = text.slice(1);
+    try {
+      const numericValue = Function(`"use strict"; return (${expression});`)();
+      return Number.isFinite(Number(numericValue)) ? Number(numericValue) : NaN;
+    } catch {
+      return NaN;
+    }
+  }
   const numericValue = Number(text);
   return Number.isFinite(numericValue) ? numericValue : NaN;
 }
@@ -620,7 +632,6 @@ function validateImportRowBasics(row: ChannelImportRow) {
     const adSpend = week?.adSpendOriginal ?? 0;
     if (!Number.isFinite(Number(salesAmount))) errors.push(`W${weekNumber}销售不是数字`);
     if (!Number.isFinite(Number(adSpend))) errors.push(`W${weekNumber}广告不是数字`);
-    if (Number(salesAmount) < 0) errors.push(`W${weekNumber}销售不能为负数`);
     if (Number(adSpend) < 0) errors.push(`W${weekNumber}广告不能为负数`);
   });
 
@@ -640,15 +651,47 @@ export function validateImportFile(file: File) {
   }
 }
 
+async function repairSharedStringsForExcelJs(buffer: ArrayBuffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  const sharedStrings = zip.file("xl/sharedStrings.xml");
+  if (!sharedStrings) return buffer;
+
+  const xml = await sharedStrings.async("string");
+  const repairedXml = xml
+    .replace(/<si><t><\/t>(?=<r>)/g, "<si>")
+    .replace(/<si><t\\s+xml:space="preserve"><\/t>(?=<r>)/g, "<si>");
+
+  if (repairedXml === xml) return buffer;
+  zip.file("xl/sharedStrings.xml", repairedXml);
+  const repaired = await zip.generateAsync({ type: "arraybuffer" });
+  return repaired;
+}
+
+async function loadImportWorkbook(buffer: ArrayBuffer) {
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.load(buffer);
+    return workbook;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("Cannot create property 'richText' on string")) throw error;
+  }
+
+  const repairedBuffer = await repairSharedStringsForExcelJs(buffer);
+  const repairedWorkbook = new ExcelJS.Workbook();
+  await repairedWorkbook.xlsx.load(repairedBuffer);
+  return repairedWorkbook;
+}
+
 export async function parseChannelImportWorkbook(fileName: string, buffer: ArrayBuffer, options: { year?: number; month?: number } = {}): Promise<ChannelImportPreview> {
   const bytes = new Uint8Array(buffer);
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
     throw new Error("文件格式不正确，请上传有效的 .xlsx 文件");
   }
 
-  const workbook = new ExcelJS.Workbook();
+  let workbook: ExcelJS.Workbook;
   try {
-    await workbook.xlsx.load(buffer);
+    workbook = await loadImportWorkbook(buffer);
   } catch {
     throw new Error("Excel 解析失败，请检查文件是否为有效的 xlsx 文件");
   }
