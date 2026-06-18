@@ -13,11 +13,11 @@ type WeeklyMetricTableProps = {
   onChange: (rows: ChannelDataRow[]) => void;
 };
 
-function EditableNumber({ value, onChange }: { value: number; onChange: (value: number | null) => void }) {
+function EditableNumber({ value, allowNegative = false, onChange }: { value: number; allowNegative?: boolean; onChange: (value: number | null) => void }) {
   return (
     <InputNumber
       size="small"
-      min={0}
+      min={allowNegative ? undefined : 0}
       precision={2}
       controls={false}
       value={value}
@@ -103,6 +103,7 @@ export default function WeeklyMetricTable({ rows, loading, onChange }: WeeklyMet
       render: (_, row) => (
         <EditableNumber
           value={getWeek(row, weekNumber).salesAmountOriginal}
+          allowNegative
           onChange={(value) => updateRow(row.channelId, (current) => withUpdatedWeek(current, weekNumber, "salesAmountOriginal", value))}
         />
       ),

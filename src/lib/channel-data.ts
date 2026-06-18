@@ -309,6 +309,10 @@ export function normalizeMoney(value: unknown) {
   return Math.max(numericValue, 0);
 }
 
+export function normalizeSignedMoney(value: unknown) {
+  return toNumber(value);
+}
+
 export function toDecimal(value: number) {
   return new Prisma.Decimal(value.toFixed(2));
 }

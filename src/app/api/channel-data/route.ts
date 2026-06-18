@@ -6,6 +6,7 @@ import {
   WEEK_NUMBERS,
   getMonthlyRows,
   normalizeMoney,
+  normalizeSignedMoney,
   parseChannelDataFilters,
   quarterFromMonth,
   toDecimal,
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
 
         return WEEK_NUMBERS.map((weekNumber) => {
           const week = weeks.find((item) => item.weekNumber === weekNumber);
-          const salesAmount = normalizeMoney(week?.salesAmountOriginal);
+          const salesAmount = normalizeSignedMoney(week?.salesAmountOriginal);
           const adSpend = normalizeMoney(week?.adSpendOriginal);
           const salesBase = salesAmount * exchangeRate;
           const adSpendBase = adSpend * exchangeRate;

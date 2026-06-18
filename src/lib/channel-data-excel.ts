@@ -7,6 +7,7 @@ import {
   WEEK_NUMBERS,
   getMonthlyRows,
   normalizeMoney,
+  normalizeSignedMoney,
   quarterFromMonth,
   toDecimal,
   toNumber,
@@ -1175,7 +1176,7 @@ export async function importChannelRows({
       await prisma.$transaction(
         WEEK_NUMBERS.map((weekNumber) => {
           const week = row.weeks.find((item) => item.weekNumber === weekNumber);
-          const salesAmount = normalizeMoney(week?.salesAmountOriginal);
+          const salesAmount = normalizeSignedMoney(week?.salesAmountOriginal);
           const adSpend = normalizeMoney(week?.adSpendOriginal);
           return prisma.channelMetricPeriod.upsert({
             where: {
