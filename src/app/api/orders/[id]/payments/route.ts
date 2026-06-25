@@ -4,7 +4,7 @@ import { decimal } from "@/lib/order-profit-calculations";
 import { numberValue, optionalDate, positiveMoney, syncOrderPaymentSummary, textValue } from "@/lib/order-records";
 import { apiError, orderDetailInclude, toNumber } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
-import { canEditOrderPayments, canViewAllOrders, forbidden, requireApiSession } from "@/lib/permissions";
+import { canEditOrderPayments, canViewAllOrders, forbidden, requireApiSession, ApiAuthError } from "@/lib/permissions";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -33,16 +33,16 @@ export async function GET(_request: NextRequest, context: Context) {
 export async function POST(request: NextRequest, context: Context) {
   try {
     const session = await requireApiSession();
-    if (!canEditOrderPayments(session.role)) return forbidden("当前角色不能登记收款");
     const { id } = await context.params;
     const orderId = Number(id);
     const input = (await request.json()) as Record<string, unknown>;
     const item = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        select: { id: true, salesAmount: true, totalAmount: true, paidAmount: true, currency: true, exchangeRate: true },
+        select: { id: true, salesAmount: true, totalAmount: true, paidAmount: true, currency: true, exchangeRate: true, createdBy: true, salespersonId: true, orderStatus: true },
       });
       if (!order) throw new Error("订单不存在或已被删除");
+      if (!canEditOrderPayments(session.role, order, session.userId)) throw new ApiAuthError("当前角色不能登记收款", 403);
 
       const amount = positiveMoney(input.amount, "收款金额");
       const existing = await tx.orderPayment.aggregate({ where: { orderId, status: { not: "void" } }, _sum: { amount: true } });

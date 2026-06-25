@@ -38,7 +38,7 @@ export function canEditOrder(role?: string | null, order?: { createdBy?: number 
   if (role === "admin") return true;
   if (role === "sales") {
     const ownOrder = order && userId && (order.createdBy === userId || order.salespersonId === userId);
-    return Boolean(ownOrder && !["completed", "cancelled", "refunded"].includes(order.orderStatus ?? ""));
+    return Boolean(ownOrder && !["cancelled", "refunded"].includes(order.orderStatus ?? ""));
   }
   return false;
 }
@@ -51,8 +51,14 @@ export function canEditOrderItemCosts(role?: string | null) {
   return canEditOrderCosts(role);
 }
 
-export function canEditOrderPayments(role?: string | null) {
-  return ["admin", "finance"].includes(role ?? "");
+export function canEditOrderPayments(
+  role?: string | null,
+  order?: { createdBy?: number | null; salespersonId?: number | null; orderStatus?: string | null },
+  userId?: number,
+) {
+  if (["admin", "finance"].includes(role ?? "")) return true;
+  if (role === "sales" && order) return canEditOrder(role, order, userId);
+  return false;
 }
 
 export function canDeleteOrder(role?: string | null) {

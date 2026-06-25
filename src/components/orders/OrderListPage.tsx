@@ -283,7 +283,7 @@ export default function OrderListPage() {
     if (currentRole === "admin") return true;
     if (currentRole !== "sales" || !currentUserId) return false;
     const ownOrder = row.createdBy === currentUserId || row.salespersonId === currentUserId;
-    return ownOrder && !["completed", "cancelled", "refunded"].includes(row.orderStatus);
+    return ownOrder && !["cancelled", "refunded"].includes(row.orderStatus);
   }
 
   const columns: ColumnsType<OrderRecord> = [
@@ -398,7 +398,7 @@ export default function OrderListPage() {
         users={users}
         products={products}
         canEditCosts={["admin", "finance", "sales"].includes(currentRole)}
-        canEditPayments={["admin", "finance"].includes(currentRole)}
+        canEditPayments={["admin", "finance", "sales"].includes(currentRole)}
         onCancel={() => { setModalOpen(false); setEditing(null); }}
         onSubmit={saveOrder}
       />

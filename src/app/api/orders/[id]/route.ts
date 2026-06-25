@@ -83,7 +83,7 @@ export async function PATCH(request: NextRequest, context: Context) {
       });
       if (!existing) throw new Error("订单不存在或已被删除");
       if (!canEditOrder(session.role, existing, session.userId)) throw new ApiAuthError("只能编辑自己负责且未关闭的订单", 403);
-      const normalized = normalizeOrderInput(canEditOrderPayments(session.role) ? input : withPreservedPaymentInput(input, existing), existing.orderNo, session);
+      const normalized = normalizeOrderInput(canEditOrderPayments(session.role, existing, session.userId) ? input : withPreservedPaymentInput(input, existing), existing.orderNo, session);
       const customerSync = await syncOrderCustomer(
         tx,
         {
@@ -116,7 +116,7 @@ export async function PATCH(request: NextRequest, context: Context) {
       });
       if (existing._count.payments > 0) {
         await syncOrderPaymentSummary(tx, Number(id));
-      } else if (canEditOrderPayments(session.role) && toNumber(normalized.data.paidAmount) > 0) {
+      } else if (canEditOrderPayments(session.role, existing, session.userId) && toNumber(normalized.data.paidAmount) > 0) {
         await tx.orderPayment.create({
           data: {
             orderId: Number(id),

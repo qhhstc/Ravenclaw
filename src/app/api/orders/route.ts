@@ -36,10 +36,11 @@ export async function POST(request: NextRequest) {
     const input = (await request.json()) as Record<string, unknown>;
     const session = await requireApiSession();
     if (!canCreateOrder(session.role)) return forbidden("当前角色不能新增订单");
+    const ownerContext = { createdBy: session.userId, salespersonId: session.userId, orderStatus: typeof input.orderStatus === "string" ? input.orderStatus : null };
     const item = await prisma.$transaction(async (tx) => {
       const manualOrderNo = typeof input.orderNo === "string" && input.orderNo.trim() ? input.orderNo.trim() : null;
       const orderNo = manualOrderNo ?? await nextOrderNo(tx);
-      const normalized = normalizeOrderInput({ ...(canEditOrderPayments(session.role) ? input : withoutPaymentInput(input)), createdBy: session.userId }, orderNo, session);
+      const normalized = normalizeOrderInput({ ...(canEditOrderPayments(session.role, ownerContext, session.userId) ? input : withoutPaymentInput(input)), createdBy: session.userId }, orderNo, session);
       const customerSync = await syncOrderCustomer(
         tx,
         {
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
           items: { create: normalized.items },
           costs: { create: normalized.costs },
           payments:
-            canEditOrderPayments(session.role) && toNumber(normalized.data.paidAmount) > 0
+            canEditOrderPayments(session.role, ownerContext, session.userId) && toNumber(normalized.data.paidAmount) > 0
               ? {
                   create: {
                     paymentDate: normalized.data.orderDate,

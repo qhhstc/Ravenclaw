@@ -211,7 +211,9 @@ export default function OrderDetailPage({ orderId }: Props) {
     currentRole === "admin" ||
     (currentRole === "sales" &&
       Boolean(currentUserId && order && (order.createdBy === currentUserId || order.salespersonId === currentUserId)) &&
-      Boolean(order && !["completed", "cancelled", "refunded"].includes(order.orderStatus)));
+      Boolean(order && !["cancelled", "refunded"].includes(order.orderStatus)));
+
+  const canEditCurrentOrderPayments = ["admin", "finance"].includes(currentRole) || canEditCurrentOrder;
 
   if (!order && !loading) return <Empty description="订单不存在或已被删除" />;
 
@@ -321,7 +323,7 @@ export default function OrderDetailPage({ orderId }: Props) {
                 { key: "source", label: "来源信息", children: <OrderSourcePanel order={order} /> },
                 { key: "statusLogs", label: "状态记录", children: <OrderStatusLogPanel orderId={order.id} currentStatus={order.orderStatus} logs={order.statusLogs ?? []} canWrite={canEditCurrentOrder} onChanged={loadOrder} /> },
                 { key: "attachments", label: "附件资料", children: <OrderAttachmentPanel orderId={order.id} /> },
-                { key: "payments", label: "收款记录", children: <OrderPaymentPanel order={order} canWrite={["admin", "finance"].includes(currentRole)} onChanged={loadOrder} /> },
+                { key: "payments", label: "收款记录", children: <OrderPaymentPanel order={order} canWrite={canEditCurrentOrderPayments} onChanged={loadOrder} /> },
                 { key: "shipments", label: "发货记录", children: <OrderShipmentPanel order={order} canWrite={canEditCurrentOrder} onChanged={loadOrder} /> },
               ]}
             />
@@ -344,7 +346,7 @@ export default function OrderDetailPage({ orderId }: Props) {
               users={users}
               products={products}
               canEditCosts={["admin", "finance", "sales"].includes(currentRole)}
-              canEditPayments={["admin", "finance"].includes(currentRole)}
+              canEditPayments={canEditCurrentOrderPayments}
               onCancel={() => setModalOpen(false)}
               onSubmit={saveOrder}
             />
