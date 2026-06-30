@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const session = await requireApiSession();
     if (!canExport(session.role)) return forbidden("当前角色不能导出订单");
     const workbook = await createOrderListWorkbook(request.nextUrl.searchParams, session);
-    return workbookToResponse(workbook, orderExportFileName(request.nextUrl.searchParams));
+    return workbookToResponse(workbook, orderExportFileName());
   } catch (error) {
     return apiError(error, "订单导出失败");
   }
