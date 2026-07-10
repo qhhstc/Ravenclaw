@@ -4,6 +4,7 @@ import { DeleteOutlined, EditOutlined, LinkOutlined, PlusOutlined, ReloadOutline
 import { Alert, Button, Card, DatePicker, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Statistic, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import dayjs from "dayjs";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 type Option = { label: string; value: string | number };
@@ -147,6 +148,7 @@ function toDateValue(value?: string | null) {
 }
 
 export default function InfluencerCollaborationPage() {
+  const router = useRouter();
   const [form] = Form.useForm();
   const [filters, setFilters] = useState<Filters>({});
   const [items, setItems] = useState<InfluencerRecord[]>([]);
@@ -365,6 +367,27 @@ export default function InfluencerCollaborationPage() {
           <Button icon={<ReloadOutlined />} loading={loading} onClick={loadData}>刷新</Button>
           {canEdit ? <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增合作</Button> : null}
         </Space>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 16 }}>
+        <Card hoverable onClick={() => router.push("/influencers/discovery")} styles={{ body: { padding: 16 } }}>
+          <div className="flex items-center gap-3">
+            <SearchOutlined style={{ fontSize: 22, color: "var(--chart-blue)" }} />
+            <div>
+              <div className="font-medium">红人发现</div>
+              <Typography.Text type="secondary" className="text-xs">输入品牌官网，AI 生成品牌/红人画像与推荐关键词，找到候选红人。</Typography.Text>
+            </div>
+          </div>
+        </Card>
+        <Card hoverable onClick={() => router.push("/influencers/candidates")} styles={{ body: { padding: 16 } }}>
+          <div className="flex items-center gap-3">
+            <PlusOutlined style={{ fontSize: 22, color: "var(--success)" }} />
+            <div>
+              <div className="font-medium">候选红人库</div>
+              <Typography.Text type="secondary" className="text-xs">管理候选红人、CSV 导入、可解释评分与排序，一键转为合作记录。</Typography.Text>
+            </div>
+          </div>
+        </Card>
       </div>
 
       <Alert

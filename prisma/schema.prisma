@@ -27,6 +27,7 @@ model User {
   orderShipments OrderShipment[]   @relation("OrderShipmentCreator")
   attachments   Attachment[]       @relation("AttachmentUploader")
   influencerCollaborations InfluencerCollaboration[] @relation("InfluencerOwner")
+  discoveryRuns InfluencerDiscoveryRun[] @relation("DiscoveryRunCreator")
 }
 
 model Brand {
@@ -876,4 +877,82 @@ model OrderCost {
   @@unique([orderId, costType])
   @@index([orderId])
   @@index([costType])
+}
+
+// 红人发现与评分 V1 —— 输入网站 URL → AI 分析 → 生成画像/关键词 → 导入候选红人 → 可解释评分 → 转合作
+model InfluencerDiscoveryRun {
+  id              Int      @id @default(autoincrement())
+  websiteUrl      String
+  websiteDomain   String?
+  status          String   @default("pending") // pending | analyzing | completed | failed
+  source          String   @default("website")
+  brandName       String?
+  brandSummary    String?  @db.Text
+  productSummary  String?  @db.Text
+  audienceSummary String?  @db.Text
+  creatorPersona  String?  @db.Text
+  keywordsJson    Json?
+  analysisJson    Json?
+  errorMessage    String?  @db.Text
+  createdById     Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       User?    @relation("DiscoveryRunCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  candidates      InfluencerCandidate[]
+
+  @@index([status])
+  @@index([createdById])
+}
+
+model InfluencerCandidate {
+  id                  Int      @id @default(autoincrement())
+  discoveryRunId      Int?
+  platform            String?
+  handle              String?
+  displayName         String?
+  profileUrl          String?
+  email               String?
+  country             String?
+  language            String?
+  followers           Int?
+  avgViews            Int?
+  engagementRate      Decimal? @db.Decimal(10, 4)
+  avgLikes            Int?
+  avgComments         Int?
+  recentPostCount     Int?
+  nicheTagsJson       Json?
+  matchedKeywordsJson Json?
+  audienceJson        Json?
+  contentSamplesJson  Json?
+  rawDataJson         Json?
+  score               Int?
+  tier                String? // A | B | C | D
+  recommendedOffer    String? // paid | gifted | affiliate | nurture | reject
+  recommendedProducts String?  @db.Text
+  scoreDetailsJson    Json?
+  aiReason            String?  @db.Text
+  riskNotes           String?  @db.Text
+  status              String   @default("new") // new | scored | approved | rejected | contacted | collaboration | blacklisted
+  source              String? // manual | csv | website_analysis | youtube_api | imported
+  notes               String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  discoveryRun        InfluencerDiscoveryRun? @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+
+  @@index([discoveryRunId])
+  @@index([platform])
+  @@index([score])
+  @@index([tier])
+  @@index([status])
+  @@index([profileUrl])
+}
+
+model InfluencerScoringRule {
+  id          Int      @id @default(autoincrement())
+  name        String
+  isDefault   Boolean  @default(false)
+  ruleJson    Json
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

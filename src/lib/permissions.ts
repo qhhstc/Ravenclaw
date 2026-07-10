@@ -97,6 +97,11 @@ export function canManageInfluencers(role?: string | null) {
   return ["admin", "sales"].includes(role ?? "");
 }
 
+// 红人发现与评分:团队共享,admin/sales 可写(建 run/分析/评分/导入/转合作),finance/viewer 只读
+export function canManageInfluencerDiscovery(role?: string | null) {
+  return ["admin", "sales"].includes(role ?? "");
+}
+
 export function canManageAccounts(role?: string | null) {
   return role === "admin";
 }
