@@ -70,6 +70,11 @@ async function listAllRecords(token: string, appToken: string, tableId: string) 
   return records;
 }
 
+async function listFieldNames(token: string, appToken: string, tableId: string) {
+  const data = await feishuRequest<{ items?: Array<{ field_name?: string }> }>(token, `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/fields?page_size=100`);
+  return new Set((data?.items ?? []).map((field) => field.field_name).filter((name): name is string => Boolean(name)));
+}
+
 function rowLabel(fields: Record<string, unknown>) {
   return `${textField(fields, "年份")}-${textField(fields, "月份")} / ${textField(fields, "渠道编码") || textField(fields, "渠道")}`;
 }
@@ -78,6 +83,7 @@ export async function syncFeishuChannelData() {
   const appToken = requiredEnv("FEISHU_BITABLE_APP_TOKEN");
   const tableId = requiredEnv("FEISHU_BITABLE_TABLE_ID");
   const token = await getTenantAccessToken();
+  const fieldNames = await listFieldNames(token, appToken, tableId);
   const records = await listAllRecords(token, appToken, tableId);
   const errors: SyncError[] = [];
   const validRows: Array<{ record: FeishuRecord; channelId: number; year: number; month: number; fields: Record<string, unknown> }> = [];
@@ -139,8 +145,26 @@ export async function syncFeishuChannelData() {
   const now = Date.now();
   const statusUpdates = records.filter((record) => record.record_id).map((record) => {
     const error = errors.find((item) => item.recordId === record.record_id);
-    return { record_id: record.record_id as string, fields: { 同步状态: error ? "失败" : syncedRecordIds.includes(record.record_id as string) ? "已同步" : "跳过", 最后同步时间: now, ...(error ? { 同步错误: error.message } : { 同步错误: null }) } };
-  });
+    const fields = record.fields ?? {};
+    const nextFields: Record<string, unknown> = {};
+    const add = (name: string, value: unknown) => { if (fieldNames.has(name)) nextFields[name] = value; };
+    add("同步状态", error ? "失败" : syncedRecordIds.includes(record.record_id as string) ? "已同步" : "跳过");
+    add("最后同步时间", now);
+    add("同步错误", error ? error.message : null);
+    const rate = Math.max(numberField(fields, "汇率", 1), 0) || 1;
+    const weekly = WEEK_NUMBERS.map((weekNumber) => ({ sales: numberField(fields, `W${weekNumber}销售`), ad: Math.max(numberField(fields, `W${weekNumber}广告`), 0) }));
+    const sales = weekly.reduce((sum, week) => sum + week.sales, 0);
+    const adSpend = weekly.reduce((sum, week) => sum + week.ad, 0);
+    add("月销售额(CNY)", sales * rate);
+    add("月广告费(CNY)", adSpend * rate);
+    add("月ROI", adSpend > 0 ? sales / adSpend : 0);
+    add("月广告占销", sales > 0 ? `${((adSpend / sales) * 100).toFixed(1)}%` : "—");
+    const active = weekly.filter((week) => week.sales !== 0 || week.ad !== 0);
+    const current = active.at(-1);
+    const previous = active.at(-2);
+    add("销售趋势", !current ? "无数据" : !previous ? "新增" : current.sales > previous.sales ? "上涨" : current.sales < previous.sales ? "下降" : "持平");
+    return { record_id: record.record_id as string, fields: nextFields };
+  }).filter((record) => Object.keys(record.fields).length > 0);
   for (let index = 0; index < statusUpdates.length; index += 500) {
     await feishuRequest(token, `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/batch_update`, { method: "POST", body: JSON.stringify({ records: statusUpdates.slice(index, index + 500) }) });
   }
