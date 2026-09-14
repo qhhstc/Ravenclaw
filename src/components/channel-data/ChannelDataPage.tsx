@@ -65,6 +65,7 @@ export default function ChannelDataPage() {
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [currentRole, setCurrentRole] = useState("viewer");
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [feishuSyncing, setFeishuSyncing] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   // 编辑防丢失:记录最近一次 fetch/save 后的快照,用于判断是否有未保存改动
   const pristineRef = useRef<string>("[]");
@@ -264,6 +265,27 @@ export default function ChannelDataPage() {
 
   const aiConfigured = Boolean(aiStatus?.enabled && aiStatus.modelConfigured && (aiStatus.tokenConfigured || aiStatus.apiKeyConfigured));
   const canRunAiAnalysis = currentRole === "admin";
+  const canRunFeishuSync = currentRole === "admin";
+
+  async function syncFromFeishu() {
+    if (dirty) {
+      message.warning("有未保存的手工编辑，请先保存后再从飞书同步，否则编辑会被覆盖");
+      return;
+    }
+    setFeishuSyncing(true);
+    try {
+      const response = await fetch("/api/channel-data/feishu-sync", { method: "POST" });
+      const data = (await response.json()) as { message?: string; totalRecords?: number; successRows?: number; failedRows?: number; skippedRows?: number };
+      if (!response.ok) throw new Error(data.message || "飞书同步失败");
+      if (data.failedRows) message.warning(`飞书同步完成：成功 ${data.successRows ?? 0} 行，失败 ${data.failedRows} 行，跳过 ${data.skippedRows ?? 0} 行`);
+      else message.success(`飞书同步完成：成功 ${data.successRows ?? 0} 行，共读取 ${data.totalRecords ?? 0} 行`);
+      await fetchChannelData(filters);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "飞书同步失败");
+    } finally {
+      setFeishuSyncing(false);
+    }
+  }
 
   async function analyzeCurrentRows() {
     if (!canRunAiAnalysis) {
@@ -357,6 +379,9 @@ export default function ChannelDataPage() {
           onImport={() => setImportOpen(true)}
           onExport={exportExcel}
           onAnalyzeAi={analyzeCurrentRows}
+          feishuSyncing={feishuSyncing}
+          canRunFeishuSync={canRunFeishuSync}
+          onFeishuSync={syncFromFeishu}
         />
       </Spin>
 
