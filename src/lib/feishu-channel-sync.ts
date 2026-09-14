@@ -46,11 +46,14 @@ async function feishuRequest<T>(token: string, path: string, init?: RequestInit)
 async function getTenantAccessToken() {
   const appId = requiredEnv("FEISHU_APP_ID");
   const appSecret = requiredEnv("FEISHU_APP_SECRET");
-  const data = await feishuRequest<{ tenant_access_token?: string }>("", "/auth/v3/tenant_access_token/internal", {
+  const response = await fetch(`${FEISHU_BASE_URL}/auth/v3/tenant_access_token/internal`, {
     method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
   });
-  if (!data?.tenant_access_token) throw new Error("飞书未返回 tenant_access_token");
+  const data = (await response.json().catch(() => ({}))) as { code?: number; msg?: string; tenant_access_token?: string };
+  if (!response.ok || data.code !== 0) throw new Error(data.msg || `飞书鉴权失败（${response.status}）`);
+  if (!data.tenant_access_token) throw new Error("飞书未返回 tenant_access_token");
   return data.tenant_access_token;
 }
 
