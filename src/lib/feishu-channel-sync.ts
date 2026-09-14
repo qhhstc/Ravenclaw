@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
-import { inferBusinessBlock } from "@/lib/business-blocks";
-import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, toDecimal, toNumber } from "@/lib/channel-data";
+import { businessBlockLabel, inferBusinessBlock } from "@/lib/business-blocks";
+import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, buildChannelWhere, toDecimal, toNumber } from "@/lib/channel-data";
 import { prisma } from "@/lib/prisma";
 
 const FEISHU_BASE_URL = "https://open.feishu.cn/open-apis";
@@ -169,4 +169,47 @@ export async function syncFeishuChannelData() {
     await feishuRequest(token, `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/batch_update`, { method: "POST", body: JSON.stringify({ records: statusUpdates.slice(index, index + 500) }) });
   }
   return { totalRecords: records.length, successRows: syncedRecordIds.length, failedRows: errors.length, skippedRows: records.length - syncedRecordIds.length - errors.length, errors: errors.slice(0, 50), syncedAt: new Date(now).toISOString() };
+}
+
+export async function prepareFeishuChannelMonth(year: number, month: number) {
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new Error("年份不正确");
+  if (!Number.isInteger(month) || month < 1 || month > 12) throw new Error("月份不正确");
+  const appToken = requiredEnv("FEISHU_BITABLE_APP_TOKEN");
+  const tableId = requiredEnv("FEISHU_BITABLE_TABLE_ID");
+  const token = await getTenantAccessToken();
+  const records = await listAllRecords(token, appToken, tableId);
+  const existing = new Set(records.map((record) => `${Math.trunc(numberField(record.fields ?? {}, "年份"))}-${Math.trunc(numberField(record.fields ?? {}, "月份"))}-${textField(record.fields ?? {}, "渠道编码")}`));
+  const channels = await prisma.channel.findMany({
+    where: buildChannelWhere({ year, month }),
+    include: { brand: { select: { defaultCurrency: true } }, platform: { select: { name: true } }, store: { select: { defaultCurrency: true, storeType: true } } },
+    orderBy: [{ sortOrder: "asc" }, { businessLine: "asc" }, { channelName: "asc" }],
+  });
+  const rows = channels.filter((channel) => !existing.has(`${year}-${month}-CH-${String(channel.id).padStart(4, "0")}`)).map((channel) => ({
+    fields: {
+      渠道: channel.channelName,
+      年份: year,
+      月份: month,
+      板块: businessBlockLabel(inferBusinessBlock({ businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType })),
+      二级: channel.businessLine,
+      负责人: "",
+      渠道编码: `CH-${String(channel.id).padStart(4, "0")}`,
+      币种: channel.store?.defaultCurrency || channel.brand?.defaultCurrency || "CNY",
+      汇率: 1,
+      备注: "",
+      ...Object.fromEntries(WEEK_NUMBERS.flatMap((weekNumber) => [[`W${weekNumber}销售`, 0], [`W${weekNumber}广告`, 0]])),
+      "月销售额(CNY)": 0,
+      "月广告费(CNY)": 0,
+      月ROI: 0,
+      月广告占销: "—",
+      "季销售额(CNY)": 0,
+      "季广告费(CNY)": 0,
+      季ROI: 0,
+      季广告占销: "—",
+      销售趋势: "无数据",
+    },
+  }));
+  for (let index = 0; index < rows.length; index += 500) {
+    await feishuRequest(token, `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/batch_create`, { method: "POST", body: JSON.stringify({ records: rows.slice(index, index + 500) }) });
+  }
+  return { year, month, totalChannels: channels.length, createdRows: rows.length, skippedRows: channels.length - rows.length };
 }

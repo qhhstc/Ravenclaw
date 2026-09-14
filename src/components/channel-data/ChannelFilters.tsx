@@ -1,6 +1,6 @@
 "use client";
 
-import { CloudSyncOutlined, DownloadOutlined, FileExcelOutlined, ReloadOutlined, RobotOutlined, SaveOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
+import { CloudSyncOutlined, DownloadOutlined, FileExcelOutlined, PlusOutlined, ReloadOutlined, RobotOutlined, SaveOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import { Button, Card, DatePicker, Form, Select, Space } from "antd";
 import dayjs from "dayjs";
 import { useEffect } from "react";
@@ -25,6 +25,8 @@ type ChannelFiltersProps = {
   feishuSyncing?: boolean;
   canRunFeishuSync?: boolean;
   onFeishuSync?: () => void;
+  preparingFeishu?: boolean;
+  onPrepareFeishu?: () => void;
 };
 
 type FormValues = {
@@ -54,6 +56,8 @@ export default function ChannelFilters({
   feishuSyncing,
   canRunFeishuSync,
   onFeishuSync,
+  preparingFeishu,
+  onPrepareFeishu,
 }: ChannelFiltersProps) {
   const [form] = Form.useForm<FormValues>();
 
@@ -133,6 +137,11 @@ export default function ChannelFilters({
             {canRunFeishuSync ? (
               <Button icon={<CloudSyncOutlined />} loading={feishuSyncing} onClick={onFeishuSync}>
                 从飞书同步
+              </Button>
+            ) : null}
+            {canRunFeishuSync ? (
+              <Button icon={<PlusOutlined />} loading={preparingFeishu} onClick={onPrepareFeishu}>
+                生成本月填报
               </Button>
             ) : null}
             <Button icon={<FileExcelOutlined />} loading={exporting} onClick={onDownloadTemplate}>

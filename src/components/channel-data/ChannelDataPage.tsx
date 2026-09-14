@@ -66,6 +66,7 @@ export default function ChannelDataPage() {
   const [currentRole, setCurrentRole] = useState("viewer");
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [feishuSyncing, setFeishuSyncing] = useState(false);
+  const [preparingFeishu, setPreparingFeishu] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   // 编辑防丢失:记录最近一次 fetch/save 后的快照,用于判断是否有未保存改动
   const pristineRef = useRef<string>("[]");
@@ -287,6 +288,20 @@ export default function ChannelDataPage() {
     }
   }
 
+  async function prepareFeishuMonth() {
+    setPreparingFeishu(true);
+    try {
+      const response = await fetch("/api/channel-data/feishu-prepare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year: filters.year, month: filters.month }) });
+      const data = (await response.json()) as { message?: string; createdRows?: number; skippedRows?: number };
+      if (!response.ok) throw new Error(data.message || "生成填报行失败");
+      message.success(data.createdRows ? `已生成 ${data.createdRows} 条本月填报行，跳过 ${data.skippedRows ?? 0} 条已有记录` : `本月填报行已存在，共跳过 ${data.skippedRows ?? 0} 条`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "生成填报行失败");
+    } finally {
+      setPreparingFeishu(false);
+    }
+  }
+
   async function analyzeCurrentRows() {
     if (!canRunAiAnalysis) {
       message.warning("只有管理员可以触发渠道 AI 分析");
@@ -382,6 +397,8 @@ export default function ChannelDataPage() {
           feishuSyncing={feishuSyncing}
           canRunFeishuSync={canRunFeishuSync}
           onFeishuSync={syncFromFeishu}
+          preparingFeishu={preparingFeishu}
+          onPrepareFeishu={prepareFeishuMonth}
         />
       </Spin>
 
