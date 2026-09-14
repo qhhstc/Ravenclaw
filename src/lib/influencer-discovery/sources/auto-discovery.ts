@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { scoreCandidateById } from "@/lib/influencer-discovery/score-runner";
-import type { KeywordPool, WebsiteAnalysis } from "@/lib/influencer-discovery/types";
+import { AUTO_IMPORT_RELEVANCE_THRESHOLD, type KeywordPool, type WebsiteAnalysis } from "@/lib/influencer-discovery/types";
 import { ExternalSourceError, type ExternalCandidatePreview } from "./types";
 import { getYoutubeStatus, searchYoutubeCreators } from "./youtube";
 import { buildCandidateCreateInput, RunDedup } from "./candidate-import";
@@ -11,6 +11,8 @@ export type AutoDiscoverySummary = {
   enabled: boolean;
   searchedKeywords: string[];
   found: number;
+  qualified: number;
+  filtered: number;
   created: number;
   skipped: number;
   scored: number;
@@ -18,14 +20,17 @@ export type AutoDiscoverySummary = {
   ranAt?: string;
 };
 
+export type RelevanceResult = {
+  relevanceScore: number;
+  reasons: string[];
+  penalties: string[];
+  shouldImport: boolean;
+};
+
 // 加权/降权词表
 const BOOST_TERMS = ["merch", "unboxing", "haul", "review", "figure", "plush", "blind box", "cosplay", "genshin", "honkai", "zenless", "wuthering waves"];
 const GENERIC_TERMS = ["anime", "game", "cute", "gift", "official", "best"];
 const INTENT_TERMS = ["unboxing", "haul", "review", "merch", "collection", "blind box"];
-// 明显要硬排除的官方/非红人内容
-const HARD_EXCLUDE = ["official trailer", "music video", "mv"];
-// 降权(不硬删)的内容类型
-const SOFT_DEMOTE = ["reaction", "gameplay only", "gameplay", "news", "amv"];
 
 function isGeneric(kw: string) {
   const lower = kw.toLowerCase().trim();
@@ -48,6 +53,42 @@ function keywordScore(kw: string): number {
   // 泛词降权
   if (isGeneric(kw)) score -= 20;
   return score;
+}
+
+const RELEVANCE_CONTENT_TERMS = ["merch", "unboxing", "haul", "review", "figure", "plush", "blind box"];
+const RELEVANCE_CREATOR_TERMS = ["collector", "review", "unboxing", "haul"];
+
+// 候选相关性预评分(V1.2):0-100,决定自动发现是否导入。手动搜索不受此限制。
+export function evaluateYoutubeCandidateRelevance(candidate: ExternalCandidatePreview, analysis: WebsiteAnalysis): RelevanceResult {
+  const title = (candidate.displayName ?? "").toLowerCase();
+  const handle = (candidate.handle ?? "").toLowerCase();
+  const sampleTitles = (candidate.contentSamples ?? []).map((s) => (s.title ?? "").toLowerCase()).join(" ");
+  const haystack = `${title} ${handle} ${sampleTitles}`;
+  const reasons: string[] = [];
+  const penalties: string[] = [];
+  let score = 0;
+
+  // 加分
+  if (RELEVANCE_CONTENT_TERMS.some((t) => sampleTitles.includes(t))) { score += 20; reasons.push("样本视频含 merch/unboxing/haul 等意图词"); }
+  const ipHit = (analysis.mainIps ?? []).some((ip) => ip && haystack.includes(ip.toLowerCase()));
+  if (ipHit) { score += 20; reasons.push("命中品牌主要 IP"); }
+  const typeHit = (analysis.mainProductTypes ?? []).some((t) => t && haystack.includes(t.toLowerCase()));
+  if (typeHit) { score += 15; reasons.push("命中主打品类"); }
+  if (RELEVANCE_CREATOR_TERMS.some((t) => haystack.includes(t))) { score += 15; reasons.push("频道/视频含 collector/review 等红人特征"); }
+  if ((candidate.avgViews ?? 0) > 1000) { score += 10; reasons.push("平均播放 > 1000"); }
+  if (candidate.followers != null) { score += 5; reasons.push("有粉丝数据"); }
+
+  // 扣分
+  if (/\bofficial\b/.test(haystack)) { score -= 30; penalties.push("疑似官方频道"); }
+  if (/trailer|music video|\bmv\b/.test(haystack)) { score -= 30; penalties.push("含 trailer/MV"); }
+  if (/gameplay/.test(haystack)) { score -= 20; penalties.push("纯 gameplay"); }
+  if (/reaction/.test(haystack)) { score -= 15; penalties.push("reaction 内容"); }
+  if (/\bamv\b/.test(haystack)) { score -= 20; penalties.push("AMV 剪辑"); }
+  if (/news|leak/.test(haystack)) { score -= 20; penalties.push("news/leak 内容"); }
+  if (!RELEVANCE_CONTENT_TERMS.some((t) => haystack.includes(t))) { score -= 25; penalties.push("完全无 merch/unboxing/figure 等相关词"); }
+
+  const relevanceScore = Math.max(0, Math.min(100, score));
+  return { relevanceScore, reasons, penalties, shouldImport: relevanceScore >= AUTO_IMPORT_RELEVANCE_THRESHOLD };
 }
 
 // keywordPool 缺失时从 analysis 其他字段兜底拼词池
@@ -74,10 +115,21 @@ function fallbackKeywords(analysis: WebsiteAnalysis, runKeywords: string[]): str
 export function selectAutoSearchKeywords(analysis: WebsiteAnalysis, maxKeywords = 5, runKeywords: string[] = []): string[] {
   const pool: KeywordPool | undefined = analysis.keywordPool;
   const candidates: string[] = [];
-  if (pool && (pool.highIntentKeywords.length || pool.ipKeywords.length)) {
+
+  // 1) AI 精选的 autoSearchKeywords 最优先
+  if (analysis.autoSearchKeywords?.length) candidates.push(...analysis.autoSearchKeywords);
+
+  if (pool && (pool.highIntentKeywords.length || pool.ipKeywords.length || (pool.productKeywords?.length ?? 0))) {
+    // 2) highIntent
     candidates.push(...pool.highIntentKeywords);
+    // 3) IP × product 组合生成高意图长尾
+    const ips = pool.ipKeywords.slice(0, 4);
+    const combos = ["figure unboxing", "merch haul", "plush review"];
+    for (const ip of ips) {
+      for (const c of combos) candidates.push(`${ip} ${c}`);
+    }
     candidates.push(...pool.ipKeywords.filter((k) => BOOST_TERMS.some((t) => k.toLowerCase().includes(t))));
-    candidates.push(...pool.ipKeywords);
+    candidates.push(...(pool.productKeywords ?? []));
     candidates.push(...(analysis.keywords ?? []));
   } else {
     candidates.push(...fallbackKeywords(analysis, runKeywords));
@@ -101,32 +153,7 @@ export function selectAutoSearchKeywords(analysis: WebsiteAnalysis, maxKeywords 
     .map((x) => x.k);
 }
 
-// 轻量质量过滤:硬排除官方/trailer/MV;命中判定放宽(频道名/视频标题/样本标题/matchedKeywords 任一命中即可)
-function passesQualityFilter(item: ExternalCandidatePreview, keywords: string[]): boolean {
-  if (!item.externalId && !item.profileUrl) return false;
-  const title = (item.displayName ?? "").toLowerCase();
-  const handle = (item.handle ?? "").toLowerCase();
-  const sampleTitles = (item.contentSamples ?? []).map((s) => (s.title ?? "").toLowerCase()).join(" ");
-  const haystack = `${title} ${handle} ${sampleTitles}`;
-
-  // 硬排除:明显官方/预告/MV(标题里成对出现)
-  if (HARD_EXCLUDE.some((t) => haystack.includes(t))) return false;
-
-  // 命中放宽:matchedKeywords 或任一文本命中任一关键词的任一词根
-  const kwTokens = keywords.flatMap((k) => k.toLowerCase().split(/\s+/)).filter((t) => t.length >= 3 && !GENERIC_TERMS.includes(t));
-  const matched = (item.matchedKeywords ?? []).length > 0;
-  const hit = matched || kwTokens.some((t) => haystack.includes(t));
-  return hit; // 不因未完全命中就丢;只要有任一命中(含 matchedKeywords)即保留
-}
-
-// 降权排序:reaction/gameplay/news/AMV 往后排(不删除)
-function demoteRank(item: ExternalCandidatePreview): number {
-  const haystack = `${item.displayName ?? ""} ${(item.contentSamples ?? []).map((s) => s.title ?? "").join(" ")}`.toLowerCase();
-  let penalty = 0;
-  if (SOFT_DEMOTE.some((t) => haystack.includes(t))) penalty += 2;
-  if ((item.avgViews ?? 0) === 0 && (item.followers ?? 0) === 0) penalty += 1; // 数据全缺降权
-  return penalty;
-}
+// V1.2:质量过滤由 evaluateYoutubeCandidateRelevance(相关性预评分)统一负责,替代旧的 passesQualityFilter/demoteRank。
 
 export type AutoDiscoverInput = {
   discoveryRunId: number;
@@ -147,14 +174,15 @@ export async function autoDiscoverYoutubeCandidates(input: AutoDiscoverInput): P
   const maxResultsPerKeyword = Math.min(Math.max(input.maxResultsPerKeyword ?? 12, 10), 15);
   const maxCandidates = Math.min(input.maxCandidates ?? 50, 50);
 
+  const empty = { enabled: true, searchedKeywords: [] as string[], found: 0, qualified: 0, filtered: 0, created: 0, skipped: 0, scored: 0 };
   const status = getYoutubeStatus();
   if (!status.enabled || !status.configured) {
-    return { enabled: false, searchedKeywords: [], found: 0, created: 0, skipped: 0, scored: 0 };
+    return { ...empty, enabled: false };
   }
 
   const keywords = selectAutoSearchKeywords(analysis, maxKeywords, runKeywords);
   if (!keywords.length) {
-    return { enabled: true, searchedKeywords: [], found: 0, created: 0, skipped: 0, scored: 0, error: "未能从画像中选出可用的搜索关键词" };
+    return { ...empty, error: "未能从画像中选出可用的搜索关键词" };
   }
 
   try {
@@ -166,10 +194,18 @@ export async function autoDiscoverYoutubeCandidates(input: AutoDiscoverInput): P
     }
     const found = merged.length;
 
-    // 质量过滤 + 降权排序
-    const filtered = merged
-      .filter((it) => passesQualityFilter(it, keywords))
-      .sort((a, b) => demoteRank(a) - demoteRank(b));
+    // 相关性预评分:写入 rawData,按分数排序;仅 shouldImport(>=60) 进入自动导入
+    const evaluated = merged.map((item) => {
+      const rel = evaluateYoutubeCandidateRelevance(item, analysis);
+      const rawData = { ...(item.rawData && typeof item.rawData === "object" ? item.rawData : {}), relevanceScore: rel.relevanceScore, relevanceReasons: rel.reasons, relevancePenalties: rel.penalties };
+      return { item: { ...item, rawData }, rel };
+    });
+    const qualified = evaluated.filter((e) => e.rel.shouldImport).length;
+    const filteredOut = evaluated.length - qualified;
+    const importable = evaluated
+      .filter((e) => e.rel.shouldImport)
+      .sort((a, b) => b.rel.relevanceScore - a.rel.relevanceScore)
+      .map((e) => e.item);
 
     // 本 run 去重(不跨 run)
     const existing = await prisma.influencerCandidate.findMany({
@@ -180,7 +216,7 @@ export async function autoDiscoverYoutubeCandidates(input: AutoDiscoverInput): P
 
     let skipped = 0;
     const toCreate: ExternalCandidatePreview[] = [];
-    for (const item of filtered) {
+    for (const item of importable) {
       if (toCreate.length >= maxCandidates) break;
       if (dedup.seen(item)) {
         skipped += 1;
@@ -207,9 +243,9 @@ export async function autoDiscoverYoutubeCandidates(input: AutoDiscoverInput): P
       }
     }
 
-    return { enabled: true, searchedKeywords: keywords, found, created: createdIds.length, skipped, scored };
+    return { enabled: true, searchedKeywords: keywords, found, qualified, filtered: filteredOut, created: createdIds.length, skipped, scored };
   } catch (error) {
     const message = error instanceof ExternalSourceError ? error.message : "YouTube 自动搜索失败";
-    return { enabled: true, searchedKeywords: keywords, found: 0, created: 0, skipped: 0, scored: 0, error: message };
+    return { ...empty, searchedKeywords: keywords, error: message };
   }
 }

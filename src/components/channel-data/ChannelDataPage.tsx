@@ -8,8 +8,9 @@ import ChannelKpiCards from "./ChannelKpiCards";
 import MonthlySummaryTable from "./MonthlySummaryTable";
 import QuarterSummary from "./QuarterSummary";
 import WeeklyMetricTable from "./WeeklyMetricTable";
+import WeeklyComparison from "./WeeklyComparison";
 import { rowAdSpend, rowAdSpendBase, rowSalesBase } from "./channelDataUtils";
-import type { BasicOption, ChannelDataFilters, ChannelDataOptionState, ChannelDataResponse, ChannelDataRow, ChannelSummaryResponse } from "./channelDataTypes";
+import type { BasicOption, ChannelDataFilters, ChannelDataOptionState, ChannelDataResponse, ChannelDataRow, ChannelSummaryResponse, WeeklyComparisonResponse } from "./channelDataTypes";
 
 type BasicListResponse<T> = {
   items: T[];
@@ -54,6 +55,8 @@ export default function ChannelDataPage() {
   const [filters, setFilters] = useState<ChannelDataFilters>(defaultFilters);
   const [rows, setRows] = useState<ChannelDataRow[]>([]);
   const [summary, setSummary] = useState<ChannelSummaryResponse | null>(null);
+  const [comparison, setComparison] = useState<WeeklyComparisonResponse | null>(null);
+  const [comparisonWeek, setComparisonWeek] = useState<number | undefined>(undefined);
   const [options, setOptions] = useState<ChannelDataOptionState>({ brands: [], platforms: [], stores: [] });
   const [loading, setLoading] = useState(false);
   const [optionLoading, setOptionLoading] = useState(false);
@@ -147,10 +150,27 @@ export default function ChannelDataPage() {
       setRows(data.rows);
       pristineRef.current = JSON.stringify(data.rows); // 记录干净快照
       setSummary(nextSummary);
+      const comparisonQuery = comparisonWeek ? `${query}&weekNumber=${comparisonWeek}` : query;
+      const comparisonResponse = await fetch(`/api/channel-data/comparison?${comparisonQuery}`);
+      const nextComparison = (await comparisonResponse.json()) as WeeklyComparisonResponse & { message?: string };
+      if (!comparisonResponse.ok) throw new Error(nextComparison.message || "渠道周环比加载失败");
+      setComparison(nextComparison);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "渠道数据加载失败");
     } finally {
       setLoading(false);
+    }
+  }, [comparisonWeek]);
+
+  const fetchComparison = useCallback(async (nextFilters: ChannelDataFilters, weekNumber?: number) => {
+    try {
+      const query = toQuery(nextFilters);
+      const response = await fetch(`/api/channel-data/comparison?${query}${weekNumber ? `&weekNumber=${weekNumber}` : ""}`);
+      const data = (await response.json()) as WeeklyComparisonResponse & { message?: string };
+      if (!response.ok) throw new Error(data.message || "渠道周环比加载失败");
+      setComparison(data);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "渠道周环比加载失败");
     }
   }, []);
 
@@ -341,6 +361,16 @@ export default function ChannelDataPage() {
       </Spin>
 
       <ChannelKpiCards {...monthlyTotals} />
+
+      <WeeklyComparison
+        comparison={comparison}
+        loading={loading}
+        weekNumber={comparisonWeek}
+        onWeekChange={(weekNumber) => {
+          setComparisonWeek(weekNumber);
+          void fetchComparison(filters, weekNumber);
+        }}
+      />
 
       <Card styles={{ body: { padding: 16 } }}>
         <div className="mb-3 flex items-center justify-between gap-3">

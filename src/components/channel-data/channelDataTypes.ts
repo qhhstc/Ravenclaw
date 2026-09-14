@@ -89,6 +89,51 @@ export type ChannelSummaryResponse = {
   };
 };
 
+export type WeeklyComparisonMetric = {
+  salesAmount: number;
+  adSpend: number;
+  hasData: boolean;
+};
+
+export type WeeklyComparisonRow = {
+  channelId: number;
+  businessBlock: string;
+  businessLine: string;
+  channelGroup?: string | null;
+  channelName: string;
+  platformName: string;
+  storeName: string;
+  current: WeeklyComparisonMetric;
+  previous: WeeklyComparisonMetric;
+  salesDelta: number;
+  salesChangeRate: number | null;
+  adSpendDelta: number;
+  adSpendChangeRate: number | null;
+  currentRoi: number | null;
+  previousRoi: number | null;
+  roiDelta: number | null;
+  currentAdRatio: number | null;
+  previousAdRatio: number | null;
+  adRatioDelta: number | null;
+  trend: "up" | "down" | "flat" | "new" | "missing";
+};
+
+export type WeeklyComparisonResponse = {
+  currentPeriod: { year: number; month: number; weekNumber: number };
+  previousPeriod: { year: number; month: number; weekNumber: number };
+  summary: {
+    current: WeeklyComparisonMetric & { roi: number | null; adRatio: number | null; channelCount: number };
+    previous: WeeklyComparisonMetric & { roi: number | null; adRatio: number | null; channelCount: number };
+    salesDelta: number;
+    salesChangeRate: number | null;
+    adSpendDelta: number;
+    adSpendChangeRate: number | null;
+    roiDelta: number | null;
+    adRatioDelta: number | null;
+  };
+  rows: WeeklyComparisonRow[];
+};
+
 export type BasicOption = {
   label: string;
   value: number | string;

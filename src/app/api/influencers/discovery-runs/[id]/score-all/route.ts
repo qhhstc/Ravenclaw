@@ -23,15 +23,17 @@ export async function POST(_request: NextRequest, context: Context) {
 
     let scored = 0;
     let failed = 0;
+    let updated = 0;
     for (const c of candidates) {
       try {
-        await scoreCandidateById(c.id, brand);
+        const change = await scoreCandidateById(c.id, brand);
         scored += 1;
+        if (change.changed) updated += 1;
       } catch {
         failed += 1;
       }
     }
-    return NextResponse.json({ ok: true, scored, failed, total: candidates.length });
+    return NextResponse.json({ ok: true, scored, failed, updated, total: candidates.length });
   } catch (error) {
     return apiError(error, "批量评分失败");
   }

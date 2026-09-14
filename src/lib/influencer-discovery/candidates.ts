@@ -38,12 +38,22 @@ export function jsonToStringArray(value: Prisma.JsonValue | null | undefined): s
 // 候选红人序列化:Decimal 转 number,Json 转数组,避免前端渲染 Prisma.Decimal 对象
 type CandidateRecord = Prisma.InfluencerCandidateGetPayload<{ include: { discoveryRun: { select: { id: true; websiteUrl: true; brandName: true } } } }>;
 
+// 从 rawDataJson 提取相关性分,统一转 number|null(可能不存在或为字符串)
+function extractRelevanceScore(rawDataJson: Prisma.JsonValue | null): number | null {
+  if (rawDataJson && typeof rawDataJson === "object" && !Array.isArray(rawDataJson) && "relevanceScore" in rawDataJson) {
+    const n = Number((rawDataJson as Record<string, unknown>).relevanceScore);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
 export function serializeCandidate(candidate: CandidateRecord) {
   return {
     ...candidate,
     engagementRate: candidate.engagementRate === null ? null : toNumber(candidate.engagementRate),
     nicheTags: jsonToStringArray(candidate.nicheTagsJson),
     matchedKeywords: jsonToStringArray(candidate.matchedKeywordsJson),
+    relevanceScore: extractRelevanceScore(candidate.rawDataJson),
     createdAt: candidate.createdAt.toISOString(),
     updatedAt: candidate.updatedAt.toISOString(),
   };

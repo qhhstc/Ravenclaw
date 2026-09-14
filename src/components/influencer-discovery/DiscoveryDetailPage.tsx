@@ -13,6 +13,7 @@ import {
   rateText,
   runStatusMeta,
   shortNumber,
+  sourceLabel,
   tierColor,
   type AutoDiscoverySummary,
   type CandidateRecord,
@@ -93,11 +94,11 @@ export default function DiscoveryDetailPage({ runId, youtubeEnabled = false }: {
   async function scoreAll() {
     setScoring(true);
     try {
-      const data = await fetchJson<{ scored: number; failed: number; total: number }>(
+      const data = await fetchJson<{ scored: number; failed: number; updated?: number; total: number }>(
         `/api/influencers/discovery-runs/${runId}/score-all`,
         { method: "POST" },
       );
-      message.success(`评分完成：成功 ${data.scored} 个，失败 ${data.failed} 个`);
+      message.success(`评分完成：成功 ${data.scored} 个${typeof data.updated === "number" ? `（${data.updated} 个分数有变化）` : ""}，失败 ${data.failed} 个`);
       await loadData();
     } catch (error) {
       message.error(error instanceof Error ? error.message : "批量评分失败");
@@ -143,6 +144,14 @@ export default function DiscoveryDetailPage({ runId, youtubeEnabled = false }: {
     { title: "分数", dataIndex: "score", width: 80, align: "right", render: (v) => v ?? "-" },
     { title: "等级", dataIndex: "tier", width: 80, render: (v: string | null) => (v ? <Tag color={tierColor[v]}>{v}</Tag> : "-") },
     { title: "推荐合作", dataIndex: "recommendedOffer", width: 110, render: (v: string | null) => (v ? offerLabel[v] ?? v : "-") },
+    { title: "来源", dataIndex: "source", width: 90, render: (v: string | null) => (v ? <Tag>{sourceLabel[v] ?? v}</Tag> : "-") },
+    {
+      title: "相关性",
+      dataIndex: "relevanceScore",
+      width: 100,
+      align: "right",
+      render: (v: number | null) => (v === null || v === undefined ? "-" : v < 60 ? <Tag color="orange">{v} 低</Tag> : <span>{v}</span>),
+    },
     {
       title: "状态",
       dataIndex: "status",
@@ -211,17 +220,7 @@ export default function DiscoveryDetailPage({ runId, youtubeEnabled = false }: {
           {
             key: "profile",
             label: "网站画像",
-            children: (
-              <Card loading={loading}>
-                <Descriptions column={1} bordered size="small">
-                  <Descriptions.Item label="品牌名">{run?.brandName || "-"}</Descriptions.Item>
-                  <Descriptions.Item label="品牌总结">{run?.brandSummary || "-"}</Descriptions.Item>
-                  <Descriptions.Item label="产品总结">{run?.productSummary || "-"}</Descriptions.Item>
-                  <Descriptions.Item label="受众总结">{run?.audienceSummary || "-"}</Descriptions.Item>
-                  <Descriptions.Item label="红人画像">{run?.creatorPersona || "-"}</Descriptions.Item>
-                </Descriptions>
-              </Card>
-            ),
+            children: <ProfilePanel run={run} loading={loading} />,
           },
           {
             key: "keywords",
@@ -288,5 +287,62 @@ function TagGroup({ title, values, color }: { title: string; values: string[]; c
         <Typography.Text type="secondary">-</Typography.Text>
       )}
     </div>
+  );
+}
+
+// 结构化网站画像面板(V1.2)。全部字段 optional chaining + fallback,旧 run 缺字段显示 -。
+function ProfilePanel({ run, loading }: { run: RunRecord | null; loading: boolean }) {
+  const a = run?.analysisJson ?? {};
+  const tcp = a.targetCustomerProfile ?? {};
+  const creators = a.idealCreatorProfiles ?? [];
+  const text = (v?: string | null) => (v && v.trim() ? v : "-");
+
+  return (
+    <Card loading={loading} className="space-y-4">
+      <Descriptions column={1} bordered size="small">
+        <Descriptions.Item label="品牌定位">{text(run?.brandName)}{run?.brandSummary ? ` — ${run.brandSummary}` : ""}</Descriptions.Item>
+        <Descriptions.Item label="产品总结">{text(run?.productSummary)}</Descriptions.Item>
+        <Descriptions.Item label="目标受众">{text(run?.audienceSummary)}</Descriptions.Item>
+        <Descriptions.Item label="红人画像">{text(run?.creatorPersona)}</Descriptions.Item>
+      </Descriptions>
+
+      <TagGroup title="主要 IP" values={a.mainIps ?? []} color="magenta" />
+      <TagGroup title="主打品类" values={a.mainProductTypes ?? []} color="purple" />
+      <TagGroup title="价格带" values={a.priceBands ?? []} color="gold" />
+
+      <div>
+        <Typography.Text strong className="mb-2 block">目标客户</Typography.Text>
+        <Descriptions column={{ xs: 1, sm: 2 }} size="small">
+          <Descriptions.Item label="地区">{(tcp.regions ?? []).join("、") || "-"}</Descriptions.Item>
+          <Descriptions.Item label="兴趣">{(tcp.interests ?? []).join("、") || "-"}</Descriptions.Item>
+          <Descriptions.Item label="购买动机">{(tcp.buyingMotivations ?? []).join("、") || "-"}</Descriptions.Item>
+          <Descriptions.Item label="顾虑">{(tcp.concerns ?? []).join("、") || "-"}</Descriptions.Item>
+        </Descriptions>
+      </div>
+
+      <div>
+        <Typography.Text strong className="mb-2 block">理想红人类型</Typography.Text>
+        {creators.length ? (
+          <div className="space-y-2">
+            {creators.map((c, i) => (
+              <Card key={i} size="small" styles={{ body: { padding: 12 } }}>
+                <div className="font-medium">{c.type || "-"}{c.recommendedOffer ? <Tag className="ml-2" color="blue">{offerLabel[c.recommendedOffer] ?? c.recommendedOffer}</Tag> : null}</div>
+                {c.reason ? <div className="text-xs text-[var(--muted)] mt-1">{c.reason}</div> : null}
+                <div className="mt-1"><Space wrap size={2}>
+                  {(c.platforms ?? []).map((p) => <Tag key={p} color="cyan">{p}</Tag>)}
+                  {(c.contentFormats ?? []).map((f) => <Tag key={f}>{f}</Tag>)}
+                </Space></div>
+              </Card>
+            ))}
+          </div>
+        ) : <Typography.Text type="secondary">-</Typography.Text>}
+      </div>
+
+      <TagGroup title="不适合红人类型" values={a.unsuitableCreatorProfiles ?? []} color="volcano" />
+      <TagGroup title="推荐内容形式" values={a.keywordPool?.productKeywords ?? []} color="geekblue" />
+      <TagGroup title="推荐搜索关键词" values={a.autoSearchKeywords ?? a.keywordPool?.highIntentKeywords ?? []} color="blue" />
+      <TagGroup title="信任卖点" values={a.trustSignals ?? []} color="green" />
+      <TagGroup title="转化阻碍" values={a.conversionBarriers ?? []} color="red" />
+    </Card>
   );
 }

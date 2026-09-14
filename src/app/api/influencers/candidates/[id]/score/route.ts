@@ -15,9 +15,16 @@ export async function POST(_request: NextRequest, context: Context) {
     const candidateId = Number(id);
     if (!Number.isInteger(candidateId) || candidateId <= 0) return NextResponse.json({ message: "无效的候选红人 ID" }, { status: 400 });
 
-    await scoreCandidateById(candidateId);
+    const change = await scoreCandidateById(candidateId);
     const item = await prisma.influencerCandidate.findUnique({ where: { id: candidateId }, include: candidateInclude });
-    return NextResponse.json({ item: item ? serializeCandidate(item) : null });
+    return NextResponse.json({
+      item: item ? serializeCandidate(item) : null,
+      oldScore: change.oldScore,
+      newScore: change.newScore,
+      oldTier: change.oldTier,
+      newTier: change.newTier,
+      changed: change.changed,
+    });
   } catch (error) {
     return apiError(error, "评分失败");
   }

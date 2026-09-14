@@ -15,6 +15,7 @@ import {
   platformOptions,
   rateText,
   shortNumber,
+  sourceLabel,
   tierColor,
   tierOptions,
   type CandidateRecord,
@@ -40,6 +41,7 @@ export default function CandidateListPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [scoringId, setScoringId] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -75,12 +77,22 @@ export default function CandidateListPage() {
   }, []);
 
   async function scoreOne(id: number) {
+    setScoringId(id);
     try {
-      await fetchJson(`/api/influencers/candidates/${id}/score`, { method: "POST" });
-      message.success("评分完成");
+      const res = await fetchJson<{ oldScore: number | null; newScore: number; oldTier: string | null; newTier: string; changed: boolean }>(
+        `/api/influencers/candidates/${id}/score`,
+        { method: "POST" },
+      );
+      if (res.changed) {
+        message.success(`评分已更新：${res.oldScore ?? "-"} → ${res.newScore}，等级 ${res.oldTier ?? "-"} → ${res.newTier}`);
+      } else {
+        message.success("评分已完成，分数无变化");
+      }
       await loadData();
     } catch (error) {
       message.error(error instanceof Error ? error.message : "评分失败");
+    } finally {
+      setScoringId(null);
     }
   }
 
@@ -139,6 +151,20 @@ export default function CandidateListPage() {
     { title: "等级", dataIndex: "tier", width: 70, render: (v: string | null) => (v ? <Tag color={tierColor[v]}>{v}</Tag> : "-") },
     { title: "推荐合作", dataIndex: "recommendedOffer", width: 100, render: (v: string | null) => (v ? offerLabel[v] ?? v : "-") },
     {
+      title: "来源",
+      dataIndex: "source",
+      width: 100,
+      render: (v: string | null) => (v ? <Tag>{sourceLabel[v] ?? v}</Tag> : "-"),
+    },
+    {
+      title: "搜索相关性",
+      dataIndex: "relevanceScore",
+      width: 110,
+      align: "right",
+      render: (v: number | null) =>
+        v === null || v === undefined ? "-" : v < 60 ? <Tag color="orange">{v} 相关性低</Tag> : <span>{v}</span>,
+    },
+    {
       title: "状态",
       dataIndex: "status",
       width: 100,
@@ -151,7 +177,7 @@ export default function CandidateListPage() {
       render: (_, row) => (
         <Space size={4} wrap>
           <Button type="link" size="small" onClick={() => router.push(`/influencers/candidates/${row.id}`)}>详情</Button>
-          {canEdit ? <Button type="link" size="small" onClick={() => scoreOne(row.id)}>重算分</Button> : null}
+          {canEdit ? <Button type="link" size="small" loading={scoringId === row.id} onClick={() => scoreOne(row.id)}>重算分</Button> : null}
           {canEdit ? <Button type="link" size="small" onClick={() => changeStatus(row.id, "approved")}>批准</Button> : null}
           {canEdit ? <Button type="link" size="small" danger onClick={() => changeStatus(row.id, "rejected")}>拒绝</Button> : null}
         </Space>

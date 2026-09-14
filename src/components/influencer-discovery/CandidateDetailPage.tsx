@@ -63,7 +63,22 @@ export default function CandidateDetailPage({ candidateId }: { candidateId: numb
     }
   }
 
-  const rescore = () => action(() => fetchJson(`/api/influencers/candidates/${candidateId}/score`, { method: "POST" }), "评分完成");
+  async function rescore() {
+    setBusy(true);
+    try {
+      const res = await fetchJson<{ oldScore: number | null; newScore: number; oldTier: string | null; newTier: string; changed: boolean }>(
+        `/api/influencers/candidates/${candidateId}/score`,
+        { method: "POST" },
+      );
+      if (res.changed) message.success(`评分已更新：${res.oldScore ?? "-"} → ${res.newScore}，等级 ${res.oldTier ?? "-"} → ${res.newTier}`);
+      else message.success("评分已完成，分数无变化");
+      await loadData();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "评分失败");
+    } finally {
+      setBusy(false);
+    }
+  }
   const patch = (body: Record<string, unknown>, okMsg: string) =>
     action(
       () => fetchJson(`/api/influencers/candidates/${candidateId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),

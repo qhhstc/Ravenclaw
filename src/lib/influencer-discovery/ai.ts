@@ -1,23 +1,27 @@
 import "server-only";
 
 import { callClaudeJson, getAiStatus } from "@/lib/ai/anthropic-client";
-import type { AiScoreHint, CandidateScoringInput, KeywordPool, WebsiteAnalysis, WebsiteContent } from "./types";
+import type { AiScoreHint, CandidateScoringInput, IdealCreatorProfile, KeywordPool, TargetCustomerProfile, WebsiteAnalysis, WebsiteContent } from "./types";
 
 // ——— System prompts ———
 
-const websiteSystemPrompt = `你是跨境电商红人营销分析师。根据品牌官网文本,分析这个品牌适合找什么类型的红人。
+const websiteSystemPrompt = `你是跨境电商红人营销分析师。根据品牌官网文本与产品数据,深入分析这个品牌适合找什么类型的红人。
 只能输出严格 JSON,不要输出 Markdown,不要在 JSON 之外输出任何文字。
 不要编造网站里没有的信息;信息不足的字段给空字符串或空数组。
-keywords 是可用于在 YouTube/TikTok/Instagram 等平台搜索红人的英文关键词。
-creatorNiches 是适合的红人垂类(如 toy review、unboxing、kids crafts)。
-negativeKeywords 是应排除的不相关方向。
-keywordPool 是分层关键词池,用于自动在 YouTube 搜索创作者:
-- highIntentKeywords: 高购买/开箱意图的英文长尾词,应结合 IP + merch/unboxing/haul/figure/plush(如 "Genshin figure unboxing"、"anime merch haul");
-- ipKeywords: IP 精准词(如 "Genshin Impact merch");
-- contentFormatKeywords: 内容形式词(如 unboxing、review、haul、blind box opening);
-- creatorNicheKeywords: 红人类型词(如 figure collector、toy reviewer);
-- negativeKeywords: 排除词(如 official trailer、AMV、reaction、gameplay only)。
-关键词用英文,避免过泛的单词(anime、game、cute、gift)。`;
+
+要求分析得具体、不泛泛:
+- mainIps: 识别具体 IP/系列,如 Genshin Impact、Honkai Star Rail、Zenless Zone Zero、Wuthering Waves;不要只写 "anime"/"game"。
+- mainProductTypes: 具体品类,如 anime figure、plush、blind box、acrylic stand、official merchandise。
+- heroProducts/entryProducts: 引流款与高客单款示例。
+- preorderSignals/trustSignals/conversionBarriers: 预售信号(pre-order)、信任卖点(official/authentic)、转化阻碍(高价/长预售期/运费)。
+- targetCustomerProfile: regions/interests/buyingMotivations/concerns。
+- idealCreatorProfiles: 每个含 type(具体如 "anime figure unboxing creator"、"HoYoverse collector"、"plush reviewer"、"cosplayer",不要只写 "anime influencer")、reason、platforms、contentFormats、recommendedOffer(paid/gifted/affiliate/nurture)。
+- unsuitableCreatorProfiles: 不适合的红人类型。
+- creatorPersona: 一句具体画像。
+- keywordPool.highIntentKeywords: 必须优先带购买/开箱意图,结合 IP + merch/unboxing/haul/figure/plush(如 "Genshin figure unboxing"、"Honkai Star Rail merch haul"、"anime plush collection"、"blind box opening anime")。
+- keywordPool.negativeKeywords: 必须包含 official trailer、music video、AMV、reaction、gameplay only、news、leak、download。
+- autoSearchKeywords: 从 highIntentKeywords 精选 3-5 个最适合在 YouTube 搜创作者的关键词。
+关键词用英文,避免过泛的单词(anime、game、cute、gift、best、official)。`;
 
 const scoringSystemPrompt = `你是红人营销评分助手。根据品牌画像与红人数据,对每个评分维度给出 0 到该维度满分之间的分数,并简述理由。
 只能输出严格 JSON,不要输出 Markdown。不要编造红人没有的数据;数据缺失时给保守分。
@@ -28,22 +32,34 @@ const websiteSchemaHint = `{
   "brandSummary": "1-2 句品牌总结",
   "productSummary": "1-2 句主营产品总结",
   "audienceSummary": "1-2 句目标受众总结",
-  "creatorPersona": "1-2 句适合的红人画像",
+  "creatorPersona": "1 句具体红人画像,如 anime figure unboxing creator",
   "primaryCategories": ["主营品类"],
   "priceBands": ["价格带,如 $10-30"],
   "targetRegions": ["US","UK"],
-  "creatorNiches": ["toy review","unboxing"],
-  "platforms": ["Instagram","TikTok","YouTube"],
+  "creatorNiches": ["figure review","unboxing"],
+  "platforms": ["YouTube","Instagram","TikTok"],
   "keywords": ["搜索关键词"],
   "negativeKeywords": ["排除关键词"],
   "recommendedOfferTypes": ["gifted","affiliate","paid"],
   "notes": ["补充说明"],
+  "mainIps": ["Genshin Impact","Honkai Star Rail"],
+  "mainProductTypes": ["anime figure","plush","blind box"],
+  "heroProducts": ["示例爆款"],
+  "entryProducts": ["示例引流款"],
+  "preorderSignals": ["pre-order","预售"],
+  "trustSignals": ["official","authentic"],
+  "conversionBarriers": ["高客单","长预售期"],
+  "targetCustomerProfile": { "regions": ["US"], "interests": ["anime","gaming"], "buyingMotivations": ["collect","fandom"], "concerns": ["price","authenticity"] },
+  "idealCreatorProfiles": [ { "type": "anime figure unboxing creator", "reason": "契合开箱转化", "platforms": ["YouTube"], "contentFormats": ["unboxing","haul"], "recommendedOffer": "gifted" } ],
+  "unsuitableCreatorProfiles": ["纯 gameplay 主播","AMV 剪辑号"],
+  "autoSearchKeywords": ["Genshin figure unboxing","anime merch haul"],
   "keywordPool": {
-    "highIntentKeywords": ["Genshin figure unboxing","anime merch haul"],
-    "ipKeywords": ["Genshin Impact merch"],
+    "highIntentKeywords": ["Genshin figure unboxing","anime merch haul","blind box opening anime"],
+    "ipKeywords": ["Genshin Impact merch","Honkai Star Rail merch"],
+    "productKeywords": ["anime figure","plush","blind box"],
     "contentFormatKeywords": ["unboxing","review","haul"],
-    "creatorNicheKeywords": ["figure collector","toy reviewer"],
-    "negativeKeywords": ["official trailer","AMV","reaction"]
+    "creatorNicheKeywords": ["figure collector","plush reviewer"],
+    "negativeKeywords": ["official trailer","music video","AMV","reaction","gameplay only","news","leak","download"]
   }
 }`;
 
@@ -69,10 +85,36 @@ function normalizeKeywordPool(value: unknown): KeywordPool {
   return {
     highIntentKeywords: strArray(input.highIntentKeywords, 20),
     ipKeywords: strArray(input.ipKeywords, 20),
+    productKeywords: strArray(input.productKeywords, 20),
     contentFormatKeywords: strArray(input.contentFormatKeywords, 20),
     creatorNicheKeywords: strArray(input.creatorNicheKeywords, 20),
     negativeKeywords: strArray(input.negativeKeywords, 20),
   };
+}
+
+function normalizeTargetCustomer(value: unknown): TargetCustomerProfile {
+  const input = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  return {
+    regions: strArray(input.regions, 15),
+    interests: strArray(input.interests, 15),
+    buyingMotivations: strArray(input.buyingMotivations, 15),
+    concerns: strArray(input.concerns, 15),
+  };
+}
+
+function normalizeIdealCreators(value: unknown): IdealCreatorProfile[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((v): v is Record<string, unknown> => Boolean(v) && typeof v === "object")
+    .map((v) => ({
+      type: str(v.type),
+      reason: str(v.reason),
+      platforms: strArray(v.platforms, 6),
+      contentFormats: strArray(v.contentFormats, 8),
+      recommendedOffer: str(v.recommendedOffer),
+    }))
+    .filter((c) => c.type)
+    .slice(0, 8);
 }
 
 function normalizeWebsiteAnalysis(value: unknown, aiGenerated: boolean): WebsiteAnalysis {
@@ -93,6 +135,17 @@ function normalizeWebsiteAnalysis(value: unknown, aiGenerated: boolean): Website
     recommendedOfferTypes: strArray(input.recommendedOfferTypes),
     notes: strArray(input.notes),
     keywordPool: normalizeKeywordPool(input.keywordPool),
+    mainIps: strArray(input.mainIps, 15),
+    mainProductTypes: strArray(input.mainProductTypes, 15),
+    heroProducts: strArray(input.heroProducts, 15),
+    entryProducts: strArray(input.entryProducts, 15),
+    preorderSignals: strArray(input.preorderSignals, 10),
+    trustSignals: strArray(input.trustSignals, 10),
+    conversionBarriers: strArray(input.conversionBarriers, 10),
+    targetCustomerProfile: normalizeTargetCustomer(input.targetCustomerProfile),
+    idealCreatorProfiles: normalizeIdealCreators(input.idealCreatorProfiles),
+    unsuitableCreatorProfiles: strArray(input.unsuitableCreatorProfiles, 15),
+    autoSearchKeywords: strArray(input.autoSearchKeywords, 5),
     aiGenerated,
   };
 }
@@ -116,32 +169,53 @@ export function fallbackWebsiteAnalysis(content: WebsiteContent): WebsiteAnalysi
   });
   const keywords = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([w]) => w);
 
-  // 规则化 keywordPool:用高频词 + 常见内容形式词拼装,保证 AI 关时自动搜索仍有词可用
-  const topWords = keywords.slice(0, 5);
+  // 优先用电商接口拿到的结构化品类/标签,其次高频词
+  const productTypes = (content.productTypes ?? []).slice(0, 8);
+  const productTags = (content.productTags ?? []).slice(0, 12);
+  const sitemapKw = (content.sitemapKeywords ?? []).slice(0, 10);
+  const typeSeeds = [...new Set([...productTypes, ...productTags, ...sitemapKw, ...keywords])].filter(Boolean).slice(0, 8);
+  const NEG = ["official trailer", "music video", "AMV", "reaction", "gameplay only", "news", "leak", "download"];
+  const FORMATS = ["unboxing", "review", "haul", "collection"];
+
+  // 规则化 keywordPool + autoSearchKeywords:用品类词 × 内容形式拼高意图长尾,保证 AI 关时自动搜索仍有词可用
+  const highIntent = typeSeeds.slice(0, 5).map((w) => `${w} unboxing`);
+  const autoSearchKeywords = highIntent.slice(0, 5);
   const fallbackPool: KeywordPool = {
-    highIntentKeywords: topWords.map((w) => `${w} unboxing`),
-    ipKeywords: topWords,
-    contentFormatKeywords: ["unboxing", "review", "haul"],
+    highIntentKeywords: highIntent,
+    ipKeywords: typeSeeds,
+    productKeywords: [...productTypes, ...productTags].slice(0, 12),
+    contentFormatKeywords: FORMATS,
     creatorNicheKeywords: [],
-    negativeKeywords: ["official trailer", "music video", "reaction", "gameplay"],
+    negativeKeywords: NEG,
   };
 
   return {
     brandName: title,
-    brandSummary: content.metaDescription || `根据 ${content.domain} 首页信息生成的基础画像(AI 未启用)。`,
-    productSummary: content.productTexts[0] || content.collectionTexts[0] || "未能识别具体产品信息,建议补充。",
+    brandSummary: content.metaDescription || `根据 ${content.domain} 首页与产品信息生成的基础画像(AI 未启用)。`,
+    productSummary: productTypes.length ? `主营品类:${productTypes.join("、")}。` : content.productTexts[0] || content.collectionTexts[0] || "未能识别具体产品信息,建议补充。",
     audienceSummary: "AI 未启用,受众画像需人工补充。",
-    creatorPersona: "建议优先寻找与主营品类相关的垂类中腰部红人。",
-    primaryCategories: [],
-    priceBands: [],
+    creatorPersona: productTypes[0] ? `${productTypes[0]} unboxing / review creator` : "与主营品类相关的垂类中腰部红人。",
+    primaryCategories: productTypes,
+    priceBands: (content.priceSamples ?? []).slice(0, 3),
     targetRegions: [],
     creatorNiches: [],
-    platforms: ["Instagram", "TikTok", "YouTube"],
+    platforms: ["YouTube", "Instagram", "TikTok"],
     keywords,
-    negativeKeywords: [],
+    negativeKeywords: NEG,
     recommendedOfferTypes: ["gifted", "affiliate"],
     notes: ["本画像由规则生成(AI_ANALYSIS_ENABLED 未开启或调用失败),仅供参考。"],
     keywordPool: fallbackPool,
+    mainIps: (content.productVendors ?? []).slice(0, 8),
+    mainProductTypes: productTypes,
+    heroProducts: (content.productTitles ?? []).slice(0, 5),
+    entryProducts: [],
+    preorderSignals: [],
+    trustSignals: [],
+    conversionBarriers: [],
+    targetCustomerProfile: { regions: [], interests: [], buyingMotivations: [], concerns: [] },
+    idealCreatorProfiles: [],
+    unsuitableCreatorProfiles: [],
+    autoSearchKeywords,
     aiGenerated: false,
   };
 }
@@ -165,6 +239,13 @@ ${JSON.stringify(
         navigationTexts: content.navigationTexts,
         productTexts: content.productTexts,
         collectionTexts: content.collectionTexts,
+        productTitles: (content.productTitles ?? []).slice(0, 50),
+        productVendors: content.productVendors ?? [],
+        productTypes: content.productTypes ?? [],
+        productTags: (content.productTags ?? []).slice(0, 40),
+        priceSamples: content.priceSamples ?? [],
+        collectionKeywords: content.collectionKeywords ?? [],
+        sitemapKeywords: content.sitemapKeywords ?? [],
         bodyExcerpt: content.bodyText.slice(0, 3000),
       },
       null,

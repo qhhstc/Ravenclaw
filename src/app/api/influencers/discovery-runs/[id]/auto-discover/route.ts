@@ -26,6 +26,7 @@ function runToAnalysis(run: {
       ? {
           highIntentKeywords: strArr((kp as Record<string, unknown>).highIntentKeywords),
           ipKeywords: strArr((kp as Record<string, unknown>).ipKeywords),
+          productKeywords: strArr((kp as Record<string, unknown>).productKeywords),
           contentFormatKeywords: strArr((kp as Record<string, unknown>).contentFormatKeywords),
           creatorNicheKeywords: strArr((kp as Record<string, unknown>).creatorNicheKeywords),
           negativeKeywords: strArr((kp as Record<string, unknown>).negativeKeywords),

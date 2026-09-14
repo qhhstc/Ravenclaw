@@ -34,6 +34,14 @@ export const offerLabel: Record<string, string> = {
   reject: "不推荐",
 };
 
+export const sourceLabel: Record<string, string> = {
+  youtube_api: "YouTube",
+  csv: "CSV 导入",
+  manual: "手动新增",
+  website_analysis: "网站分析",
+  imported: "导入",
+};
+
 export const candidateStatusOptions = Object.entries(candidateStatusMeta).map(([value, m]) => ({ value, label: m.label }));
 export const tierOptions = ["A", "B", "C", "D"].map((v) => ({ value: v, label: `${v} 级` }));
 export const platformOptions = ["Instagram", "TikTok", "YouTube", "Facebook", "Pinterest", "Blog", "Other"].map((v) => ({ label: v, value: v }));
@@ -77,6 +85,7 @@ export type CandidateRecord = {
   status: string;
   source: string | null;
   notes: string | null;
+  relevanceScore: number | null;
   createdAt: string;
   updatedAt: string;
   discoveryRun?: { id: number; websiteUrl: string; brandName: string | null } | null;
@@ -86,10 +95,32 @@ export type AutoDiscoverySummary = {
   enabled: boolean;
   searchedKeywords: string[];
   found: number;
+  qualified?: number;
+  filtered?: number;
   created: number;
   skipped: number;
   scored: number;
   error?: string;
+};
+
+// V1.2 增强画像结构(全部可选,读取须 optional chaining + fallback)
+export type WebsiteAnalysisView = {
+  brandSummary?: string;
+  productSummary?: string;
+  audienceSummary?: string;
+  creatorPersona?: string;
+  mainIps?: string[];
+  mainProductTypes?: string[];
+  priceBands?: string[];
+  heroProducts?: string[];
+  trustSignals?: string[];
+  conversionBarriers?: string[];
+  unsuitableCreatorProfiles?: string[];
+  autoSearchKeywords?: string[];
+  targetCustomerProfile?: { regions?: string[]; interests?: string[]; buyingMotivations?: string[]; concerns?: string[] };
+  idealCreatorProfiles?: Array<{ type?: string; reason?: string; platforms?: string[]; contentFormats?: string[]; recommendedOffer?: string }>;
+  keywordPool?: { highIntentKeywords?: string[]; productKeywords?: string[]; ipKeywords?: string[]; negativeKeywords?: string[] };
+  youtubeAutoDiscovery?: AutoDiscoverySummary;
 };
 
 export type RunRecord = {
@@ -103,7 +134,7 @@ export type RunRecord = {
   audienceSummary: string | null;
   creatorPersona: string | null;
   keywordsJson: Record<string, string[]> | null;
-  analysisJson: { youtubeAutoDiscovery?: AutoDiscoverySummary } | null;
+  analysisJson: WebsiteAnalysisView | null;
   errorMessage: string | null;
   candidateCount: number;
   createdBy: { id: number; name: string; email: string } | null;

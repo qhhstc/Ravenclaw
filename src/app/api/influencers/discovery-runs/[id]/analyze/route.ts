@@ -55,6 +55,8 @@ export async function POST(_request: NextRequest, context: Context) {
           enabled: true,
           searchedKeywords: [],
           found: 0,
+          qualified: 0,
+          filtered: 0,
           created: 0,
           skipped: 0,
           scored: 0,

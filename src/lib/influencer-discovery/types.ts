@@ -36,6 +36,15 @@ export type WebsiteContent = {
   productTexts: string[];
   collectionTexts: string[];
   bodyText: string;
+  // V1.2 电商公开接口增强(均可选,抓不到为空数组)
+  productTitles?: string[];
+  productVendors?: string[];
+  productTypes?: string[];
+  productTags?: string[];
+  priceSamples?: string[];
+  collectionKeywords?: string[];
+  sitemapKeywords?: string[];
+  policyTexts?: string[];
 };
 
 // AI(或 fallback)输出的网站/品牌/红人画像分析结果
@@ -56,13 +65,41 @@ export type WebsiteAnalysis = {
   notes: string[];
   // 分层关键词池(V1.1),供自动搜索选词;旧 run 可能无此字段,消费方需兜底
   keywordPool?: KeywordPool;
+  // ——— V1.2 增强画像(全部可选,兼容旧 run,前端读取须 optional chaining + fallback) ———
+  mainIps?: string[];
+  mainProductTypes?: string[];
+  heroProducts?: string[];
+  entryProducts?: string[];
+  preorderSignals?: string[];
+  trustSignals?: string[];
+  conversionBarriers?: string[];
+  targetCustomerProfile?: TargetCustomerProfile;
+  idealCreatorProfiles?: IdealCreatorProfile[];
+  unsuitableCreatorProfiles?: string[];
+  autoSearchKeywords?: string[];
   // 是否由 AI 生成(false = 走了 fallback 规则化画像)
   aiGenerated: boolean;
+};
+
+export type TargetCustomerProfile = {
+  regions: string[];
+  interests: string[];
+  buyingMotivations: string[];
+  concerns: string[];
+};
+
+export type IdealCreatorProfile = {
+  type: string;
+  reason: string;
+  platforms: string[];
+  contentFormats: string[];
+  recommendedOffer: string;
 };
 
 export type KeywordPool = {
   highIntentKeywords: string[]; // 高购买/开箱意图,如 anime figure unboxing
   ipKeywords: string[]; // IP 精准,如 Genshin Impact merch
+  productKeywords: string[]; // 产品品类词(V1.2),如 anime figure / plush
   contentFormatKeywords: string[]; // 内容形式,如 unboxing / review / haul
   creatorNicheKeywords: string[]; // 红人类型,如 figure collector / toy reviewer
   negativeKeywords: string[]; // 排除,如 official trailer / AMV / reaction
@@ -104,6 +141,10 @@ export const SCORE_WEIGHTS = {
 } as const;
 
 export const MAX_RISK_PENALTY = 10;
+
+// YouTube 自动发现相关性阈值(V1.2),仅作用于自动发现;手动搜索不受限
+export const AUTO_IMPORT_RELEVANCE_THRESHOLD = 60; // >=60 自动导入
+export const LOW_RELEVANCE_THRESHOLD = 40; // 40-59 预览保留不自动导入;<40 丢弃
 
 // 候选红人评分所需的输入快照(来自 DB 记录,字段全部可空)
 export type CandidateScoringInput = {

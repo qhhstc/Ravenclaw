@@ -304,6 +304,124 @@ export async function getQuarterTotals(filters: ChannelDataFilters) {
   );
 }
 
+export function previousWeekPeriod(year: number, month: number, weekNumber: number) {
+  if (weekNumber > 1) return { year, month, weekNumber: weekNumber - 1 };
+  return month === 1 ? { year: year - 1, month: 12, weekNumber: 5 } : { year, month: month - 1, weekNumber: 5 };
+}
+
+export function latestRecordedWeek(metrics: Array<{ weekNumber: number | null; salesAmountBase: unknown; adSpendBase: unknown }>) {
+  const weeks = metrics
+    .filter((metric) => metric.weekNumber && (toNumber(metric.salesAmountBase) !== 0 || toNumber(metric.adSpendBase) !== 0))
+    .map((metric) => metric.weekNumber as number);
+  return weeks.length ? Math.max(...weeks) : 1;
+}
+
+function comparisonRate(current: number, previous: number) {
+  return previous === 0 ? null : (current - previous) / Math.abs(previous);
+}
+
+function comparisonRoi(salesAmount: number, adSpend: number) {
+  return adSpend > 0 ? salesAmount / adSpend : null;
+}
+
+function comparisonRatio(adSpend: number, salesAmount: number) {
+  return salesAmount > 0 ? adSpend / salesAmount : null;
+}
+
+export async function getWeeklyComparison(filters: ChannelDataFilters & { weekNumber?: number }) {
+  const channels = await prisma.channel.findMany({
+    where: buildChannelWhere(filters),
+    select: {
+      id: true,
+      businessLine: true,
+      channelGroup: true,
+      channelName: true,
+      channelType: true,
+      platform: { select: { name: true } },
+      store: { select: { name: true, storeType: true } },
+    },
+    orderBy: [{ sortOrder: "asc" }, { businessLine: "asc" }, { channelName: "asc" }],
+  });
+  const channelIds = channels.map((channel) => channel.id);
+  const currentMetrics = channelIds.length
+    ? await prisma.channelMetricPeriod.findMany({
+        where: { year: filters.year, month: filters.month, periodType: PERIOD_TYPE_WEEK, weekNumber: { in: [...WEEK_NUMBERS] }, channelId: { in: channelIds } },
+        select: { channelId: true, weekNumber: true, salesAmountBase: true, adSpendBase: true },
+      })
+    : [];
+  const requestedWeek = filters.weekNumber && filters.weekNumber >= 1 && filters.weekNumber <= 5 ? filters.weekNumber : latestRecordedWeek(currentMetrics);
+  const previous = previousWeekPeriod(filters.year, filters.month, requestedWeek);
+  const previousMetrics = channelIds.length
+    ? await prisma.channelMetricPeriod.findMany({
+        where: { year: previous.year, month: previous.month, periodType: PERIOD_TYPE_WEEK, weekNumber: previous.weekNumber, channelId: { in: channelIds } },
+        select: { channelId: true, salesAmountBase: true, adSpendBase: true },
+      })
+    : [];
+  const currentMap = new Map(currentMetrics.filter((metric) => metric.weekNumber === requestedWeek).map((metric) => [metric.channelId, metric]));
+  const previousMap = new Map(previousMetrics.map((metric) => [metric.channelId, metric]));
+  const rows = channels.map((channel) => {
+    const currentMetric = currentMap.get(channel.id);
+    const previousMetric = previousMap.get(channel.id);
+    const currentSales = toNumber(currentMetric?.salesAmountBase);
+    const currentAdSpend = toNumber(currentMetric?.adSpendBase);
+    const previousSales = toNumber(previousMetric?.salesAmountBase);
+    const previousAdSpend = toNumber(previousMetric?.adSpendBase);
+    const currentHasData = Boolean(currentMetric && (currentSales !== 0 || currentAdSpend !== 0));
+    const previousHasData = Boolean(previousMetric && (previousSales !== 0 || previousAdSpend !== 0));
+    const salesDelta = currentSales - previousSales;
+    const adSpendDelta = currentAdSpend - previousAdSpend;
+    const currentRoi = comparisonRoi(currentSales, currentAdSpend);
+    const previousRoi = comparisonRoi(previousSales, previousAdSpend);
+    const currentAdRatio = comparisonRatio(currentAdSpend, currentSales);
+    const previousAdRatio = comparisonRatio(previousAdSpend, previousSales);
+    const trend = !currentHasData && previousHasData ? "missing" : currentHasData && !previousHasData ? "new" : salesDelta > 0 ? "up" : salesDelta < 0 ? "down" : "flat";
+    return {
+      channelId: channel.id,
+      businessBlock: inferBusinessBlock({ businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType }),
+      businessLine: channel.businessLine,
+      channelGroup: channel.channelGroup,
+      channelName: channel.channelName,
+      platformName: channel.platform?.name || "-",
+      storeName: channel.store?.name || "-",
+      current: { salesAmount: currentSales, adSpend: currentAdSpend, hasData: currentHasData },
+      previous: { salesAmount: previousSales, adSpend: previousAdSpend, hasData: previousHasData },
+      salesDelta,
+      salesChangeRate: comparisonRate(currentSales, previousSales),
+      adSpendDelta,
+      adSpendChangeRate: comparisonRate(currentAdSpend, previousAdSpend),
+      currentRoi,
+      previousRoi,
+      roiDelta: currentRoi === null || previousRoi === null ? null : currentRoi - previousRoi,
+      currentAdRatio,
+      previousAdRatio,
+      adRatioDelta: currentAdRatio === null || previousAdRatio === null ? null : currentAdRatio - previousAdRatio,
+      trend,
+    };
+  });
+  const summarize = (items: typeof rows, key: "current" | "previous") => {
+    const salesAmount = items.reduce((sum, row) => sum + row[key].salesAmount, 0);
+    const adSpend = items.reduce((sum, row) => sum + row[key].adSpend, 0);
+    return { salesAmount, adSpend, hasData: items.some((row) => row[key].hasData), channelCount: items.filter((row) => row[key].hasData).length, roi: comparisonRoi(salesAmount, adSpend), adRatio: comparisonRatio(adSpend, salesAmount) };
+  };
+  const current = summarize(rows, "current");
+  const previousSummary = summarize(rows, "previous");
+  return {
+    currentPeriod: { year: filters.year, month: filters.month, weekNumber: requestedWeek },
+    previousPeriod: previous,
+    summary: {
+      current,
+      previous: previousSummary,
+      salesDelta: current.salesAmount - previousSummary.salesAmount,
+      salesChangeRate: comparisonRate(current.salesAmount, previousSummary.salesAmount),
+      adSpendDelta: current.adSpend - previousSummary.adSpend,
+      adSpendChangeRate: comparisonRate(current.adSpend, previousSummary.adSpend),
+      roiDelta: current.roi === null || previousSummary.roi === null ? null : current.roi - previousSummary.roi,
+      adRatioDelta: current.adRatio === null || previousSummary.adRatio === null ? null : current.adRatio - previousSummary.adRatio,
+    },
+    rows,
+  };
+}
+
 export function normalizeMoney(value: unknown) {
   const numericValue = toNumber(value);
   return Math.max(numericValue, 0);

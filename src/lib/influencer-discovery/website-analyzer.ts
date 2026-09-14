@@ -195,6 +195,126 @@ function extractInternalLinks(html: string, baseUrl: URL): string[] {
  * 抓取网站首页 + 最多 5 个同域内部链接,返回结构化文本。
  * 全程 SSRF 防护、15s 超时、2MB 上限、优先 text/html。
  */
+// ——— V1.2 电商公开接口增强(全部静默降级,任何失败都不影响主分析) ———
+
+type ShopifyProduct = {
+  title?: string;
+  vendor?: string;
+  product_type?: string;
+  tags?: string[] | string;
+  handle?: string;
+  body_html?: string;
+  variants?: Array<{ price?: string }>;
+};
+
+type EcommerceExtras = {
+  productTitles: string[];
+  productVendors: string[];
+  productTypes: string[];
+  productTags: string[];
+  priceSamples: string[];
+  collectionKeywords: string[];
+  sitemapKeywords: string[];
+};
+
+// 抓一个同域 JSON 端点,失败/超限/非 JSON 一律返回 null(静默)
+async function tryFetchJson(base: URL, path: string, signal: AbortSignal): Promise<unknown | null> {
+  try {
+    const url = new URL(path, base).toString();
+    const res = await safeFetch(url, signal);
+    if (!res.ok) return null;
+    const text = await readLimitedText(res).catch(() => "");
+    if (!text) return null;
+    return JSON.parse(text);
+  } catch {
+    return null; // 非 JSON / 抓取失败 / SSRF 拒绝 → 静默跳过
+  }
+}
+
+async function tryFetchText(base: URL, path: string, signal: AbortSignal): Promise<string | null> {
+  try {
+    const url = new URL(path, base).toString();
+    const res = await safeFetch(url, signal);
+    if (!res.ok) return null;
+    return await readLimitedText(res).catch(() => null);
+  } catch {
+    return null;
+  }
+}
+
+// slug/URL 关键词化:取路径末段,去连字符
+function slugKeywords(pathname: string): string[] {
+  const seg = pathname.split("/").filter(Boolean).pop() ?? "";
+  return seg
+    .replace(/\.(html?|xml)$/i, "")
+    .split(/[-_]/)
+    .map((w) => w.trim().toLowerCase())
+    .filter((w) => w.length >= 3);
+}
+
+async function fetchEcommerceExtras(base: URL, signal: AbortSignal): Promise<EcommerceExtras> {
+  const extras: EcommerceExtras = {
+    productTitles: [], productVendors: [], productTypes: [], productTags: [], priceSamples: [], collectionKeywords: [], sitemapKeywords: [],
+  };
+
+  // 1) Shopify products.json(两个常见路径,任一成功即用)
+  const productsJson =
+    (await tryFetchJson(base, "/products.json?limit=50", signal)) ??
+    (await tryFetchJson(base, "/collections/all/products.json?limit=50", signal));
+  const products = (productsJson && typeof productsJson === "object" && Array.isArray((productsJson as { products?: unknown }).products)
+    ? (productsJson as { products: ShopifyProduct[] }).products
+    : []
+  ).slice(0, 50);
+  const vendors = new Set<string>();
+  const types = new Set<string>();
+  const tags = new Set<string>();
+  const prices: number[] = [];
+  for (const p of products) {
+    if (p.title) extras.productTitles.push(String(p.title).slice(0, 120));
+    if (p.vendor) vendors.add(String(p.vendor).slice(0, 60));
+    if (p.product_type) types.add(String(p.product_type).slice(0, 60));
+    const tagList = Array.isArray(p.tags) ? p.tags : typeof p.tags === "string" ? p.tags.split(",") : [];
+    tagList.forEach((t) => { const s = String(t).trim(); if (s) tags.add(s.slice(0, 40)); });
+    (p.variants ?? []).forEach((v) => { const n = Number(v.price); if (Number.isFinite(n) && n > 0) prices.push(n); });
+  }
+  extras.productVendors = [...vendors].slice(0, 20);
+  extras.productTypes = [...types].slice(0, 20);
+  extras.productTags = [...tags].slice(0, 40);
+  if (prices.length) {
+    prices.sort((a, b) => a - b);
+    extras.priceSamples = [`${prices[0]}`, `${prices[Math.floor(prices.length / 2)]}`, `${prices[prices.length - 1]}`];
+  }
+
+  // 2) sitemap.xml → 产品/集合 URL 关键词(最多 50 个 URL)
+  const sitemap = await tryFetchText(base, "/sitemap.xml", signal);
+  if (sitemap) {
+    const locs = [...sitemap.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1]).slice(0, 200);
+    const kw = new Set<string>();
+    let count = 0;
+    for (const loc of locs) {
+      if (count >= 50) break;
+      try {
+        const u = new URL(loc);
+        if (u.hostname !== base.hostname) continue;
+        if (/\/(products|collections|product|shop)\//i.test(u.pathname)) {
+          slugKeywords(u.pathname).forEach((w) => kw.add(w));
+          count += 1;
+        }
+      } catch { /* 忽略非法 URL */ }
+    }
+    extras.sitemapKeywords = [...kw].slice(0, 40);
+  }
+
+  // 3) /collections HTML → 集合名关键词
+  const collectionsHtml = await tryFetchText(base, "/collections", signal);
+  if (collectionsHtml) {
+    const names = matchAll(collectionsHtml, /<h2[^>]*>([\s\S]*?)<\/h2>/gi).concat(matchAll(collectionsHtml, /<h3[^>]*>([\s\S]*?)<\/h3>/gi));
+    extras.collectionKeywords = [...new Set(names.map((n) => n.trim()).filter((n) => n.length >= 2))].slice(0, 30);
+  }
+
+  return extras;
+}
+
 export async function fetchWebsiteContent(rawUrl: string): Promise<WebsiteContent> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -234,6 +354,14 @@ export async function fetchWebsiteContent(rawUrl: string): Promise<WebsiteConten
       }
     }
 
+    // 电商公开接口增强:整体包裹,任何失败静默降级,不影响 HTML 基础分析
+    let extras: EcommerceExtras | null = null;
+    try {
+      extras = await fetchEcommerceExtras(finalUrl, controller.signal);
+    } catch {
+      extras = null;
+    }
+
     return {
       finalUrl: finalUrl.toString(),
       domain: finalUrl.hostname,
@@ -244,6 +372,14 @@ export async function fetchWebsiteContent(rawUrl: string): Promise<WebsiteConten
       productTexts,
       collectionTexts,
       bodyText,
+      productTitles: extras?.productTitles ?? [],
+      productVendors: extras?.productVendors ?? [],
+      productTypes: extras?.productTypes ?? [],
+      productTags: extras?.productTags ?? [],
+      priceSamples: extras?.priceSamples ?? [],
+      collectionKeywords: extras?.collectionKeywords ?? [],
+      sitemapKeywords: extras?.sitemapKeywords ?? [],
+      policyTexts: [],
     };
   } catch (error) {
     if (error instanceof WebsiteFetchError) throw error;
