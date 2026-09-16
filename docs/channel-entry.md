@@ -1,0 +1,35 @@
+# 公共渠道经营台
+
+入口：`/channel-entry?year=2026&month=9`。此入口不要求登录，持有链接的人可以查看所有渠道并填写数据。填写人是自报姓名，不代表认证身份。原后台 `/channel-data` 及其 API 仍要求登录，未改动。
+
+## 使用
+
+- 共用一个年月筛选，上方经营看板、下方负责人填报。
+- 浏览器进入月份时调用 `POST /api/channel-entry/prepare` 补齐有效渠道的 W1–W5 空白行；GET 数据接口只读。
+- 生成时通过原数据库唯一键及 `createMany(skipDuplicates)` 去重，不覆盖现有行、金额、评级或预算。补救按钮重新执行同一幂等操作。
+- 新月份继承渠道最近历史币种、汇率和负责人，不复制金额。没有历史汇率时采用本地汇率表，缺失则提示后台配置。
+- 各行原币录入，汇总按每条周记录的 CNY 本位币值；ROI 用汇总销售额除以汇总广告费，不取各渠道比例平均。
+- 空白不等于零。新记录的填写标记为 false；填写 0 后标记为 true。历史记录标记为空，历史非零视为已填，历史零值按未确认展示为空，不改写原金额。
+- 单行保存 / 保存全部改动；版本冲突返回 409，避免覆盖他人修改。切换月份或刷新有未保存确认。
+- 周环比为选中 Wn 对比 Wn−1；W1 对比上个月 W5，1 月跨年。缺失数据不算下降；上周为 0 时变化率不可用。
+- 保存与审计在同一事务中写入。修改记录公开显示姓名、时间、渠道和前后值，不暴露 IP 和 User-Agent。
+- 支持当前月份的 CSV 导出，文本做表格公式注入防护。
+
+## 数据源
+
+`ChannelMetricPeriod` 是网站的主数据，`ChannelEntryAudit` 保存操作记录。新增的两个 nullable 填写标记不影响旧字段。该页面不调用飞书，也不要求去飞书生成月份或同步。
+
+旧后台飞书同步保留作为备用入口；手动执行旧同步会按飞书值覆盖对应周报，请勿与网站填报混用。用户认证、专属链接、审批和月份锁定不在本次内部试用版本范围内。无登录意味着链接泄露者同样可访问；noindex 仅减少索引，不提供访问控制。
+
+## 接口
+
+- `GET /api/channel-entry?year=&month=` 当前月及上月可比数据。
+- `POST /api/channel-entry/prepare` 幂等补齐当月行。
+- `PATCH /api/channel-entry/rows/:channelId` 提交姓名、owner、remark、version、5 周 number/null 输入。
+- `GET /api/channel-entry/audits?year=&month=` 最近 100 次保存。
+
+## 回归测试
+
+`npx tsx --test tests/channel-entry-analysis.test.ts`
+
+本地开发数据库与 3001 端口开发服务启动后：`npx tsx tests/channel-entry.integration.ts`。集成脚本拒绝生产数据库，只建立/清理专用测试渠道，不改历史业务金额。

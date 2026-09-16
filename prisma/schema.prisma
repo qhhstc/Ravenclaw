@@ -256,6 +256,8 @@ model ChannelMetricPeriod {
   currency             String
   salesAmountOriginal  Decimal  @default(0) @db.Decimal(18, 2)
   adSpendOriginal      Decimal  @default(0) @db.Decimal(18, 2)
+  entrySalesEntered    Boolean?
+  entryAdSpendEntered  Boolean?
   refundAmountOriginal Decimal  @default(0) @db.Decimal(18, 2)
   orderCount           Int      @default(0)
   visitorCount         Int      @default(0)
