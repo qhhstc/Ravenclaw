@@ -9,6 +9,7 @@ import MonthlySummaryTable from "./MonthlySummaryTable";
 import QuarterSummary from "./QuarterSummary";
 import WeeklyMetricTable from "./WeeklyMetricTable";
 import WeeklyComparison from "./WeeklyComparison";
+import ChannelAnalysisDashboard from "./ChannelAnalysisDashboard";
 import { rowAdSpend, rowAdSpendBase, rowSalesBase } from "./channelDataUtils";
 import type { BasicOption, ChannelDataFilters, ChannelDataOptionState, ChannelDataResponse, ChannelDataRow, ChannelSummaryResponse, WeeklyComparisonResponse } from "./channelDataTypes";
 
@@ -403,6 +404,8 @@ export default function ChannelDataPage() {
       </Spin>
 
       <ChannelKpiCards {...monthlyTotals} />
+
+      <ChannelAnalysisDashboard rows={rows} comparison={comparison} loading={loading} />
 
       <WeeklyComparison
         comparison={comparison}
