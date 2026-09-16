@@ -121,6 +121,7 @@ model Channel {
   quotes        Quote[]
   orders        Order[]
   influencerCollaborations InfluencerCollaboration[]
+  entryAudits    ChannelEntryAudit[]
 
   @@unique([businessLine, channelName, storeId])
   @@index([brandId])
@@ -308,6 +309,26 @@ model ChannelMetricPeriod {
   @@index([aiAnalysisStatus])
   @@index([warningLevel])
   @@index([decisionDeadline])
+}
+
+model ChannelEntryAudit {
+  id          Int      @id @default(autoincrement())
+  year        Int
+  month       Int
+  channelId   Int
+  actorName   String
+  action      String   @default("update")
+  beforeValue String?  @db.Text
+  afterValue  String?  @db.Text
+  ipAddress   String?
+  userAgent   String?  @db.Text
+  createdAt   DateTime @default(now())
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([year, month])
+  @@index([channelId])
+  @@index([actorName])
+  @@index([createdAt])
 }
 
 model BusinessBlockPlan {

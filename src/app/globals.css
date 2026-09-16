@@ -199,6 +199,18 @@ a {
   background: var(--background);
 }
 
+.public-channel-entry {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.public-channel-entry .ant-table-tbody > tr.entry-row-amazon > td { background: rgba(245, 158, 11, 0.08); }
+.public-channel-entry .ant-table-tbody > tr.entry-row-independent_site > td { background: rgba(139, 92, 246, 0.08); }
+.public-channel-entry .ant-table-tbody > tr.entry-row-tiktok > td { background: rgba(17, 24, 39, 0.06); }
+.public-channel-entry .ant-table-tbody > tr.entry-row-b2b > td { background: rgba(22, 163, 74, 0.08); }
+.public-channel-entry .ant-table-tbody > tr.entry-row-other > td { background: rgba(148, 163, 184, 0.08); }
+
 .admin-shell-sider {
   width: 208px;
   min-width: 208px;
