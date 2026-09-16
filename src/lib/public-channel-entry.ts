@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Prisma, type ChannelMetricPeriod } from "@prisma/client";
-import { businessBlockLabel, inferBusinessBlock } from "@/lib/business-blocks";
+import { businessBlockLabel, resolveChannelBusinessBlock } from "@/lib/business-blocks";
 import { buildChannelWhere, PERIOD_TYPE_WEEK, WEEK_NUMBERS, toDecimal, toNumber } from "@/lib/channel-data";
 import { prisma } from "@/lib/prisma";
 import type { EntryAudit, EntryChange, EntryData, EntryDraft, EntryPeriod, EntryRow } from "./channel-entry-types";
@@ -49,7 +49,7 @@ export async function getPublicChannelRows(year: number, month: number): Promise
   return channels.map((channel) => {
     const items = metrics.filter((metric) => metric.channelId === channel.id);
     const snapshot = recordSnapshot(items);
-    const businessBlock = inferBusinessBlock({ businessBlock: items[0]?.businessBlock, businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType });
+    const businessBlock = resolveChannelBusinessBlock({ channelGroup: channel.channelGroup, businessBlock: items[0]?.businessBlock, businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType });
     return {
       channelId: channel.id, businessBlock, businessBlockLabel: businessBlockLabel(businessBlock), businessLine: channel.businessLine, channelName: channel.channelName,
       owner: snapshot.owner, remark: snapshot.remark, currency: snapshot.currency, exchangeRate: snapshot.exchangeRate, version: snapshot.version,
@@ -89,7 +89,7 @@ export async function preparePublicChannelMonth(year: number, month: number) {
     const currency = last?.currency ?? channel.store?.defaultCurrency ?? channel.brand?.defaultCurrency ?? "CNY";
     const rate = last ? toNumber(last.exchangeRate) : currency === "CNY" ? 1 : toNumber(rates.find((item) => item.baseCurrency === currency)?.rate);
     if (rate <= 0) { warnings.push(`${channel.businessLine} / ${channel.channelName} 缺少 ${currency}→CNY 汇率，请在后台配置`); continue; }
-    const businessBlock = inferBusinessBlock({ businessBlock: last?.businessBlock, businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType });
+    const businessBlock = resolveChannelBusinessBlock({ channelGroup: channel.channelGroup, businessBlock: last?.businessBlock, businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType });
     for (const weekNumber of WEEK_NUMBERS) {
       if (known.has(`${channel.id}-${weekNumber}`)) continue;
       pending.push({ year, month, quarter: Math.ceil(month / 3), weekNumber, periodType: PERIOD_TYPE_WEEK, channelId: channel.id, brandId: channel.brandId, platformId: channel.platformId, storeId: channel.storeId, countryCode: last?.countryCode ?? channel.store?.primaryMarketCode ?? null, currency, exchangeRate: new Prisma.Decimal(rate.toFixed(6)), businessBlock, decisionOwner: last?.decisionOwner ?? null, entrySalesEntered: false, entryAdSpendEntered: false });

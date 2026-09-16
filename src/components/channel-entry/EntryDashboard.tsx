@@ -38,7 +38,7 @@ export default function EntryDashboard({ data, selectedWeek, onWeekChange, onLoc
     { title: "广告占销", value: entryPercent(analysis.adRatio), note: "广告费 ÷ 销售额", accent: "#0f766e" },
   ];
   return <section id="entry-dashboard" className="entry-section">
-    <div className="entry-section-heading"><div><span className="entry-eyebrow">01 / OVERVIEW</span><h2>经营分析看板</h2><p>{data.year} 年 {data.month} 月 · 已保存数据 · 汇总单位 CNY</p></div><span className="entry-updated">更新于 {latest}</span></div>
+    <div className="entry-section-heading"><div><h2>经营分析看板</h2><p>{data.year} 年 {data.month} 月 · 人民币</p></div><span className="entry-updated">更新于 {latest}</span></div>
     <div className="entry-kpi-grid">{cards.map((card) => <div className="entry-kpi" key={card.title} style={{ borderTopColor: card.accent }}><span>{card.title}</span><strong>{card.value}</strong><small>{card.note}</small></div>)}</div>
     <div className="entry-progress-bar">
       <div><b>W{selectedWeek} 填报完成度</b><Progress percent={data.rows.length ? Math.round(analysis.completed / data.rows.length * 100) : 0} size="small" strokeColor="#2563eb" /><small>{analysis.completed} / {data.rows.length} 个渠道已填齐销售和广告</small></div>

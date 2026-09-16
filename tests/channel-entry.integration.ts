@@ -9,16 +9,18 @@ async function main() {
   const brand = await prisma.brand.findFirst();
   const platform = await prisma.platform.findFirst();
   assert.ok(brand && platform);
-  const channel = await prisma.channel.create({ data: { businessLine: `__entry_test_${Date.now()}`, channelName: "自动测试专用渠道", channelType: "manual", brandId: brand.id, platformId: platform.id } });
+  const channel = await prisma.channel.create({ data: { businessLine: `__entry_test_${Date.now()}`, channelName: "自动测试专用渠道", channelGroup: "亚马逊", channelType: "manual", brandId: brand.id, platformId: platform.id } });
   try {
     await prisma.channelMetricPeriod.create({ data: { year: 2026, month: 8, quarter: 3, periodType: "week", weekNumber: 1, channelId: channel.id, brandId: brand.id, platformId: platform.id, currency: "USD", exchangeRate: 6.8, decisionOwner: "原负责人", salesAmountOriginal: 10, salesAmountBase: 68 } });
     const post = () => fetch(`${root}/api/channel-entry/prepare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year: 2026, month: 9 }) });
     assert.equal((await post()).status, 200);
     assert.equal((await (await post()).json()).createdWeeks, 0);
+    await prisma.channelMetricPeriod.updateMany({ where: { channelId: channel.id, year: 2026, month: 9 }, data: { businessBlock: "independent_site" } });
     const read = async () => (await (await fetch(`${root}/api/channel-entry?year=2026&month=9`)).json());
     const before = await read();
     let row = before.rows.find((r: { channelId: number }) => r.channelId === channel.id);
     assert.ok(row);
+    assert.equal(row.businessBlock, "amazon", "original channel group must override stale imported block");
     assert.equal(row.currency, "USD"); assert.equal(row.exchangeRate, 6.8); assert.equal(row.owner, "原负责人");
     assert.equal(row.weeks[0].salesAmountOriginal, null);
     const body = { year: 2026, month: 9, actorName: "接口回归测试", owner: "新负责人", remark: "测试备注", version: row.version, weeks: row.weeks.map((w: { weekNumber: number }) => ({ weekNumber: w.weekNumber, salesAmountOriginal: w.weekNumber === 1 ? 0 : null, adSpendOriginal: w.weekNumber === 1 ? 0 : null })) };

@@ -7,6 +7,32 @@ export const businessBlockOptions = [
 
 export type BusinessBlock = (typeof businessBlockOptions)[number]["value"];
 
+// Customer-original sheets keep their top-level block in Channel.channelGroup.
+// A channel name (e.g. CALEMBOU-US) is not itself a block; never default it to DTC.
+function knownBusinessBlock(value?: string | null): BusinessBlock | null {
+  const text = (value || "").toLowerCase().trim();
+  if (["amazon", "亚马逊", "amazon_store"].includes(text)) return "amazon";
+  if (["tiktok", "tiktok shop", "抖音", "tiktok店铺", "tiktok_shop"].includes(text)) return "tiktok";
+  if (["b2b", "b端", "b端业务", "wordpress批发", "wordpress", "批发", "wholesale", "wordpress_wholesale_site"].includes(text)) return "b2b";
+  if (["independent_site", "独立站", "shopify", "shopify独立站", "dtc", "edm", "seo", "shopify_dtc_site"].includes(text)) return "independent_site";
+  return null;
+}
+
+export function resolveChannelBusinessBlock(input: {
+  channelGroup?: string | null;
+  businessBlock?: string | null;
+  businessLine?: string | null;
+  platformName?: string | null;
+  storeType?: string | null;
+  channelType?: string | null;
+}): BusinessBlock | "other" {
+  for (const value of [input.channelGroup, input.businessBlock, input.platformName, input.storeType, input.businessLine, input.channelType]) {
+    const block = knownBusinessBlock(value);
+    if (block) return block;
+  }
+  return "other";
+}
+
 const blockLabels = Object.fromEntries(businessBlockOptions.map((item) => [item.value, item.label])) as Record<BusinessBlock, string>;
 
 export function businessBlockLabel(value?: string | null) {

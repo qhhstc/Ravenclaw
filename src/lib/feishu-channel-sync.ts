@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { businessBlockLabel, inferBusinessBlock } from "@/lib/business-blocks";
+import { businessBlockLabel, resolveChannelBusinessBlock } from "@/lib/business-blocks";
 import { PERIOD_TYPE_WEEK, WEEK_NUMBERS, buildChannelWhere, toDecimal, toNumber } from "@/lib/channel-data";
 import { prisma } from "@/lib/prisma";
 
@@ -128,7 +128,7 @@ export async function syncFeishuChannelData() {
     if (!channel?.brandId || !channel.platformId) { errors.push({ recordId: row.record.record_id, rowLabel: label, message: "渠道不存在或缺少品牌/平台关联" }); continue; }
     const currency = textField(row.fields, "币种") || channel.store?.defaultCurrency || channel.brand?.defaultCurrency || "CNY";
     const exchangeRate = Math.max(numberField(row.fields, "汇率", 1), 0) || 1;
-    const businessBlock = inferBusinessBlock({ businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType });
+    const businessBlock = resolveChannelBusinessBlock({ channelGroup: channel.channelGroup, businessBlock: textField(row.fields, "板块"), businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType });
     for (const weekNumber of WEEK_NUMBERS) {
       const salesAmount = numberField(row.fields, `W${weekNumber}销售`);
       const adSpend = Math.max(numberField(row.fields, `W${weekNumber}广告`), 0);
@@ -189,7 +189,7 @@ export async function prepareFeishuChannelMonth(year: number, month: number) {
       渠道: channel.channelName,
       年份: year,
       月份: month,
-      板块: businessBlockLabel(inferBusinessBlock({ businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType })),
+      板块: businessBlockLabel(resolveChannelBusinessBlock({ channelGroup: channel.channelGroup, businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType })),
       二级: channel.businessLine,
       负责人: "",
       渠道编码: `CH-${String(channel.id).padStart(4, "0")}`,

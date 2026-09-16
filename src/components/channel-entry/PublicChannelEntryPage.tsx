@@ -147,24 +147,23 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
   ];
 
   return <div className="channel-entry-shell">
-    <header className="entry-hero"><div><span className="entry-logo">R</span><div><h1>渠道经营台</h1><p>一个入口，完成填报与经营复盘</p></div></div><div><nav><a href="#entry-dashboard"><BarChartOutlined /> 经营看板</a><a href="#entry-input"><EditOutlined /> 负责人填报</a></nav><ThemeToggle /></div></header>
+    <header className="entry-hero"><nav><a href="#entry-dashboard"><BarChartOutlined /> 经营看板</a><a href="#entry-input"><EditOutlined /> 负责人填报</a></nav><ThemeToggle /></header>
     <main className="public-channel-entry">
       <div className="entry-toolbar"><div className="entry-period-control"><label htmlFor="entry-month">统计月份</label><DatePicker id="entry-month" aria-label="统计月份" picker="month" allowClear={false} disabled={busy} value={dayjs(`${period.year}-${String(period.month).padStart(2, "0")}-01`)} format="YYYY年M月" minDate={dayjs("2000-01-01")} maxDate={dayjs("2100-12-31")} onChange={(value) => { if (value) guard(() => setPeriod({ year: value.year(), month: value.month() + 1 })); }} /><Button icon={<ReloadOutlined />} disabled={busy} onClick={() => guard(() => setRefreshKey((k) => k + 1))}>刷新</Button></div><div className="entry-tools"><Button icon={<PlusOutlined />} disabled={busy} onClick={() => guard(() => setRefreshKey((k) => k + 1))}>补齐本月行</Button><Button icon={<HistoryOutlined />} disabled={!data || busy} onClick={() => void showAudits()}>修改记录</Button><Button icon={<DownloadOutlined />} disabled={!data || busy} onClick={exportData}>导出</Button></div></div>
-      <div className="entry-access-note">内部试用 · 无需登录，持有链接可查看和填写全部渠道。姓名为自行填写，仅用于操作留痕。</div>
       {error ? <Alert type="error" showIcon title="数据加载失败" description={error} action={<Button onClick={() => setRefreshKey((k) => k + 1)}>重试</Button>} /> : null}
       {warnings.length ? <Alert type="warning" showIcon title="部分渠道需要后台配置" description={warnings.join("；")} /> : null}
       {loading ? <div className="entry-loading"><Spin size="large" /><span>正在准备 {period.year} 年 {period.month} 月数据…</span></div> : data ? <>
         <EntryDashboard data={data} selectedWeek={selectedWeek} onWeekChange={setSelectedWeek} onLocate={(id) => { setSearch(""); setBlockFilter(undefined); setFocusedId(null); requestAnimationFrame(() => setFocusedId(id)); }} />
         <section id="entry-input" className="entry-section" ref={tableRef}>
-          <div className="entry-section-heading"><div><span className="entry-eyebrow">02 / INPUT</span><h2>负责人填报</h2><p>一行一个渠道，W1–W5 横向填写。留空表示未填，填写 0 表示确认没有发生。</p></div><Tag color={dirtyCount ? "orange" : "green"}>{dirtyCount ? `${dirtyCount} 行待保存` : "全部修改已保存"}</Tag></div>
+          <div className="entry-section-heading"><div><h2>负责人填报</h2><p>留空表示未填，0 表示确认无发生。</p></div><Tag color={dirtyCount ? "orange" : "green"}>{dirtyCount ? `${dirtyCount} 行待保存` : "全部修改已保存"}</Tag></div>
           <div className="entry-input-toolbar"><div><label htmlFor="entry-actor">填写人姓名</label><Input id="entry-actor" aria-label="填写人姓名" value={actorName} onChange={(event) => setActorName(event.target.value)} maxLength={80} placeholder="保存前填写姓名" disabled={busy} /><Button type="primary" icon={<SaveOutlined />} disabled={!dirtyCount || busy} onClick={() => void saveAll()}>保存全部改动</Button></div><div><Select aria-label="筛选板块" allowClear placeholder="全部板块" value={blockFilter} onChange={setBlockFilter} options={Array.from(new Map(data.rows.map((row) => [row.businessBlock, { value: row.businessBlock, label: row.businessBlockLabel }])).values())} /><Input.Search allowClear aria-label="搜索渠道或负责人" placeholder="搜索渠道 / 负责人" value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>
           <Table<EntryRow> bordered size="small" rowKey="channelId" columns={columns} dataSource={visibleRows} pagination={false} scroll={{ x: 1905 }} rowClassName={(row) => `entry-block-${row.businessBlock}${focusedId === row.channelId ? " entry-highlight" : ""}`} locale={{ emptyText: "当前筛选下没有渠道" }} />
-          <p className="entry-footnote">自动继承渠道既有币种与汇率；表内为原币，看板为人民币。历史数据中的 0 未区分是否填写，暂显示空白，确认填入 0 后会正常计入填报进度。新月份自动生成空白行，不复制上月金额。</p>
+          <p className="entry-footnote">原币录入，人民币汇总。历史零值暂按未确认显示，确认填写 0 后计入填报进度。</p>
         </section>
       </> : null}
     </main>
     <Drawer title={`${period.year}年${period.month}月 · 修改记录`} open={auditOpen} onClose={() => setAuditOpen(false)} size={620} extra={<Button onClick={() => void showAudits()} loading={auditLoading}>刷新记录</Button>}>
-      <p className="entry-footnote">显示最近 100 次保存。填写人姓名为自报信息，非登录认证身份。IP 和设备信息仅在服务端留存。</p>
+      <p className="entry-footnote">最近 100 次保存</p>
       {auditError ? <Alert type="error" title={auditError} /> : auditLoading ? <Spin /> : audits.length ? audits.map((audit) => <div className="entry-audit" key={audit.id}><b>{audit.actorName}</b><time>{new Date(audit.createdAt).toLocaleString("zh-CN")}</time><h4>{audit.channel.businessLine} / {audit.channel.channelName}</h4>{audit.changes.map((change, index) => <div className="entry-audit-change" key={index}><span>{change.label}</span><del>{displayAuditValue(change.before)}</del><b>→ {displayAuditValue(change.after)}</b></div>)}</div>) : <Empty description="本月还没有保存记录" />}
     </Drawer>
   </div>;

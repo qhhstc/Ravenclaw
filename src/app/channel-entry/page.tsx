@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "渠道经营台 · Ravenclaw", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "渠道数据", robots: { index: false, follow: false } };
 
 export default async function ChannelEntryRoutePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
