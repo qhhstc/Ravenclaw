@@ -246,6 +246,8 @@ a {
 .entry-roi-weeks { font-size: 12px; }
 .entry-roi-weeks small { display: block; color: var(--muted); }
 .entry-roi-note { margin-top: 14px; }
+.entry-roi-period { margin-bottom: 12px; }
+.entry-roi-muted { color: var(--muted); }
 .entry-week-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .entry-week-heading h3 { font-size: 17px; font-weight: 600; margin-bottom: 5px; }
 .entry-week-heading .ant-select { width: 100px; }

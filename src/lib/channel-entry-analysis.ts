@@ -15,6 +15,7 @@ export function monthTotals(row: EntryRow) {
   return { sales: sumKnown(row.weeks.map((week) => week.salesAmountBase)), ad: sumKnown(row.weeks.map((week) => week.adSpendBase)) };
 }
 
+type RoiStatus = "ready" | "missing" | "incomplete" | "no-ad";
 export type ChannelRoiComparison = {
   row: EntryRow;
   sales: number | null;
@@ -23,31 +24,49 @@ export type ChannelRoiComparison = {
   adRatio: number | null;
   activeWeeks: number[];
   incompleteWeeks: number[];
-  status: "ready" | "missing" | "incomplete" | "no-ad";
+  status: RoiStatus;
+  previousRoi: number | null;
+  previousStatus: RoiStatus | null;
+  roiDelta: number | null;
+  roiRate: number | null;
 };
 
-export function compareChannelRoi(rows: EntryRow[], weekNumber: number | null = null): ChannelRoiComparison[] {
+function roiPeriod(weeks: EntryWeek[]) {
+  const active = weeks.filter((week) => week.salesAmountBase !== null || week.adSpendBase !== null);
+  const incompleteWeeks = active.filter((week) => week.salesAmountBase === null || week.adSpendBase === null).map((week) => week.weekNumber);
+  const sales = sumKnown(weeks.map((week) => week.salesAmountBase));
+  const ad = sumKnown(weeks.map((week) => week.adSpendBase));
+  // Never divide sales covering more weeks by an incomplete advertising total.
+  // Entirely blank weeks (including future weeks) do not mean zero activity.
+  const status: RoiStatus = !active.length ? "missing" : incompleteWeeks.length ? "incomplete" : ad !== null && ad > 0 ? "ready" : "no-ad";
+  return {
+    sales, ad, status, activeWeeks: active.map((week) => week.weekNumber), incompleteWeeks,
+    roi: status === "ready" ? entryRatio(sales, ad) : null,
+    adRatio: status === "ready" || status === "no-ad" ? entryRatio(ad, sales) : null,
+  };
+}
+
+export function compareChannelRoi(rows: EntryRow[], weekNumber: number | null = null, previousRows: EntryRow[] = []): ChannelRoiComparison[] {
+  const previousById = new Map(previousRows.map((row) => [row.channelId, row]));
   return rows.map((row) => {
     const weeks = (weekNumber === null ? [1, 2, 3, 4, 5] : [weekNumber]).map((number) => entryWeek(row, number));
-    const active = weeks.filter((week) => week.salesAmountBase !== null || week.adSpendBase !== null);
-    const incompleteWeeks = active.filter((week) => week.salesAmountBase === null || week.adSpendBase === null).map((week) => week.weekNumber);
-    const sales = sumKnown(weeks.map((week) => week.salesAmountBase));
-    const ad = sumKnown(weeks.map((week) => week.adSpendBase));
-    // Never divide sales covering more weeks by an incomplete advertising total.
-    // Entirely blank weeks (including future weeks) do not mean zero activity.
-    const status = !active.length ? "missing" : incompleteWeeks.length ? "incomplete" : ad !== null && ad > 0 ? "ready" : "no-ad";
+    const current = roiPeriod(weeks);
+    const previous = weekNumber === null ? null : roiPeriod([entryWeek(weekNumber === 1 ? previousById.get(row.channelId) : row, weekNumber === 1 ? 5 : weekNumber - 1)]);
+    const previousRoi = previous?.roi ?? null;
     return {
-      row, sales, ad, status, activeWeeks: active.map((week) => week.weekNumber), incompleteWeeks,
-      roi: status === "ready" ? entryRatio(sales, ad) : null,
-      adRatio: status === "ready" || status === "no-ad" ? entryRatio(ad, sales) : null,
+      row, ...current, previousRoi, previousStatus: previous?.status ?? null,
+      roiDelta: entryDelta(current.roi, previousRoi),
+      roiRate: entryChangeRate(current.roi, previousRoi),
     };
   });
 }
 
-export function sortChannelRoi(items: ChannelRoiComparison[], direction: "desc" | "asc" = "desc") {
+export function sortChannelRoi(items: ChannelRoiComparison[], direction: "desc" | "asc" = "desc", metric: "roi" | "roiRate" = "roi") {
   return [...items].sort((a, b) => {
-    if (a.roi === null || b.roi === null) return a.roi === b.roi ? a.row.channelId - b.row.channelId : a.roi === null ? 1 : -1;
-    return (direction === "desc" ? b.roi - a.roi : a.roi - b.roi) || a.row.channelId - b.row.channelId;
+    const first = a[metric];
+    const second = b[metric];
+    if (first === null || second === null) return first === second ? a.row.channelId - b.row.channelId : first === null ? 1 : -1;
+    return (direction === "desc" ? second - first : first - second) || a.row.channelId - b.row.channelId;
   });
 }
 
