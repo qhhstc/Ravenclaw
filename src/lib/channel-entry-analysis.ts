@@ -15,6 +15,42 @@ export function monthTotals(row: EntryRow) {
   return { sales: sumKnown(row.weeks.map((week) => week.salesAmountBase)), ad: sumKnown(row.weeks.map((week) => week.adSpendBase)) };
 }
 
+export type ChannelRoiComparison = {
+  row: EntryRow;
+  sales: number | null;
+  ad: number | null;
+  roi: number | null;
+  adRatio: number | null;
+  activeWeeks: number[];
+  incompleteWeeks: number[];
+  status: "ready" | "missing" | "incomplete" | "no-ad";
+};
+
+export function compareChannelRoi(rows: EntryRow[], weekNumber: number | null = null): ChannelRoiComparison[] {
+  return rows.map((row) => {
+    const weeks = (weekNumber === null ? [1, 2, 3, 4, 5] : [weekNumber]).map((number) => entryWeek(row, number));
+    const active = weeks.filter((week) => week.salesAmountBase !== null || week.adSpendBase !== null);
+    const incompleteWeeks = active.filter((week) => week.salesAmountBase === null || week.adSpendBase === null).map((week) => week.weekNumber);
+    const sales = sumKnown(weeks.map((week) => week.salesAmountBase));
+    const ad = sumKnown(weeks.map((week) => week.adSpendBase));
+    // Never divide sales covering more weeks by an incomplete advertising total.
+    // Entirely blank weeks (including future weeks) do not mean zero activity.
+    const status = !active.length ? "missing" : incompleteWeeks.length ? "incomplete" : ad !== null && ad > 0 ? "ready" : "no-ad";
+    return {
+      row, sales, ad, status, activeWeeks: active.map((week) => week.weekNumber), incompleteWeeks,
+      roi: status === "ready" ? entryRatio(sales, ad) : null,
+      adRatio: status === "ready" || status === "no-ad" ? entryRatio(ad, sales) : null,
+    };
+  });
+}
+
+export function sortChannelRoi(items: ChannelRoiComparison[], direction: "desc" | "asc" = "desc") {
+  return [...items].sort((a, b) => {
+    if (a.roi === null || b.roi === null) return a.roi === b.roi ? a.row.channelId - b.row.channelId : a.roi === null ? 1 : -1;
+    return (direction === "desc" ? b.roi - a.roi : a.roi - b.roi) || a.row.channelId - b.row.channelId;
+  });
+}
+
 export function analyzeEntry(data: EntryData, selectedWeek: number) {
   const previousById = new Map(data.previousRows.map((row) => [row.channelId, row]));
   const comparisons = data.rows.map((row) => {

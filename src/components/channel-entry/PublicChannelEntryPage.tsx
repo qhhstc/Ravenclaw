@@ -158,7 +158,7 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
           <div className="entry-section-heading"><div><h2>负责人填报</h2><p>留空表示未填，0 表示确认无发生。</p></div><Tag color={dirtyCount ? "orange" : "green"}>{dirtyCount ? `${dirtyCount} 行待保存` : "全部修改已保存"}</Tag></div>
           <div className="entry-input-toolbar"><div><label htmlFor="entry-actor">填写人姓名</label><Input id="entry-actor" aria-label="填写人姓名" value={actorName} onChange={(event) => setActorName(event.target.value)} maxLength={80} placeholder="保存前填写姓名" disabled={busy} /><Button type="primary" icon={<SaveOutlined />} disabled={!dirtyCount || busy} onClick={() => void saveAll()}>保存全部改动</Button></div><div><Select aria-label="筛选板块" allowClear placeholder="全部板块" value={blockFilter} onChange={setBlockFilter} options={Array.from(new Map(data.rows.map((row) => [row.businessBlock, { value: row.businessBlock, label: row.businessBlockLabel }])).values())} /><Input.Search allowClear aria-label="搜索渠道或负责人" placeholder="搜索渠道 / 负责人" value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>
           <Table<EntryRow> bordered size="small" rowKey="channelId" columns={columns} dataSource={visibleRows} pagination={false} scroll={{ x: 1905 }} rowClassName={(row) => `entry-block-${row.businessBlock}${focusedId === row.channelId ? " entry-highlight" : ""}`} locale={{ emptyText: "当前筛选下没有渠道" }} />
-          <p className="entry-footnote">原币录入，人民币汇总。历史零值暂按未确认显示，确认填写 0 后计入填报进度。</p>
+          <p className="entry-footnote">原币录入，人民币汇总。历史零值暂按未确认显示，确认无发生时请填写 0。</p>
         </section>
       </> : null}
     </main>

@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button, Card, Empty, Progress, Segmented, Select, Table, Tag, Tooltip } from "antd";
-import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
+import { Button, Card, Empty, Segmented, Select, Table, Tag, Tooltip } from "antd";
 import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { analyzeEntry, ENTRY_BLOCK_COLORS, sumKnown } from "@/lib/channel-entry-analysis";
 import type { EntryData } from "@/lib/channel-entry-types";
+import ChannelRoiComparison from "./ChannelRoiComparison";
 
 export const entryMoney = (value: number | null) => value === null ? "—" : `¥${value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const entryPercent = (value: number | null) => value === null ? "—" : `${(value * 100).toFixed(1)}%`;
@@ -34,23 +34,17 @@ export default function EntryDashboard({ data, selectedWeek, onWeekChange, onLoc
   const cards = [
     { title: "本月销售额", value: entryMoney(analysis.sales), note: `${analysis.populated} 个渠道已有数据`, accent: "#2563eb" },
     { title: "本月广告费", value: entryMoney(analysis.ad), note: "已录入广告费合计", accent: "#d97706" },
-    { title: "整体 ROI", value: analysis.roi === null ? "—" : analysis.roi.toFixed(2), note: "销售额 ÷ 广告费，非利润率", accent: "#7c3aed" },
     { title: "广告占销", value: entryPercent(analysis.adRatio), note: "广告费 ÷ 销售额", accent: "#0f766e" },
   ];
   return <section id="entry-dashboard" className="entry-section">
     <div className="entry-section-heading"><div><h2>经营分析看板</h2><p>{data.year} 年 {data.month} 月 · 人民币</p></div><span className="entry-updated">更新于 {latest}</span></div>
     <div className="entry-kpi-grid">{cards.map((card) => <div className="entry-kpi" key={card.title} style={{ borderTopColor: card.accent }}><span>{card.title}</span><strong>{card.value}</strong><small>{card.note}</small></div>)}</div>
-    <div className="entry-progress-bar">
-      <div><b>W{selectedWeek} 填报完成度</b><Progress percent={data.rows.length ? Math.round(analysis.completed / data.rows.length * 100) : 0} size="small" strokeColor="#2563eb" /><small>{analysis.completed} / {data.rows.length} 个渠道已填齐销售和广告</small></div>
-      <div><span>销售上涨</span><strong className="entry-positive"><ArrowUpOutlined /> {analysis.up}</strong></div>
-      <div><span>销售下降</span><strong className="entry-negative"><ArrowDownOutlined /> {analysis.down}</strong></div>
-      <div><span>对比周</span><Select aria-label="看板对比周" value={selectedWeek} onChange={onWeekChange} options={[1, 2, 3, 4, 5].map((value) => ({ value, label: `W${value}` }))} /></div>
-    </div>
-    <p className="entry-footnote">W{selectedWeek} 对比 {previousLabel}。只对两周都有销售数据的渠道计算涨跌；未填写不视为下降。历史零值无法确认是否填报，会提示待确认。</p>
+    <ChannelRoiComparison rows={data.rows} onLocate={onLocate} />
     <div className="entry-chart-grid">
       <Card title="每周销售与广告"><p className="entry-card-caption">W1–W5 · 空白周不绘制为 0</p>{analysis.weekly.some((w) => w.sales !== null || w.ad !== null) ? <div className="entry-chart"><ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 600, height: 280 }}><ComposedChart data={analysis.weekly} margin={{ left: 2, right: 12 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" /><XAxis dataKey="week" stroke="var(--muted)" /><YAxis tickFormatter={compact} stroke="var(--muted)" width={64} /><ChartTooltip contentStyle={tooltipStyle} formatter={(value) => entryMoney(Number(value))} /><Legend /><Bar dataKey="ad" name="广告费" fill="#fbbf24" radius={[5, 5, 0, 0]} /><Line dataKey="sales" name="销售额" stroke="#2563eb" strokeWidth={3} connectNulls={false} dot={{ r: 4 }} /></ComposedChart></ResponsiveContainer></div> : <Empty description="本月尚未填写数据" />}</Card>
       <Card title="各板块销售与广告"><p className="entry-card-caption">同一月份 · 按渠道汇率折算</p>{analysis.blocks.some((b) => b.sales !== null || b.ad !== null) ? <div className="entry-chart"><ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 600, height: 280 }}><BarChart data={analysis.blocks} margin={{ left: 2, right: 12 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" /><XAxis dataKey="name" stroke="var(--muted)" /><YAxis tickFormatter={compact} stroke="var(--muted)" width={64} /><ChartTooltip contentStyle={tooltipStyle} formatter={(value) => entryMoney(Number(value))} /><Legend /><Bar dataKey="sales" name="销售额" radius={[5, 5, 0, 0]}>{analysis.blocks.map((block) => <Cell key={block.key} fill={ENTRY_BLOCK_COLORS[block.key] || ENTRY_BLOCK_COLORS.other} />)}</Bar><Bar dataKey="ad" name="广告费" fill="#cbd5e1" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div> : <Empty description="暂无板块数据" />}</Card>
     </div>
+    <div className="entry-week-heading"><div><h3>周环比分析</h3><p className="entry-footnote">W{selectedWeek} 对比 {previousLabel} · 未填写不视为下降</p></div><Select aria-label="看板对比周" value={selectedWeek} onChange={onWeekChange} options={[1, 2, 3, 4, 5].map((value) => ({ value, label: `W${value}` }))} /></div>
     <div className="entry-chart-grid">
       <Card title="周环比涨跌排行" extra={<div className="entry-rank-controls"><Select aria-label="排行指标" value={rankMetric} onChange={setRankMetric} options={[{ value: "sales", label: "销售额" }, { value: "ad", label: "广告费" }]} /><Segmented size="small" value={rankDirection} onChange={(value) => setRankDirection(String(value))} options={["下降", "上涨"]} /></div>}>
         <p className="entry-card-caption">W{selectedWeek} vs {previousLabel} · 按变动金额排序</p>
