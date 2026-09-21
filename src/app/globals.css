@@ -221,6 +221,7 @@ a {
 .entry-toolbar, .entry-period-control, .entry-tools, .entry-input-toolbar, .entry-input-toolbar > div { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .entry-toolbar { justify-content: space-between; padding: 15px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
 .entry-period-control label, .entry-input-toolbar label { font-weight: 600; white-space: nowrap; }
+.entry-period-control .entry-stats-week { min-width: 100px; }
 .entry-section { display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 18px; }
 .entry-section-heading { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; justify-content: space-between; }
 .entry-section-heading h2 { margin: 4px 0 6px; font-size: 22px; line-height: 1.3; font-weight: 700; }

@@ -14,6 +14,11 @@ export function entryWeek(row: EntryRow | undefined, number: number): EntryWeek 
 export function monthTotals(row: EntryRow) {
   return { sales: sumKnown(row.weeks.map((week) => week.salesAmountBase)), ad: sumKnown(row.weeks.map((week) => week.adSpendBase)) };
 }
+function periodTotals(row: EntryRow, weekNumber: number | null) {
+  if (weekNumber === null) return monthTotals(row);
+  const week = entryWeek(row, weekNumber);
+  return { sales: week.salesAmountBase, ad: week.adSpendBase };
+}
 
 type RoiStatus = "ready" | "missing" | "incomplete" | "no-ad";
 export type ChannelRoiComparison = {
@@ -70,7 +75,7 @@ export function sortChannelRoi(items: ChannelRoiComparison[], direction: "desc" 
   });
 }
 
-export function analyzeEntry(data: EntryData, selectedWeek: number) {
+export function analyzeEntry(data: EntryData, selectedWeek: number, statsWeek: number | null = null) {
   const previousById = new Map(data.previousRows.map((row) => [row.channelId, row]));
   const comparisons = data.rows.map((row) => {
     const current = entryWeek(row, selectedWeek);
@@ -88,13 +93,13 @@ export function analyzeEntry(data: EntryData, selectedWeek: number) {
     const trend = current.salesAmountBase === null ? "missing" : previous.salesAmountBase === null ? "uncompared" : salesDelta! > 0 ? "up" : salesDelta! < 0 ? "down" : "flat";
     return { row, current, previous, salesDelta, adDelta, salesRate: entryChangeRate(current.salesAmountBase, previous.salesAmountBase), adRate: entryChangeRate(current.adSpendBase, previous.adSpendBase), currentRoi, previousRoi, adRatio, trend, alerts };
   });
-  const totals = data.rows.map(monthTotals);
+  const totals = data.rows.map((row) => periodTotals(row, statsWeek));
   const sales = sumKnown(totals.map((item) => item.sales));
   const ad = sumKnown(totals.map((item) => item.ad));
   const blocks = Array.from(new Set(data.rows.map((row) => row.businessBlock))).map((block) => {
     const items = data.rows.filter((row) => row.businessBlock === block);
-    const blockSales = sumKnown(items.map((row) => monthTotals(row).sales));
-    const blockAd = sumKnown(items.map((row) => monthTotals(row).ad));
+    const blockSales = sumKnown(items.map((row) => periodTotals(row, statsWeek).sales));
+    const blockAd = sumKnown(items.map((row) => periodTotals(row, statsWeek).ad));
     return { key: block, name: items[0].businessBlockLabel, sales: blockSales, ad: blockAd, roi: entryRatio(blockSales, blockAd), count: items.length };
   });
   const weekly = [1, 2, 3, 4, 5].map((number) => ({
@@ -107,6 +112,6 @@ export function analyzeEntry(data: EntryData, selectedWeek: number) {
     down: comparisons.filter((item) => item.trend === "down").length,
     completed: comparisons.filter((item) => item.current.salesAmountOriginal !== null && item.current.adSpendOriginal !== null).length,
     populated: totals.filter((item) => item.sales !== null || item.ad !== null).length,
-    topSales: data.rows.map((row) => ({ row, sales: monthTotals(row).sales })).filter((item) => item.sales !== null).sort((a, b) => b.sales! - a.sales!).slice(0, 5),
+    topSales: data.rows.map((row) => ({ row, sales: periodTotals(row, statsWeek).sales })).filter((item) => item.sales !== null).sort((a, b) => b.sales! - a.sales!).slice(0, 5),
   };
 }

@@ -29,12 +29,14 @@ function RoiChange({ value, rate = false, zeroBaseline = false }: { value: numbe
 
 type RoiSort = "roi-desc" | "roi-asc" | "rate-desc" | "rate-asc";
 
-export default function ChannelRoiComparison({ data, onLocate }: { data: EntryData; onLocate: (id: number) => void }) {
+export default function ChannelRoiComparison({ data, period, onPeriodChange, onLocate }: {
+  data: EntryData; period: number; onPeriodChange: (week: number) => void; onLocate: (id: number) => void;
+}) {
   const { rows, previousRows } = data;
-  const [period, setPeriod] = useState(0);
   const [block, setBlock] = useState<string>();
   const [channelIds, setChannelIds] = useState<number[]>([]);
-  const [sort, setSort] = useState<RoiSort>("roi-desc");
+  const [sortPreference, setSort] = useState<RoiSort>("roi-desc");
+  const sort = period === 0 && sortPreference.startsWith("rate") ? "roi-desc" : sortPreference;
   const comparisons = useMemo(() => compareChannelRoi(rows, period || null, previousRows), [rows, period, previousRows]);
   const blockRows = rows.filter((row) => !block || row.businessBlock === block);
   const visible = sortChannelRoi(
@@ -82,7 +84,7 @@ export default function ChannelRoiComparison({ data, onLocate }: { data: EntryDa
 
   return <Card title="渠道 ROI 对比" className="entry-roi-card">
     <div className="entry-roi-controls">
-      <Select aria-label="ROI统计周期" value={period} onChange={(value) => { setPeriod(value); if (value === 0 && sort.startsWith("rate")) setSort("roi-desc"); }} options={[{ value: 0, label: "全月" }, ...[1, 2, 3, 4, 5].map((value) => ({ value, label: `W${value}` }))]} />
+      <Select aria-label="ROI统计周期" value={period} onChange={onPeriodChange} options={[{ value: 0, label: "全月" }, ...[1, 2, 3, 4, 5].map((value) => ({ value, label: `W${value}` }))]} />
       <Select aria-label="ROI筛选板块" allowClear placeholder="全部板块" value={block} onChange={(value) => { setBlock(value); setChannelIds([]); }} options={Array.from(new Map(rows.map((row) => [row.businessBlock, { value: row.businessBlock, label: row.businessBlockLabel }])).values())} />
       <Select<number[]> mode="multiple" aria-label="选择对比渠道" allowClear placeholder="全部渠道 · 可多选对比" className="entry-roi-channel-select" maxTagCount="responsive" value={channelIds} onChange={setChannelIds} optionFilterProp="label" options={blockRows.map((row) => ({ value: row.channelId, label: `${row.businessLine} / ${row.channelName}` }))} />
       <Select<RoiSort> aria-label="ROI排序" value={sort} onChange={setSort} options={[

@@ -230,3 +230,75 @@ test("monthly ROI remains unchanged and has no weekly comparison fields", () => 
   assert.equal(result.roiDelta, null);
   assert.equal(result.roiRate, null);
 });
+
+test("weekly dashboard scopes KPIs, blocks and rankings to the selected week, retaining the monthly trend", () => {
+  const first = twoWeeks(1, 1000, 100, 200, 20);
+  const second = twoWeeks(2, 10, 2, 400, 100);
+  second.businessBlock = "tiktok";
+  second.businessBlockLabel = "TikTok";
+  const source = data([first, second], [row(1, 90000, 1000, 5)]);
+  const snapshot = JSON.stringify(source);
+  const w1 = analyzeEntry(source, 1, 1);
+  const w2 = analyzeEntry(source, 2, 2);
+  const month = analyzeEntry(source, 2);
+  assert.equal(w1.sales, 1010);
+  assert.equal(w1.ad, 102);
+  assert.equal(w1.topSales[0].row.channelId, 1);
+  assert.equal(w2.sales, 600);
+  assert.equal(w2.ad, 120);
+  assert.equal(w2.adRatio, 0.2);
+  assert.equal(w2.populated, 2);
+  assert.equal(w2.topSales[0].row.channelId, 2);
+  assert.deepEqual(w2.blocks.map(({ key, sales, ad }) => ({ key, sales, ad })), [
+    { key: "amazon", sales: 200, ad: 20 },
+    { key: "tiktok", sales: 400, ad: 100 },
+  ]);
+  assert.equal(month.sales, 1610);
+  assert.equal(month.ad, 222);
+  assert.equal(month.topSales[0].row.channelId, 1);
+  assert.deepEqual(w2.weekly, month.weekly);
+  assert.equal(w2.weekly[0].sales, 1010);
+  assert.equal(w2.weekly[1].sales, 600);
+  assert.deepEqual(w2.comparisons, month.comparisons);
+  assert.equal(JSON.stringify(source), snapshot);
+});
+
+test("blank selected week does not fall back to the month or turn into zero", () => {
+  const source = data([row(1, 1000, 100), row(2, null, null)]);
+  const blank = analyzeEntry(source, 3, 3);
+  assert.equal(blank.sales, null);
+  assert.equal(blank.ad, null);
+  assert.equal(blank.adRatio, null);
+  assert.equal(blank.populated, 0);
+  assert.deepEqual(blank.topSales, []);
+  assert.equal(blank.blocks[0].sales, null);
+  assert.equal(blank.blocks[0].ad, null);
+  assert.equal(blank.weekly[0].sales, 1000);
+});
+
+test("weekly KPIs preserve confirmed zero and count only channels with data that week", () => {
+  const source = data([row(1, 1000, 100), row(2, 0, 0, 2), row(3, null, null)]);
+  const result = analyzeEntry(source, 2, 2);
+  assert.equal(result.sales, 0);
+  assert.equal(result.ad, 0);
+  assert.equal(result.adRatio, null);
+  assert.equal(result.populated, 1);
+  assert.deepEqual(result.topSales.map((item) => [item.row.channelId, item.sales]), [[2, 0]]);
+});
+
+test("weekly KPIs use saved CNY values and recompute with saves without including other weeks", () => {
+  const first = twoWeeks(1, 1000, 100, 100, 10);
+  first.currency = "USD";
+  first.exchangeRate = 7;
+  first.weeks[1].salesAmountBase = 680;
+  first.weeks[1].adSpendBase = 68;
+  const source = data([first]);
+  assert.equal(analyzeEntry(source, 2, 2).sales, 680);
+  assert.equal(analyzeEntry(source, 2, 2).ad, 68);
+  first.weeks[1].salesAmountBase = 1360;
+  const result = analyzeEntry(source, 2, 2);
+  assert.equal(result.sales, 1360);
+  assert.equal(result.adRatio, 0.05);
+  assert.equal(result.topSales[0].sales, 1360);
+  assert.equal(result.blocks[0].sales, 1360);
+});

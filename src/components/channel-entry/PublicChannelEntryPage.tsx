@@ -34,7 +34,8 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
   const [warnings, setWarnings] = useState<string[]>([]);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [selectedWeek, setSelectedWeek] = useState(1);
+  const [statsWeek, setStatsWeek] = useState(0);
+  const selectedWeek = statsWeek || data?.latestWeek || 1;
   const [search, setSearch] = useState("");
   const [blockFilter, setBlockFilter] = useState<string | undefined>();
   const [focusedId, setFocusedId] = useState<number | null>(null);
@@ -60,7 +61,7 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
         const query = new URLSearchParams({ year: String(period.year), month: String(period.month) });
         const next = await jsonResponse<EntryData>(await fetch(`/api/channel-entry?${query}`, { cache: "no-store", signal: controller.signal }));
         if (!live) return;
-        setData(next); setDrafts({}); setWarnings(prepared.warnings || []); setSelectedWeek(next.latestWeek);
+        setData(next); setDrafts({}); setWarnings(prepared.warnings || []);
         window.history.replaceState(null, "", `/channel-entry?${query}`);
       } catch (failure) { if (live && !controller.signal.aborted) { setData(null); setError(failure instanceof Error ? failure.message : "数据加载失败"); } }
       finally { if (live) setLoading(false); }
@@ -149,11 +150,15 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
   return <div className="channel-entry-shell">
     <header className="entry-hero"><nav><a href="#entry-dashboard"><BarChartOutlined /> 经营看板</a><a href="#entry-input"><EditOutlined /> 负责人填报</a></nav><ThemeToggle /></header>
     <main className="public-channel-entry">
-      <div className="entry-toolbar"><div className="entry-period-control"><label htmlFor="entry-month">统计月份</label><DatePicker id="entry-month" aria-label="统计月份" picker="month" allowClear={false} disabled={busy} value={dayjs(`${period.year}-${String(period.month).padStart(2, "0")}-01`)} format="YYYY年M月" minDate={dayjs("2000-01-01")} maxDate={dayjs("2100-12-31")} onChange={(value) => { if (value) guard(() => setPeriod({ year: value.year(), month: value.month() + 1 })); }} /><Button icon={<ReloadOutlined />} disabled={busy} onClick={() => guard(() => setRefreshKey((k) => k + 1))}>刷新</Button></div><div className="entry-tools"><Button icon={<PlusOutlined />} disabled={busy} onClick={() => guard(() => setRefreshKey((k) => k + 1))}>补齐本月行</Button><Button icon={<HistoryOutlined />} disabled={!data || busy} onClick={() => void showAudits()}>修改记录</Button><Button icon={<DownloadOutlined />} disabled={!data || busy} onClick={exportData}>导出</Button></div></div>
+      <div className="entry-toolbar"><div className="entry-period-control">
+        <label htmlFor="entry-month">统计月份</label><DatePicker id="entry-month" aria-label="统计月份" picker="month" allowClear={false} disabled={busy} value={dayjs(`${period.year}-${String(period.month).padStart(2, "0")}-01`)} format="YYYY年M月" minDate={dayjs("2000-01-01")} maxDate={dayjs("2100-12-31")} onChange={(value) => { if (value) guard(() => { setStatsWeek(0); setPeriod({ year: value.year(), month: value.month() + 1 }); }); }} />
+        <label htmlFor="entry-stats-week">统计范围</label><Select id="entry-stats-week" aria-label="统计范围" className="entry-stats-week" disabled={busy} value={statsWeek} onChange={setStatsWeek} options={[{ value: 0, label: "全月" }, ...[1, 2, 3, 4, 5].map((value) => ({ value, label: `W${value}` }))]} />
+        <Button icon={<ReloadOutlined />} disabled={busy} onClick={() => guard(() => setRefreshKey((k) => k + 1))}>刷新</Button>
+      </div><div className="entry-tools"><Button icon={<PlusOutlined />} disabled={busy} onClick={() => guard(() => setRefreshKey((k) => k + 1))}>补齐本月行</Button><Button icon={<HistoryOutlined />} disabled={!data || busy} onClick={() => void showAudits()}>修改记录</Button><Button icon={<DownloadOutlined />} disabled={!data || busy} onClick={exportData}>导出</Button></div></div>
       {error ? <Alert type="error" showIcon title="数据加载失败" description={error} action={<Button onClick={() => setRefreshKey((k) => k + 1)}>重试</Button>} /> : null}
       {warnings.length ? <Alert type="warning" showIcon title="部分渠道需要后台配置" description={warnings.join("；")} /> : null}
       {loading ? <div className="entry-loading"><Spin size="large" /><span>正在准备 {period.year} 年 {period.month} 月数据…</span></div> : data ? <>
-        <EntryDashboard data={data} selectedWeek={selectedWeek} onWeekChange={setSelectedWeek} onLocate={(id) => { setSearch(""); setBlockFilter(undefined); setFocusedId(null); requestAnimationFrame(() => setFocusedId(id)); }} />
+        <EntryDashboard data={data} statsWeek={statsWeek} selectedWeek={selectedWeek} onPeriodChange={setStatsWeek} onLocate={(id) => { setSearch(""); setBlockFilter(undefined); setFocusedId(null); requestAnimationFrame(() => setFocusedId(id)); }} />
         <section id="entry-input" className="entry-section" ref={tableRef}>
           <div className="entry-section-heading"><div><h2>负责人填报</h2><p>留空表示未填，0 表示确认无发生。</p></div><Tag color={dirtyCount ? "orange" : "green"}>{dirtyCount ? `${dirtyCount} 行待保存` : "全部修改已保存"}</Tag></div>
           <div className="entry-input-toolbar"><div><label htmlFor="entry-actor">填写人姓名</label><Input id="entry-actor" aria-label="填写人姓名" value={actorName} onChange={(event) => setActorName(event.target.value)} maxLength={80} placeholder="保存前填写姓名" disabled={busy} /><Button type="primary" icon={<SaveOutlined />} disabled={!dirtyCount || busy} onClick={() => void saveAll()}>保存全部改动</Button></div><div><Select aria-label="筛选板块" allowClear placeholder="全部板块" value={blockFilter} onChange={setBlockFilter} options={Array.from(new Map(data.rows.map((row) => [row.businessBlock, { value: row.businessBlock, label: row.businessBlockLabel }])).values())} /><Input.Search allowClear aria-label="搜索渠道或负责人" placeholder="搜索渠道 / 负责人" value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>
