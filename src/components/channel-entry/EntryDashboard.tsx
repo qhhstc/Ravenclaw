@@ -11,6 +11,12 @@ export const entryMoney = (value: number | null) => value === null ? "—" : `¥
 export const entryPercent = (value: number | null) => value === null ? "—" : `${(value * 100).toFixed(1)}%`;
 const compact = (value: number) => Math.abs(value) >= 10000 ? `${(value / 10000).toFixed(1)}万` : value.toLocaleString("zh-CN");
 const tooltipStyle = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, color: "var(--foreground)" };
+const changeLabel = (rate: number | null) => {
+  if (rate === null) return "—";
+  if (rate === 0) return "持平 0.0%";
+  const amount = Math.abs(rate * 100);
+  return `${rate > 0 ? "↑" : "↓"} ${amount < 0.05 ? "<0.1" : amount.toFixed(1)}%`;
+};
 
 export default function EntryDashboard({ data, statsWeek, selectedWeek, onPeriodChange, onLocate }: {
   data: EntryData; statsWeek: number; selectedWeek: number; onPeriodChange: (week: number) => void; onLocate: (id: number) => void;
@@ -32,14 +38,22 @@ export default function EntryDashboard({ data, statsWeek, selectedWeek, onPeriod
   const latest = data.updatedAt ? new Date(data.updatedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "尚无数据";
   const currentSales = sumKnown(analysis.comparisons.map((item) => item.current.salesAmountBase));
   const previousSales = sumKnown(analysis.comparisons.map((item) => item.previous.salesAmountBase));
+  const monthCompareLabel = `${data.previousMonth.year}年${data.previousMonth.month}月${statsWeek ? ` W${statsWeek}` : "全月"}`;
   const cards = [
-    { title: `${scopeLabel}销售额`, value: entryMoney(analysis.sales), note: `${analysis.populated} 个渠道已有数据`, accent: "#2563eb" },
-    { title: `${scopeLabel}广告费`, value: entryMoney(analysis.ad), note: "已录入广告费合计", accent: "#d97706" },
-    { title: statsWeek ? `W${statsWeek}广告占销` : "广告占销", value: entryPercent(analysis.adRatio), note: "广告费 ÷ 销售额", accent: "#0f766e" },
+    { title: `${scopeLabel}销售额`, value: entryMoney(analysis.sales), note: `${analysis.populated} 个渠道已有数据`, accent: "#2563eb", rate: analysis.monthComparison.salesRate, previous: entryMoney(analysis.monthComparison.previousSales), isRatio: false },
+    { title: `${scopeLabel}广告费`, value: entryMoney(analysis.ad), note: "已录入广告费合计", accent: "#d97706", rate: analysis.monthComparison.adRate, previous: entryMoney(analysis.monthComparison.previousAd), isRatio: false },
+    { title: statsWeek ? `W${statsWeek}广告占销` : "广告占销", value: entryPercent(analysis.adRatio), note: "广告费 ÷ 销售额", accent: "#0f766e", rate: analysis.monthComparison.adRatioRate, previous: entryPercent(analysis.monthComparison.previousAdRatio), isRatio: true },
   ];
   return <section id="entry-dashboard" className="entry-section">
     <div className="entry-section-heading"><div><h2>经营分析看板</h2><p>{data.year} 年 {data.month} 月 · {statsWeek ? `W${statsWeek}` : "全月"} · 人民币</p></div><span className="entry-updated">更新于 {latest}</span></div>
-    <div className="entry-kpi-grid">{cards.map((card) => <div className="entry-kpi" key={card.title} style={{ borderTopColor: card.accent }}><span>{card.title}</span><strong>{card.value}</strong><small>{card.note}</small></div>)}</div>
+    <div className="entry-kpi-grid">{cards.map((card) => <div className="entry-kpi" key={card.title} style={{ borderTopColor: card.accent }}>
+      <span>{card.title}</span><strong>{card.value}</strong>
+      <div className="entry-kpi-footer"><small>{card.note}</small>
+        <Tooltip title={`${monthCompareLabel}：${card.previous}。变化率 = (本期 − 上期) ÷ |上期|${card.isRatio ? "，此处为占销比的相对变化，不是百分点差值" : ""}。按已填数据计算；未填完整月份建议按同周比较。缺数据或上期基数为 0 时显示 —。颜色仅表示数值方向。`}>
+          <small className="entry-kpi-change">较 {monthCompareLabel}<span className={card.rate !== null && card.rate > 0 ? "entry-positive" : card.rate !== null && card.rate < 0 ? "entry-negative" : ""}>{changeLabel(card.rate)}</span></small>
+        </Tooltip>
+      </div>
+    </div>)}</div>
     <ChannelRoiComparison data={data} period={statsWeek} onPeriodChange={onPeriodChange} onLocate={onLocate} />
     <div className="entry-chart-grid">
       <Card title="每周销售与广告"><p className="entry-card-caption">全月走势 W1–W5{statsWeek ? ` · 当前选中 W${statsWeek}` : ""} · 空白周不绘制为 0</p>{analysis.weekly.some((w) => w.sales !== null || w.ad !== null) ? <div className="entry-chart"><ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 600, height: 280 }}><ComposedChart data={analysis.weekly} margin={{ left: 2, right: 12 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" /><XAxis dataKey="week" stroke="var(--muted)" /><YAxis tickFormatter={compact} stroke="var(--muted)" width={64} /><ChartTooltip contentStyle={tooltipStyle} formatter={(value) => entryMoney(Number(value))} /><Legend /><Bar dataKey="ad" name="广告费" fill="#fbbf24" radius={[5, 5, 0, 0]} /><Line dataKey="sales" name="销售额" stroke="#2563eb" strokeWidth={3} connectNulls={false} dot={{ r: 4 }} /></ComposedChart></ResponsiveContainer></div> : <Empty description="本月尚未填写数据" />}</Card>

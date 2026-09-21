@@ -302,3 +302,68 @@ test("weekly KPIs use saved CNY values and recompute with saves without includin
   assert.equal(result.topSales[0].sales, 1360);
   assert.equal(result.blocks[0].sales, 1360);
 });
+
+test("KPI month-over-month change compares total months, not average channel growth", () => {
+  const source = data(
+    [twoWeeks(1, 100, 20, 100, 20), row(2, 1000, 20)],
+    [twoWeeks(1, 100, 10, 100, 10), row(2, 400, 40)],
+  );
+  const result = analyzeEntry(source, 2);
+  assert.equal(result.sales, 1200);
+  assert.equal(result.ad, 60);
+  assert.deepEqual(result.monthComparison, {
+    previousSales: 600, previousAd: 60, previousAdRatio: 0.1,
+    salesRate: 1, adRate: 0, adRatioRate: -0.5,
+  });
+});
+
+test("weekly KPI month-over-month baseline is the same week of last month", () => {
+  const current = row(1, 200, 40, 3);
+  current.weeks[1] = row(1, 10000, 1000, 2).weeks[1];
+  const previous = row(1, 100, 10, 3);
+  previous.weeks[1] = row(1, 90000, 9000, 2).weeks[1];
+  const result = analyzeEntry(data([current], [previous]), 3, 3);
+  assert.deepEqual(result.monthComparison, {
+    previousSales: 100, previousAd: 10, previousAdRatio: 0.1,
+    salesRate: 1, adRate: 3, adRatioRate: 1,
+  });
+  // Current 20% vs prior 10% is +100% relative change, not +10 percentage points.
+  assert.equal(result.adRatio, 0.2);
+});
+
+test("January W1 KPI compares December W1 while weekly channel trends still compare December W5", () => {
+  const previous = row(1, 100, 10);
+  previous.weeks[4] = row(1, 1000, 20, 5).weeks[4];
+  const january = data([row(1, 200, 20)], [previous]);
+  const result = analyzeEntry(january, 1, 1);
+  assert.equal(result.monthComparison.previousSales, 100);
+  assert.equal(result.monthComparison.salesRate, 1);
+  assert.equal(result.comparisons[0].previous.salesAmountBase, 1000);
+});
+
+test("KPI change keeps missing and zero baselines unavailable, confirmed current zero is a decline", () => {
+  const noPrior = analyzeEntry(data([row(1, 100, 10)]), 1, 1).monthComparison;
+  assert.equal(noPrior.previousSales, null);
+  assert.equal(noPrior.salesRate, null);
+  assert.equal(noPrior.adRate, null);
+  assert.equal(noPrior.adRatioRate, null);
+  const zeroPrior = analyzeEntry(data([row(1, 100, 10)], [row(1, 0, 0)]), 1, 1).monthComparison;
+  assert.equal(zeroPrior.salesRate, null);
+  assert.equal(zeroPrior.adRate, null);
+  assert.equal(zeroPrior.adRatioRate, null);
+  const zeroCurrent = analyzeEntry(data([row(1, 0, 0)], [row(1, 100, 10)]), 1, 1).monthComparison;
+  assert.equal(zeroCurrent.salesRate, -1);
+  assert.equal(zeroCurrent.adRate, -1);
+  assert.equal(zeroCurrent.adRatioRate, null);
+  const blankCurrent = analyzeEntry(data([row(1, null, null)], [row(1, 100, 10)]), 1, 1).monthComparison;
+  assert.equal(blankCurrent.salesRate, null);
+  assert.equal(blankCurrent.adRate, null);
+});
+
+test("KPI ad-ratio change with zero prior advertising is unavailable without blocking other changes", () => {
+  const result = analyzeEntry(data([row(1, 200, 20)], [row(1, 100, 0)]), 1, 1).monthComparison;
+  assert.equal(result.previousAdRatio, 0);
+  assert.equal(result.adRatioRate, null);
+  assert.equal(result.salesRate, 1);
+  assert.equal(result.adRate, null);
+});

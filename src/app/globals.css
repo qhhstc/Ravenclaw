@@ -231,6 +231,9 @@ a {
 .entry-kpi > span { color: var(--muted); font-size: 14px; }
 .entry-kpi strong { font-size: clamp(24px, 2.15vw, 36px); line-height: 1.25; font-variant-numeric: tabular-nums; letter-spacing: -.035em; overflow-wrap: anywhere; }
 .entry-kpi small { color: var(--muted); font-size: 11px; }
+.entry-kpi-footer { display: flex; flex-direction: column; gap: 7px; margin-top: auto; }
+.entry-kpi-change { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.entry-kpi-change > span { font-weight: 600; font-variant-numeric: tabular-nums; }
 .entry-roi-card { min-width: 0; }
 .entry-roi-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
 .entry-roi-controls > .ant-select { width: 145px; }

@@ -96,6 +96,17 @@ export function analyzeEntry(data: EntryData, selectedWeek: number, statsWeek: n
   const totals = data.rows.map((row) => periodTotals(row, statsWeek));
   const sales = sumKnown(totals.map((item) => item.sales));
   const ad = sumKnown(totals.map((item) => item.ad));
+  const adRatio = entryRatio(ad, sales);
+  const previousTotals = data.previousRows.map((row) => periodTotals(row, statsWeek));
+  const previousSales = sumKnown(previousTotals.map((item) => item.sales));
+  const previousAd = sumKnown(previousTotals.map((item) => item.ad));
+  const previousAdRatio = entryRatio(previousAd, previousSales);
+  const monthComparison = {
+    previousSales, previousAd, previousAdRatio,
+    salesRate: entryChangeRate(sales, previousSales),
+    adRate: entryChangeRate(ad, previousAd),
+    adRatioRate: entryChangeRate(adRatio, previousAdRatio),
+  };
   const blocks = Array.from(new Set(data.rows.map((row) => row.businessBlock))).map((block) => {
     const items = data.rows.filter((row) => row.businessBlock === block);
     const blockSales = sumKnown(items.map((row) => periodTotals(row, statsWeek).sales));
@@ -107,7 +118,7 @@ export function analyzeEntry(data: EntryData, selectedWeek: number, statsWeek: n
     completed: data.rows.filter((row) => entryWeek(row, number).salesAmountOriginal !== null && entryWeek(row, number).adSpendOriginal !== null).length,
   }));
   return {
-    sales, ad, roi: entryRatio(sales, ad), adRatio: entryRatio(ad, sales), blocks, weekly, comparisons,
+    sales, ad, roi: entryRatio(sales, ad), adRatio, monthComparison, blocks, weekly, comparisons,
     up: comparisons.filter((item) => item.trend === "up").length,
     down: comparisons.filter((item) => item.trend === "down").length,
     completed: comparisons.filter((item) => item.current.salesAmountOriginal !== null && item.current.adSpendOriginal !== null).length,
