@@ -1,4 +1,5 @@
-import type { EntryData, EntryRow, EntryWeek } from "./channel-entry-types";
+import type { EntryData, EntryPeriod, EntryRow, EntryWeek } from "./channel-entry-types";
+import { displayedEntryWeeks, entryCalendarWeeks, entryMonthComparisonScope, previousEntryWeek } from "./channel-entry-calendar";
 
 export const ENTRY_BLOCK_COLORS: Record<string, string> = { amazon: "#df8500", independent_site: "#7c3aed", tiktok: "#334155", b2b: "#14814a", other: "#64748b" };
 export const entryRatio = (numerator: number | null, denominator: number | null) => numerator !== null && denominator !== null && denominator > 0 ? numerator / denominator : null;
@@ -51,12 +52,13 @@ function roiPeriod(weeks: EntryWeek[]) {
   };
 }
 
-export function compareChannelRoi(rows: EntryRow[], weekNumber: number | null = null, previousRows: EntryRow[] = []): ChannelRoiComparison[] {
+export function compareChannelRoi(rows: EntryRow[], weekNumber: number | null = null, previousRows: EntryRow[] = [], period?: EntryPeriod): ChannelRoiComparison[] {
   const previousById = new Map(previousRows.map((row) => [row.channelId, row]));
+  const previousNumber = weekNumber === null ? null : period ? previousEntryWeek(period, weekNumber)?.weekNumber ?? null : weekNumber > 1 ? weekNumber - 1 : null;
   return rows.map((row) => {
     const weeks = (weekNumber === null ? [1, 2, 3, 4, 5] : [weekNumber]).map((number) => entryWeek(row, number));
     const current = roiPeriod(weeks);
-    const previous = weekNumber === null ? null : roiPeriod([entryWeek(weekNumber === 1 ? previousById.get(row.channelId) : row, weekNumber === 1 ? 5 : weekNumber - 1)]);
+    const previous = weekNumber === null ? null : roiPeriod([entryWeek(previousNumber === null ? undefined : weekNumber === 1 ? previousById.get(row.channelId) : row, previousNumber ?? 0)]);
     const previousRoi = previous?.roi ?? null;
     return {
       row, ...current, previousRoi, previousStatus: previous?.status ?? null,
@@ -77,9 +79,10 @@ export function sortChannelRoi(items: ChannelRoiComparison[], direction: "desc" 
 
 export function analyzeEntry(data: EntryData, selectedWeek: number, statsWeek: number | null = null) {
   const previousById = new Map(data.previousRows.map((row) => [row.channelId, row]));
+  const previousPeriod = previousEntryWeek(data, selectedWeek);
   const comparisons = data.rows.map((row) => {
     const current = entryWeek(row, selectedWeek);
-    const previous = selectedWeek === 1 ? entryWeek(previousById.get(row.channelId), 5) : entryWeek(row, selectedWeek - 1);
+    const previous = entryWeek(previousPeriod ? selectedWeek === 1 ? previousById.get(row.channelId) : row : undefined, previousPeriod?.weekNumber ?? 0);
     const salesDelta = entryDelta(current.salesAmountBase, previous.salesAmountBase);
     const adDelta = entryDelta(current.adSpendBase, previous.adSpendBase);
     const currentRoi = entryRatio(current.salesAmountBase, current.adSpendBase);
@@ -97,15 +100,23 @@ export function analyzeEntry(data: EntryData, selectedWeek: number, statsWeek: n
   const sales = sumKnown(totals.map((item) => item.sales));
   const ad = sumKnown(totals.map((item) => item.ad));
   const adRatio = entryRatio(ad, sales);
-  const previousTotals = data.previousRows.map((row) => periodTotals(row, statsWeek));
+  const comparisonScope = entryMonthComparisonScope(data, statsWeek);
+  const comparisonTotals = (rows: EntryRow[]) => rows.map((row) => comparisonScope.weeks === null ? monthTotals(row) : {
+    sales: sumKnown(comparisonScope.weeks.map((week) => entryWeek(row, week).salesAmountBase)),
+    ad: sumKnown(comparisonScope.weeks.map((week) => entryWeek(row, week).adSpendBase)),
+  });
+  const comparisonCurrent = comparisonTotals(data.rows);
+  const comparisonSales = sumKnown(comparisonCurrent.map((item) => item.sales));
+  const comparisonAd = sumKnown(comparisonCurrent.map((item) => item.ad));
+  const previousTotals = comparisonTotals(data.previousRows);
   const previousSales = sumKnown(previousTotals.map((item) => item.sales));
   const previousAd = sumKnown(previousTotals.map((item) => item.ad));
   const previousAdRatio = entryRatio(previousAd, previousSales);
   const monthComparison = {
     previousSales, previousAd, previousAdRatio,
-    salesRate: entryChangeRate(sales, previousSales),
-    adRate: entryChangeRate(ad, previousAd),
-    adRatioRate: entryChangeRate(adRatio, previousAdRatio),
+    salesRate: comparisonScope.comparable ? entryChangeRate(comparisonSales, previousSales) : null,
+    adRate: comparisonScope.comparable ? entryChangeRate(comparisonAd, previousAd) : null,
+    adRatioRate: comparisonScope.comparable ? entryChangeRate(entryRatio(comparisonAd, comparisonSales), previousAdRatio) : null,
   };
   const blocks = Array.from(new Set(data.rows.map((row) => row.businessBlock))).map((block) => {
     const items = data.rows.filter((row) => row.businessBlock === block);
@@ -113,12 +124,13 @@ export function analyzeEntry(data: EntryData, selectedWeek: number, statsWeek: n
     const blockAd = sumKnown(items.map((row) => periodTotals(row, statsWeek).ad));
     return { key: block, name: items[0].businessBlockLabel, sales: blockSales, ad: blockAd, roi: entryRatio(blockSales, blockAd), count: items.length };
   });
-  const weekly = [1, 2, 3, 4, 5].map((number) => ({
+  const weekly = displayedEntryWeeks(data, data.rows).map((number) => ({
     week: `W${number}`, sales: sumKnown(data.rows.map((row) => entryWeek(row, number).salesAmountBase)), ad: sumKnown(data.rows.map((row) => entryWeek(row, number).adSpendBase)),
+    dateLabel: entryCalendarWeeks(data).find((week) => week.weekNumber === number)?.label ?? "日期待核对",
     completed: data.rows.filter((row) => entryWeek(row, number).salesAmountOriginal !== null && entryWeek(row, number).adSpendOriginal !== null).length,
   }));
   return {
-    sales, ad, roi: entryRatio(sales, ad), adRatio, monthComparison, blocks, weekly, comparisons,
+    sales, ad, roi: entryRatio(sales, ad), adRatio, monthComparison, comparisonScope, blocks, weekly, comparisons,
     up: comparisons.filter((item) => item.trend === "up").length,
     down: comparisons.filter((item) => item.trend === "down").length,
     completed: comparisons.filter((item) => item.current.salesAmountOriginal !== null && item.current.adSpendOriginal !== null).length,

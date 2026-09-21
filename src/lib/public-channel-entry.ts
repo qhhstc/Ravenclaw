@@ -5,6 +5,7 @@ import { buildChannelWhere, PERIOD_TYPE_WEEK, WEEK_NUMBERS, toDecimal, toNumber 
 import { prisma } from "@/lib/prisma";
 import type { EntryAudit, EntryChange, EntryData, EntryDraft, EntryPeriod, EntryRow } from "./channel-entry-types";
 import { getEntryFxQuote } from "./channel-entry-fx-quotes";
+import { currentEntryDate, latestCalendarEntryWeek } from "./channel-entry-calendar";
 
 export class EntryError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -77,9 +78,9 @@ export async function getPublicChannelRows(year: number, month: number): Promise
 export async function getPublicEntryData(year: number, month: number): Promise<EntryData> {
   const previousMonth = priorMonth({ year, month });
   const [rows, previousRows] = await Promise.all([getPublicChannelRows(year, month), previousMonth.year >= 2000 ? getPublicChannelRows(previousMonth.year, previousMonth.month) : Promise.resolve([])]);
-  const latestWeek = Math.max(1, ...rows.flatMap((row) => row.weeks.filter((week) => week.salesAmountOriginal !== null || week.adSpendOriginal !== null).map((week) => week.weekNumber)));
+  const latestWeek = Math.max(1, latestCalendarEntryWeek({ year, month }, rows));
   const timestamps = rows.map((row) => row.updatedAt).filter((date): date is string => date !== null);
-  return { year, month, rows, previousMonth, previousRows, latestWeek, updatedAt: timestamps.length ? timestamps.sort().at(-1)! : null };
+  return { year, month, rows, previousMonth, previousRows, latestWeek, asOfDate: currentEntryDate(), updatedAt: timestamps.length ? timestamps.sort().at(-1)! : null };
 }
 
 export async function preparePublicChannelMonth(year: number, month: number) {

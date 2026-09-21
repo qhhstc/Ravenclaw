@@ -17,7 +17,7 @@ export class EntryRequestError extends Error {
 }
 
 export function entrySaveError(failure: unknown) {
-  if (failure instanceof EntryRequestError && failure.status === 409) return "这行已被其他人修改，未覆盖对方数据。当前修改已保留，请先记录修改内容，再刷新核对。";
+  if (failure instanceof EntryRequestError && failure.status === 409) return "这行已被其他人修改，未覆盖对方数据。当前修改已保留，请核对后再保存。";
   if (failure instanceof TypeError) return "网络连接失败，修改已保留。请检查网络后重试。";
   return `${failure instanceof Error ? failure.message : "保存失败"}（修改已保留）`;
 }
@@ -34,7 +34,7 @@ export async function saveEntryBatch(
   for (const item of pending) {
     let row: EntryRow;
     try { row = await persist(item); }
-    catch (failure) { return { saved, failed: { channelId: item.row.channelId, message: entrySaveError(failure) } }; }
+    catch (failure) { return { saved, failed: { channelId: item.row.channelId, message: entrySaveError(failure), status: failure instanceof EntryRequestError ? failure.status : undefined } }; }
     saved.push(row);
     onSaved(row, saved.length);
   }

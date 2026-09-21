@@ -68,6 +68,6 @@ test("conflicts remain errors without implicit overwrite or retry", async () => 
   assert.equal(result.saved.length, 0);
   assert.match(result.failed!.message, /其他人修改/);
   assert.match(result.failed!.message, /未覆盖/);
-  assert.match(result.failed!.message, /刷新核对/);
+  assert.match(result.failed!.message, /核对后再保存/);
   assert.match(entrySaveError(new EntryRequestError("广告费必须非负", 400)), /广告费必须非负/);
 });

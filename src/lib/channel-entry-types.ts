@@ -27,6 +27,7 @@ export type EntryData = EntryPeriod & {
   previousRows: EntryRow[];
   latestWeek: number;
   updatedAt: string | null;
+  asOfDate?: string;
 };
 export type EntryDraft = {
   owner: string;

@@ -6,6 +6,7 @@ import type { ColumnsType } from "antd/es/table";
 import { compareChannelRoi, ENTRY_BLOCK_COLORS, sortChannelRoi } from "@/lib/channel-entry-analysis";
 import type { ChannelRoiComparison as RoiRow } from "@/lib/channel-entry-analysis";
 import type { EntryData } from "@/lib/channel-entry-types";
+import { entryWeekLabel, previousEntryWeekLabel } from "@/lib/channel-entry-calendar";
 
 const money = (value: number | null) => value === null ? "—" : `¥${value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const percent = (value: number | null) => value === null ? "—" : `${(value * 100).toFixed(1)}%`;
@@ -29,15 +30,15 @@ function RoiChange({ value, rate = false, zeroBaseline = false }: { value: numbe
 
 type RoiSort = "roi-desc" | "roi-asc" | "rate-desc" | "rate-asc";
 
-export default function ChannelRoiComparison({ data, period, onPeriodChange, onLocate }: {
-  data: EntryData; period: number; onPeriodChange: (week: number) => void; onLocate: (id: number) => void;
+export default function ChannelRoiComparison({ data, period, onLocate }: {
+  data: EntryData; period: number; onLocate: (id: number) => void;
 }) {
   const { rows, previousRows } = data;
   const [block, setBlock] = useState<string>();
   const [channelIds, setChannelIds] = useState<number[]>([]);
   const [sortPreference, setSort] = useState<RoiSort>("roi-desc");
   const sort = period === 0 && sortPreference.startsWith("rate") ? "roi-desc" : sortPreference;
-  const comparisons = useMemo(() => compareChannelRoi(rows, period || null, previousRows), [rows, period, previousRows]);
+  const comparisons = useMemo(() => compareChannelRoi(rows, period || null, previousRows, { year: data.year, month: data.month }), [rows, period, previousRows, data.year, data.month]);
   const blockRows = rows.filter((row) => !block || row.businessBlock === block);
   const visible = sortChannelRoi(
     comparisons.filter((item) => (!block || item.row.businessBlock === block) && (!channelIds.length || channelIds.includes(item.row.channelId))),
@@ -46,7 +47,7 @@ export default function ChannelRoiComparison({ data, period, onPeriodChange, onL
   );
   const maxRoi = Math.max(1, ...visible.map((item) => Math.abs(item.roi ?? 0)));
   const hasNegative = visible.some((item) => item.roi !== null && item.roi < 0);
-  const previousLabel = period === 1 ? `${data.previousMonth.year}年${data.previousMonth.month}月 W5` : `${data.month}月 W${period - 1}`;
+  const previousLabel = previousEntryWeekLabel(data, period);
   const columns: ColumnsType<RoiRow> = [
     {
       title: "渠道", key: "channel", width: 240, fixed: "left",
@@ -84,7 +85,6 @@ export default function ChannelRoiComparison({ data, period, onPeriodChange, onL
 
   return <Card title="渠道 ROI 对比" className="entry-roi-card">
     <div className="entry-roi-controls">
-      <Select aria-label="ROI统计周期" value={period} onChange={onPeriodChange} options={[{ value: 0, label: "全月" }, ...[1, 2, 3, 4, 5].map((value) => ({ value, label: `W${value}` }))]} />
       <Select aria-label="ROI筛选板块" allowClear placeholder="全部板块" value={block} onChange={(value) => { setBlock(value); setChannelIds([]); }} options={Array.from(new Map(rows.map((row) => [row.businessBlock, { value: row.businessBlock, label: row.businessBlockLabel }])).values())} />
       <Select<number[]> mode="multiple" aria-label="选择对比渠道" allowClear placeholder="全部渠道 · 可多选对比" className="entry-roi-channel-select" maxTagCount="responsive" value={channelIds} onChange={setChannelIds} optionFilterProp="label" options={blockRows.map((row) => ({ value: row.channelId, label: `${row.businessLine} / ${row.channelName}` }))} />
       <Select<RoiSort> aria-label="ROI排序" value={sort} onChange={setSort} options={[
@@ -92,7 +92,7 @@ export default function ChannelRoiComparison({ data, period, onPeriodChange, onL
         ...(period > 0 ? [{ value: "rate-desc", label: "ROI 涨幅优先" }, { value: "rate-asc", label: "ROI 跌幅优先" }] : []),
       ]} />
     </div>
-    {period > 0 && <p className="entry-card-caption entry-roi-period">本周：{data.year}年{data.month}月 W{period} · 上周：{previousLabel}</p>}
+    {period > 0 && <p className="entry-card-caption entry-roi-period">本周：{data.year}年{data.month}月 {entryWeekLabel(data, period)} · 上周：{previousLabel}</p>}
     <Table<RoiRow> rowKey={(item) => item.row.channelId} size="middle" pagination={false} scroll={{ x: period ? 1225 : 1050, y: 460 }} dataSource={visible} columns={columns} locale={{ emptyText: "当前筛选下没有渠道" }} />
     <p className="entry-footnote entry-roi-note">{period ? "金额为人民币。缺项或广告费为 0 不计算 ROI；上周 ROI 为 0 时只显示变化值，不计算变化率。" : "金额为人民币。全月按已填周汇总，请对齐周范围；缺项或广告费为 0 不参与 ROI 排名。"}</p>
   </Card>;

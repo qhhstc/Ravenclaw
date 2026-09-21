@@ -7,7 +7,7 @@ import { resolveChannelBusinessBlock } from "../src/lib/business-blocks";
 function row(id: number, sales: number | null, ad: number | null, weekNumber = 1): EntryRow {
   return { channelId: id, businessBlock: "amazon", businessBlockLabel: "亚马逊", businessLine: `渠道${id}`, channelName: "整体", owner: "", remark: "", currency: "CNY", exchangeRate: 1, version: "test", updatedAt: null, editable: true, weeks: [1, 2, 3, 4, 5].map((week) => ({ weekNumber: week, salesAmountOriginal: week === weekNumber ? sales : null, adSpendOriginal: week === weekNumber ? ad : null, salesAmountBase: week === weekNumber ? sales : null, adSpendBase: week === weekNumber ? ad : null })) };
 }
-const data = (rows: EntryRow[], previousRows: EntryRow[] = []): EntryData => ({ year: 2027, month: 1, rows, previousRows, previousMonth: { year: 2026, month: 12 }, latestWeek: 1, updatedAt: null });
+const data = (rows: EntryRow[], previousRows: EntryRow[] = []): EntryData => ({ year: 2027, month: 1, rows, previousRows, previousMonth: { year: 2026, month: 12 }, latestWeek: 1, updatedAt: null, asOfDate: "2027-02-01" });
 function twoWeeks(id: number, previousSales: number | null, previousAd: number | null, sales: number | null, ad: number | null) {
   const result = row(id, previousSales, previousAd);
   result.weeks[1] = row(id, sales, ad, 2).weeks[1];
@@ -22,12 +22,12 @@ test("missing is not zero; zero remains a confirmed input", () => {
   assert.equal(result.down, 0);
   assert.equal(result.weekly[1].sales, null);
 });
-test("January W1 compares to prior December W5, not latest nonzero week", () => {
-  const result = analyzeEntry(data([row(1, 0, 20)], [row(1, 100, 10, 5)]), 1);
+test("January 2027 W1 compares to actual December W4, not a missing W5 or latest nonzero week", () => {
+  const result = analyzeEntry(data([row(1, 0, 20)], [row(1, 100, 10, 4)]), 1);
   assert.equal(result.down, 1);
   assert.equal(result.comparisons[0].salesRate, -1);
   assert.ok(result.comparisons[0].alerts.includes("广告增加、销售下降"));
-  assert.equal(analyzeEntry(data([row(1, 0, 20)], [row(1, 100, 10, 4)]), 1).down, 0);
+  assert.equal(analyzeEntry(data([row(1, 0, 20)], [row(1, 100, 10, 3)]), 1).down, 0);
 });
 test("ROI is ratio of totals, not average channel ratios", () => {
   const result = analyzeEntry(data([row(1, 100, 10), row(2, 200, 100)]), 1);
@@ -161,13 +161,13 @@ test("weekly ROI compares each channel to its own previous week with increases, 
   assert.equal(result[0].ad, 30);
 });
 
-test("January W1 ROI matches December W5 by channel ID, never falls back to W4", () => {
+test("January W1 ROI matches the actual December W4 by channel ID, never falls back to W3", () => {
   const current = [row(1, 180, 30), row(2, 200, 20), row(3, 100, 10)];
-  const previous = [row(2, 100, 20, 5), row(1, 400, 40, 5), row(3, 50, 10, 4), row(4, 900, 10, 5)];
+  const previous = [row(2, 100, 20, 4), row(1, 400, 40, 4), row(3, 50, 10, 3), row(4, 900, 10, 4)];
   current.forEach((item) => { item.businessLine = "重复渠道名"; });
   previous.forEach((item) => { item.businessLine = "重复渠道名"; });
   const january = data(current, previous);
-  const result = compareChannelRoi(january.rows, 1, january.previousRows);
+  const result = compareChannelRoi(january.rows, 1, january.previousRows, january);
   assert.deepEqual(result.map((item) => item.previousRoi), [10, 5, null]);
   assert.deepEqual(result.map((item) => item.roiRate), [-0.4, 1, null]);
   assert.equal(result[2].previousStatus, "missing");
@@ -331,9 +331,9 @@ test("weekly KPI month-over-month baseline is the same week of last month", () =
   assert.equal(result.adRatio, 0.2);
 });
 
-test("January W1 KPI compares December W1 while weekly channel trends still compare December W5", () => {
+test("January W1 KPI compares December W1 while weekly channel trends compare actual December W4", () => {
   const previous = row(1, 100, 10);
-  previous.weeks[4] = row(1, 1000, 20, 5).weeks[4];
+  previous.weeks[3] = row(1, 1000, 20, 4).weeks[3];
   const january = data([row(1, 200, 20)], [previous]);
   const result = analyzeEntry(january, 1, 1);
   assert.equal(result.monthComparison.previousSales, 100);
