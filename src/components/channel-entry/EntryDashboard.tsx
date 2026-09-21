@@ -55,7 +55,7 @@ export default function EntryDashboard({ data, statsWeek, selectedWeek, onPeriod
     </div>
     <Card title="本周 vs 上周 / 待关注渠道" extra={<Tooltip title="这是规则提示，不是盈利结论。广告占销关注阈值为 25%。"><Tag color="blue">点击渠道定位填报行</Tag></Tooltip>}>
       <div className="entry-comparison-totals"><span>本周已填销售 <b>{entryMoney(currentSales)}</b></span><span>上周已填销售 <b>{entryMoney(previousSales)}</b></span><small>两周覆盖范围可能不同，涨跌以逐渠道可比数据为准。</small></div>
-      <Table size="small" rowKey={(item) => item.row.channelId} dataSource={alerts} pagination={{ pageSize: 5, hideOnSinglePage: true }} scroll={{ x: 850 }} columns={[
+      <Table size="small" rowKey={(item) => item.row.channelId} dataSource={alerts} pagination={{ pageSize: 10, hideOnSinglePage: true }} scroll={{ x: 850 }} columns={[
         { title: "渠道", key: "channel", render: (_, item) => <Button type="link" className="!p-0" onClick={() => onLocate(item.row.channelId)}>{item.row.businessLine} / {item.row.channelName}</Button> },
         { title: "本周销售", key: "current", render: (_, item) => entryMoney(item.current.salesAmountBase) },
         { title: "上周销售", key: "previous", render: (_, item) => entryMoney(item.previous.salesAmountBase) },
