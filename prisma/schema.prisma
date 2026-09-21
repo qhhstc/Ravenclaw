@@ -108,6 +108,8 @@ model Channel {
   channelName   String
   channelType   String
   status        String   @default("active")
+  // First month excluded from public channel entry, encoded as YYYYMM. Earlier history stays visible.
+  entryDisabledFromMonth Int?
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

@@ -22,6 +22,15 @@ export function entryPeriodFromQuery(params: URLSearchParams) {
   return validateEntryPeriod(params.get("year") ?? current.year, params.get("month") ?? current.month);
 }
 function priorMonth({ year, month }: EntryPeriod): EntryPeriod { return month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 }; }
+function publicEntryChannelWhere(year: number, month: number): Prisma.ChannelWhereInput {
+  return {
+    ...buildChannelWhere({ year, month }),
+    OR: [
+      { entryDisabledFromMonth: null },
+      { entryDisabledFromMonth: { gt: year * 100 + month } },
+    ],
+  };
+}
 function entered(value: unknown, flag: boolean | null) {
   const amount = toNumber(value);
   return amount !== 0 || flag === true ? amount : null;
@@ -41,7 +50,7 @@ function recordSnapshot(metrics: ChannelMetricPeriod[]): EntryDraft & { currency
 export async function getPublicChannelRows(year: number, month: number): Promise<EntryRow[]> {
   validateEntryPeriod(year, month);
   const channels = await prisma.channel.findMany({
-    where: buildChannelWhere({ year, month }),
+    where: publicEntryChannelWhere(year, month),
     include: { platform: { select: { name: true } }, store: { select: { storeType: true } } },
     orderBy: [{ sortOrder: "asc" }, { businessLine: "asc" }, { channelName: "asc" }],
   });
@@ -72,7 +81,7 @@ export async function getPublicEntryData(year: number, month: number): Promise<E
 
 export async function preparePublicChannelMonth(year: number, month: number) {
   validateEntryPeriod(year, month);
-  const channels = await prisma.channel.findMany({ where: buildChannelWhere({ year, month }), include: { brand: true, platform: true, store: true } });
+  const channels = await prisma.channel.findMany({ where: publicEntryChannelWhere(year, month), include: { brand: true, platform: true, store: true } });
   const ids = channels.map((channel) => channel.id);
   const [existing, history, rates] = await Promise.all([
     prisma.channelMetricPeriod.findMany({ where: { year, month, periodType: PERIOD_TYPE_WEEK, channelId: { in: ids } }, orderBy: { weekNumber: "asc" } }),
@@ -135,8 +144,8 @@ export async function updatePublicChannelEntry(input: { year: unknown; month: un
     return { weekNumber: value.weekNumber, salesAmountOriginal: validateAmount(value.salesAmountOriginal, `W${value.weekNumber}销售`, true), adSpendOriginal: validateAmount(value.adSpendOriginal, `W${value.weekNumber}广告`, false) };
   }).sort((a, b) => a.weekNumber - b.weekNumber);
   await prisma.$transaction(async (tx) => {
-    const channel = await tx.channel.findFirst({ where: { ...buildChannelWhere({ year, month }), id: input.channelId } });
-    if (!channel) throw new EntryError("渠道不存在或已停用", 404);
+    const channel = await tx.channel.findFirst({ where: { ...publicEntryChannelWhere(year, month), id: input.channelId } });
+    if (!channel) throw new EntryError("渠道不存在、已停用或所选月份已停止填报", 404);
     const metrics = await tx.channelMetricPeriod.findMany({ where: { year, month, periodType: PERIOD_TYPE_WEEK, channelId: channel.id, weekNumber: { in: [...WEEK_NUMBERS] } }, orderBy: { weekNumber: "asc" } });
     if (metrics.length !== 5) throw new EntryError("本月填报未准备完整，请刷新或补齐本月行", 409);
     const before = recordSnapshot(metrics);
