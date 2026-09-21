@@ -25,6 +25,9 @@ async function main() {
     assert.equal(row.weeks[0].salesAmountOriginal, null);
     const body = { year: 2026, month: 9, actorName: "接口回归测试", owner: "新负责人", remark: "测试备注", version: row.version, weeks: row.weeks.map((w: { weekNumber: number }) => ({ weekNumber: w.weekNumber, salesAmountOriginal: w.weekNumber === 1 ? 0 : null, adSpendOriginal: w.weekNumber === 1 ? 0 : null })) };
     const save = (value: unknown) => fetch(`${root}/api/channel-entry/rows/${channel.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
+    const missingActor = await save({ ...body, actorName: "   " });
+    assert.equal(missingActor.status, 400, "channel owner does not replace the required actor name");
+    assert.equal(await prisma.channelEntryAudit.count({ where: { channelId: channel.id } }), 0);
     const first = await save(body);
     assert.equal(first.status, 200, await first.clone().text());
     row = (await first.json()).row;

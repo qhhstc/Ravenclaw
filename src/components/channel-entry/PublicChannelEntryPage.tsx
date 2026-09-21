@@ -1,24 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { App, Alert, Button, DatePicker, Drawer, Empty, Input, InputNumber, Select, Spin, Table, Tag } from "antd";
+import { App, Alert, Button, Checkbox, DatePicker, Drawer, Empty, Input, InputNumber, Select, Spin, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { BarChartOutlined, DownloadOutlined, EditOutlined, HistoryOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 import type { EntryAudit, EntryData, EntryDraft, EntryPeriod, EntryRow } from "@/lib/channel-entry-types";
 import { ENTRY_BLOCK_COLORS, entryWeek } from "@/lib/channel-entry-analysis";
+import { entryActorError, entryDraftOf, entryHasSavedData, EntryRequestError, saveEntryBatch } from "@/lib/channel-entry-editor";
 import EntryDashboard from "./EntryDashboard";
 import ThemeToggle from "@/components/common/ThemeToggle";
 
 dayjs.locale("zh-cn");
 
-function draftOf(row: EntryRow): EntryDraft {
-  return { owner: row.owner, remark: row.remark, version: row.version, weeks: row.weeks.map(({ weekNumber, salesAmountOriginal, adSpendOriginal }) => ({ weekNumber, salesAmountOriginal, adSpendOriginal })) };
-}
 async function jsonResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.message || `请求失败 (${response.status})`);
+  let data;
+  try { data = await response.json(); }
+  catch { throw new EntryRequestError(`服务响应异常（${response.status}），请稍后重试`, response.status); }
+  if (!response.ok) throw new EntryRequestError(data.message || `请求失败 (${response.status})`, response.status);
   return data as T;
 }
 function displayAuditValue(value: string | number | null) { return value === null || value === "" ? "未填写" : String(value); }
@@ -29,15 +29,22 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
   const [data, setData] = useState<EntryData | null>(null);
   const [drafts, setDrafts] = useState<Record<number, EntryDraft>>({});
   const [actorName, setActorName] = useState("");
+  const [actorLoaded, setActorLoaded] = useState(false);
+  const [actorTouched, setActorTouched] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [saveProgress, setSaveProgress] = useState<{ saved: number; total: number } | null>(null);
+  const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
+  const [saveNotice, setSaveNotice] = useState("");
+  const saveLock = useRef(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [statsWeek, setStatsWeek] = useState(0);
   const selectedWeek = statsWeek || data?.latestWeek || 1;
   const [search, setSearch] = useState("");
   const [blockFilter, setBlockFilter] = useState<string | undefined>();
+  const [onlyDirty, setOnlyDirty] = useState(false);
   const [focusedId, setFocusedId] = useState<number | null>(null);
   const [auditOpen, setAuditOpen] = useState(false);
   const [audits, setAudits] = useState<EntryAudit[]>([]);
@@ -45,12 +52,15 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
   const [auditError, setAuditError] = useState("");
   const tableRef = useRef<HTMLDivElement>(null);
   const dirtyCount = Object.keys(drafts).length;
-  const busy = loading || savingId !== null;
+  const busy = loading || saveProgress !== null;
+  const actorError = actorTouched ? entryActorError(actorName) : "";
 
   useEffect(() => {
-    try { const name = localStorage.getItem("channel-entry-actor") || ""; queueMicrotask(() => setActorName(name)); } catch { /* Private browsing can disable storage. */ }
+    let name = "";
+    try { name = localStorage.getItem("channel-entry-actor") || ""; } catch { /* Private browsing can disable storage. */ }
+    queueMicrotask(() => { setActorName(name); setActorLoaded(true); });
   }, []);
-  useEffect(() => { try { localStorage.setItem("channel-entry-actor", actorName); } catch { /* Name still works for this session. */ } }, [actorName]);
+  useEffect(() => { if (actorLoaded) { try { localStorage.setItem("channel-entry-actor", actorName); } catch { /* Name still works for this session. */ } } }, [actorName, actorLoaded]);
   useEffect(() => {
     const controller = new AbortController();
     let live = true;
@@ -61,7 +71,7 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
         const query = new URLSearchParams({ year: String(period.year), month: String(period.month) });
         const next = await jsonResponse<EntryData>(await fetch(`/api/channel-entry?${query}`, { cache: "no-store", signal: controller.signal }));
         if (!live) return;
-        setData(next); setDrafts({}); setWarnings(prepared.warnings || []);
+        setData(next); setDrafts({}); setRowErrors({}); setSaveNotice(""); setOnlyDirty(false); setWarnings(prepared.warnings || []);
         window.history.replaceState(null, "", `/channel-entry?${query}`);
       } catch (failure) { if (live && !controller.signal.aborted) { setData(null); setError(failure instanceof Error ? failure.message : "数据加载失败"); } }
       finally { if (live) setLoading(false); }
@@ -79,38 +89,73 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
     if (focusedId === null) return;
     const element = tableRef.current?.querySelector(`[data-row-key="${focusedId}"]`);
     element?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [focusedId, search, blockFilter]);
+  }, [focusedId, search, blockFilter, onlyDirty]);
+
+  function locateRow(id: number) {
+    setSearch(""); setBlockFilter(undefined); setOnlyDirty(false); setFocusedId(null);
+    requestAnimationFrame(() => setFocusedId(id));
+  }
 
   function guard(action: () => void) {
-    if (busy) return;
+    if (busy || saveLock.current) return;
     if (!dirtyCount) { action(); return; }
-    modal.confirm({ title: `有 ${dirtyCount} 行未保存`, content: "切换月份或重新加载会丢弃这些修改。", okText: "放弃修改", cancelText: "返回保存", okButtonProps: { danger: true }, onOk: action });
+    modal.confirm({ title: `有 ${dirtyCount} 行未保存`, content: "切换月份或重新加载会丢弃这些修改。", okText: "放弃修改", cancelText: "继续填写", okButtonProps: { danger: true }, onOk: action });
   }
   function edit(row: EntryRow, updater: (draft: EntryDraft) => EntryDraft) {
+    if (busy) return;
+    setSaveNotice("");
     setDrafts((current) => {
-      const next = updater(current[row.channelId] ?? draftOf(row));
+      const next = updater(current[row.channelId] ?? entryDraftOf(row));
       const result = { ...current };
-      if (JSON.stringify(next) === JSON.stringify(draftOf(row))) delete result[row.channelId];
+      if (JSON.stringify(next) === JSON.stringify(entryDraftOf(row))) delete result[row.channelId];
       else result[row.channelId] = next;
       return result;
     });
   }
-  async function saveRow(row: EntryRow): Promise<boolean> {
-    if (!actorName.trim()) { message.warning("请先填写姓名，便于记录本次修改"); document.getElementById("entry-actor")?.focus(); return false; }
-    const draft = drafts[row.channelId];
-    if (!draft) return true;
-    setSavingId(row.channelId);
-    try {
-      const result = await jsonResponse<{ row: EntryRow }>(await fetch(`/api/channel-entry/rows/${row.channelId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...period, ...draft, actorName }) }));
-      setData((current) => current ? { ...current, rows: current.rows.map((item) => item.channelId === row.channelId ? result.row : item), updatedAt: result.row.updatedAt } : current);
-      setDrafts((current) => { const next = { ...current }; delete next[row.channelId]; return next; });
-      message.success(`${row.businessLine} 已保存，看板已更新`);
-      return true;
-    } catch (failure) { message.error(failure instanceof Error ? failure.message : "保存失败，修改仍保留在页面中", 7); return false; }
-    finally { setSavingId(null); }
+  function checkActor() {
+    setActorTouched(true);
+    if (!entryActorError(actorName)) return true;
+    const field = document.getElementById("entry-actor");
+    field?.focus({ preventScroll: true });
+    field?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return false;
   }
-  async function saveAll() {
-    for (const row of data?.rows ?? []) if (drafts[row.channelId] && !(await saveRow(row))) break;
+  async function saveRows(rows: EntryRow[]) {
+    if (busy || saveLock.current) return;
+    const pending = rows.filter((row) => drafts[row.channelId]).map((row) => ({ row, draft: drafts[row.channelId] }));
+    if (!pending.length || !checkActor()) return;
+    saveLock.current = true;
+    setSaveNotice(""); setSaveProgress({ saved: 0, total: pending.length });
+    try {
+      const result = await saveEntryBatch(pending, async ({ row, draft }) => {
+        setSavingId(row.channelId);
+        const response = await jsonResponse<{ row: EntryRow }>(await fetch(`/api/channel-entry/rows/${row.channelId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...period, ...draft, actorName: actorName.trim() }) }));
+        return response.row;
+      }, (row, saved) => {
+        setData((current) => current ? { ...current, rows: current.rows.map((item) => item.channelId === row.channelId ? row : item), updatedAt: row.updatedAt } : current);
+        setDrafts((current) => { const next = { ...current }; delete next[row.channelId]; return next; });
+        setRowErrors((current) => { const next = { ...current }; delete next[row.channelId]; return next; });
+        setSaveProgress({ saved, total: pending.length });
+      });
+      if (result.failed) {
+        const failed = result.failed;
+        setRowErrors((current) => ({ ...current, [failed.channelId]: failed.message }));
+        setSaveNotice(`已保存 ${result.saved.length} 行，${pending.length - result.saved.length} 行未保存。请查看红字提示。`);
+        locateRow(failed.channelId);
+      } else {
+        const notice = `已保存 ${result.saved.length} 行，看板已更新`;
+        setSaveNotice(notice);
+        message.open({ key: "channel-entry-save", type: "success", content: notice });
+      }
+    } finally { setSavingId(null); setSaveProgress(null); saveLock.current = false; }
+  }
+  function undoRow(row: EntryRow) {
+    if (busy || saveLock.current) return;
+    modal.confirm({ title: `撤销 ${row.businessLine} 的未保存修改？`, content: "只撤销这行尚未提交的修改，不影响已保存的数据。", okText: "撤销修改", cancelText: "继续填写", onOk: () => {
+      setDrafts((current) => { const next = { ...current }; delete next[row.channelId]; return next; });
+      setRowErrors((current) => { const next = { ...current }; delete next[row.channelId]; return next; });
+      setSaveNotice("");
+    } });
   }
   async function showAudits() {
     setAuditOpen(true); setAuditLoading(true); setAuditError("");
@@ -129,22 +174,38 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
     const url = URL.createObjectURL(new Blob(["\uFEFF", [header, ...lines].map((line) => line.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = `渠道填报_${period.year}-${String(period.month).padStart(2, "0")}.csv`; link.click(); URL.revokeObjectURL(url);
   }
-  const visibleRows = useMemo(() => (data?.rows ?? []).filter((row) => (!blockFilter || row.businessBlock === blockFilter) && `${row.businessLine} ${row.channelName} ${drafts[row.channelId]?.owner ?? row.owner}`.toLowerCase().includes(search.toLowerCase())), [data, drafts, search, blockFilter]);
+  function requestExport() {
+    if (dirtyCount) modal.confirm({ title: `还有 ${dirtyCount} 行未保存`, content: "导出只包含已保存的数据，不包含当前未提交的修改。", okText: "导出已保存数据", cancelText: "返回填写", onOk: exportData });
+    else exportData();
+  }
+  const visibleRows = useMemo(() => (data?.rows ?? []).filter((row) => (!onlyDirty || drafts[row.channelId]) && (!blockFilter || row.businessBlock === blockFilter) && `${row.businessLine} ${row.channelName} ${drafts[row.channelId]?.owner ?? row.owner}`.toLowerCase().includes(search.toLowerCase())), [data, drafts, search, blockFilter, onlyDirty]);
+  const hiddenDirtyCount = dirtyCount - visibleRows.filter((row) => drafts[row.channelId]).length;
+  const failedIds = Object.keys(rowErrors).map(Number).filter((id) => drafts[id]);
   const columns: ColumnsType<EntryRow> = [
     { title: "板块", key: "block", width: 95, fixed: "left", render: (_, row) => <span className="entry-block-badge" style={{ background: ENTRY_BLOCK_COLORS[row.businessBlock] || ENTRY_BLOCK_COLORS.other }}>{row.businessBlockLabel}</span> },
     { title: "渠道 / 录入币种", key: "channel", width: 215, fixed: "left", render: (_, row) => <div className="entry-channel-name"><b>{row.businessLine}</b><span>{row.channelName}</span><small>{row.currency} · 折算汇率 {row.exchangeRate}</small></div> },
-    { title: "负责人", key: "owner", width: 120, render: (_, row) => <Input aria-label={`${row.businessLine} 负责人`} disabled={busy || !row.editable} maxLength={80} value={drafts[row.channelId]?.owner ?? row.owner} placeholder="负责人" onChange={(event) => edit(row, (draft) => ({ ...draft, owner: event.target.value }))} /> },
+    { title: "渠道负责人", key: "owner", width: 120, render: (_, row) => <Input aria-label={`${row.businessLine} 负责人`} disabled={busy || !row.editable} maxLength={80} value={drafts[row.channelId]?.owner ?? row.owner} placeholder="负责人" className={drafts[row.channelId] && drafts[row.channelId].owner !== row.owner ? "entry-input-changed" : undefined} onChange={(event) => edit(row, (draft) => ({ ...draft, owner: event.target.value }))} /> },
     ...[1, 2, 3, 4, 5].map((weekNumber) => ({
       title: `W${weekNumber}`, key: `week-${weekNumber}`, className: weekNumber === selectedWeek ? "entry-week-current" : undefined,
       children: (["salesAmountOriginal", "adSpendOriginal"] as const).map((field) => ({ title: field === "salesAmountOriginal" ? "销售额" : "广告费", key: `${weekNumber}-${field}`, width: 117, align: "right" as const,
         render: (_: unknown, row: EntryRow) => {
           const value = (drafts[row.channelId]?.weeks ?? row.weeks).find((w) => w.weekNumber === weekNumber)?.[field] ?? null;
-          return <InputNumber<number> aria-label={`${row.businessLine} ${row.channelName} W${weekNumber}${field === "salesAmountOriginal" ? "销售" : "广告"}`} disabled={busy || !row.editable} value={value} placeholder="未填" controls={false} precision={2} min={field === "adSpendOriginal" ? 0 : undefined} max={999999999999} className={value === null ? "entry-input-blank" : ""} onChange={(amount) => edit(row, (draft) => ({ ...draft, weeks: draft.weeks.map((week) => week.weekNumber === weekNumber ? { ...week, [field]: amount } : week) }))} />;
+          const changed = value !== (row.weeks.find((week) => week.weekNumber === weekNumber)?.[field] ?? null);
+          return <InputNumber<number> aria-label={`${row.businessLine} ${row.channelName} W${weekNumber}${field === "salesAmountOriginal" ? "销售" : "广告"}`} disabled={busy || !row.editable} value={value} placeholder="未填" controls={false} precision={2} min={field === "adSpendOriginal" ? 0 : undefined} max={999999999999} className={`${value === null ? "entry-input-blank" : ""}${changed ? " entry-input-changed" : ""}`} onChange={(amount) => edit(row, (draft) => ({ ...draft, weeks: draft.weeks.map((week) => week.weekNumber === weekNumber ? { ...week, [field]: amount } : week) }))} />;
         },
       })),
     })),
-    { title: "备注", key: "remark", width: 190, render: (_, row) => <Input.TextArea aria-label={`${row.businessLine} 备注`} disabled={busy || !row.editable} value={drafts[row.channelId]?.remark ?? row.remark} placeholder="活动、退款等说明（选填）" maxLength={2000} autoSize={{ minRows: 1, maxRows: 3 }} onChange={(event) => edit(row, (draft) => ({ ...draft, remark: event.target.value }))} /> },
-    { title: "保存状态", key: "save", width: 115, fixed: "right", render: (_, row) => <div className="entry-save-cell">{drafts[row.channelId] ? <Button size="small" type="primary" icon={<SaveOutlined />} loading={savingId === row.channelId} disabled={busy && savingId !== row.channelId} onClick={() => void saveRow(row)}>保存本行</Button> : <Tag color={row.editable ? "green" : "orange"}>{row.editable ? "已保存" : "待配置"}</Tag>}<small>{drafts[row.channelId] ? "修改尚未计入看板" : entryWeek(row, selectedWeek).salesAmountOriginal !== null && entryWeek(row, selectedWeek).adSpendOriginal !== null ? `W${selectedWeek} 已填齐` : `W${selectedWeek} 待填写`}</small></div> },
+    { title: "备注", key: "remark", width: 190, render: (_, row) => <Input.TextArea aria-label={`${row.businessLine} 备注`} disabled={busy || !row.editable} value={drafts[row.channelId]?.remark ?? row.remark} className={drafts[row.channelId] && drafts[row.channelId].remark !== row.remark ? "entry-input-changed" : undefined} placeholder="活动、退款等说明（选填）" maxLength={2000} autoSize={{ minRows: 1, maxRows: 3 }} onChange={(event) => edit(row, (draft) => ({ ...draft, remark: event.target.value }))} /> },
+    { title: "保存状态", key: "save", width: 180, fixed: "right", render: (_, row) => <div className="entry-save-cell">
+      {drafts[row.channelId] ? <>
+        <Tag color={rowErrors[row.channelId] ? "red" : "orange"}>{rowErrors[row.channelId] ? "保存失败" : "未保存"}</Tag>
+        <div className="entry-row-actions"><Button size="small" type="primary" icon={<SaveOutlined />} loading={savingId === row.channelId} disabled={busy && savingId !== row.channelId} onClick={() => void saveRows([row])}>{rowErrors[row.channelId] ? "重试保存" : "保存本行"}</Button><Button size="small" type="text" disabled={busy} onClick={() => undoRow(row)}>撤销</Button></div>
+        {rowErrors[row.channelId] ? <small className="entry-field-error">{rowErrors[row.channelId]}</small> : <small>保存后计入看板</small>}
+      </> : <>
+        <Tag color={!row.editable ? "orange" : entryHasSavedData(row) ? "green" : "default"}>{!row.editable ? "待配置" : entryHasSavedData(row) ? "已保存" : "未填写"}</Tag>
+        <small>{entryWeek(row, selectedWeek).salesAmountOriginal !== null && entryWeek(row, selectedWeek).adSpendOriginal !== null ? `W${selectedWeek} 已填齐` : `W${selectedWeek} 待填写`}</small>
+      </>}
+    </div> },
   ];
 
   return <div className="channel-entry-shell">
@@ -154,15 +215,34 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
         <label htmlFor="entry-month">统计月份</label><DatePicker id="entry-month" aria-label="统计月份" picker="month" allowClear={false} disabled={busy} value={dayjs(`${period.year}-${String(period.month).padStart(2, "0")}-01`)} format="YYYY年M月" minDate={dayjs("2000-01-01")} maxDate={dayjs("2100-12-31")} onChange={(value) => { if (value) guard(() => { setStatsWeek(0); setPeriod({ year: value.year(), month: value.month() + 1 }); }); }} />
         <label htmlFor="entry-stats-week">统计范围</label><Select id="entry-stats-week" aria-label="统计范围" className="entry-stats-week" disabled={busy} value={statsWeek} onChange={setStatsWeek} options={[{ value: 0, label: "全月" }, ...[1, 2, 3, 4, 5].map((value) => ({ value, label: `W${value}` }))]} />
         <Button icon={<ReloadOutlined />} disabled={busy} onClick={() => guard(() => setRefreshKey((k) => k + 1))}>刷新</Button>
-      </div><div className="entry-tools"><Button icon={<PlusOutlined />} disabled={busy} onClick={() => guard(() => setRefreshKey((k) => k + 1))}>补齐本月行</Button><Button icon={<HistoryOutlined />} disabled={!data || busy} onClick={() => void showAudits()}>修改记录</Button><Button icon={<DownloadOutlined />} disabled={!data || busy} onClick={exportData}>导出</Button></div></div>
+      </div><div className="entry-tools"><Button icon={<PlusOutlined />} disabled={busy} onClick={() => guard(() => setRefreshKey((k) => k + 1))}>补齐本月行</Button><Button icon={<HistoryOutlined />} disabled={!data || busy} onClick={() => void showAudits()}>修改记录</Button><Button icon={<DownloadOutlined />} disabled={!data || busy} onClick={requestExport}>导出</Button></div></div>
       {error ? <Alert type="error" showIcon title="数据加载失败" description={error} action={<Button onClick={() => setRefreshKey((k) => k + 1)}>重试</Button>} /> : null}
       {warnings.length ? <Alert type="warning" showIcon title="部分渠道需要后台配置" description={warnings.join("；")} /> : null}
       {loading ? <div className="entry-loading"><Spin size="large" /><span>正在准备 {period.year} 年 {period.month} 月数据…</span></div> : data ? <>
-        <EntryDashboard data={data} statsWeek={statsWeek} selectedWeek={selectedWeek} onPeriodChange={setStatsWeek} onLocate={(id) => { setSearch(""); setBlockFilter(undefined); setFocusedId(null); requestAnimationFrame(() => setFocusedId(id)); }} />
+        <EntryDashboard data={data} statsWeek={statsWeek} selectedWeek={selectedWeek} onPeriodChange={setStatsWeek} onLocate={locateRow} />
         <section id="entry-input" className="entry-section" ref={tableRef}>
-          <div className="entry-section-heading"><div><h2>负责人填报</h2><p>留空表示未填，0 表示确认无发生。</p></div><Tag color={dirtyCount ? "orange" : "green"}>{dirtyCount ? `${dirtyCount} 行待保存` : "全部修改已保存"}</Tag></div>
-          <div className="entry-input-toolbar"><div><label htmlFor="entry-actor">填写人姓名</label><Input id="entry-actor" aria-label="填写人姓名" value={actorName} onChange={(event) => setActorName(event.target.value)} maxLength={80} placeholder="保存前填写姓名" disabled={busy} /><Button type="primary" icon={<SaveOutlined />} disabled={!dirtyCount || busy} onClick={() => void saveAll()}>保存全部改动</Button></div><div><Select aria-label="筛选板块" allowClear placeholder="全部板块" value={blockFilter} onChange={setBlockFilter} options={Array.from(new Map(data.rows.map((row) => [row.businessBlock, { value: row.businessBlock, label: row.businessBlockLabel }])).values())} /><Input.Search allowClear aria-label="搜索渠道或负责人" placeholder="搜索渠道 / 负责人" value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>
-          <Table<EntryRow> bordered size="small" rowKey="channelId" columns={columns} dataSource={visibleRows} pagination={false} scroll={{ x: 1905 }} rowClassName={(row) => `entry-block-${row.businessBlock}${focusedId === row.channelId ? " entry-highlight" : ""}`} locale={{ emptyText: "当前筛选下没有渠道" }} />
+          <div className="entry-section-heading"><div><h2>负责人填报</h2><p>留空表示未填，0 表示确认无发生；橙框表示尚未保存的修改。</p></div><Tag color={dirtyCount ? "orange" : "default"}>{dirtyCount ? `${dirtyCount} 行待保存` : "无未保存改动"}</Tag></div>
+          <div className={`entry-input-toolbar${actorError ? " entry-toolbar-invalid" : ""}`}>
+            <div className="entry-save-controls">
+              <div className="entry-actor-field">
+                <label htmlFor="entry-actor"><span className="entry-required" aria-hidden="true">*</span> 填写人姓名</label>
+                <Input id="entry-actor" aria-label="填写人姓名" aria-required="true" aria-invalid={Boolean(actorError)} aria-describedby={actorError ? "entry-actor-error" : "entry-actor-help"} status={actorError ? "error" : undefined} value={actorName} onChange={(event) => setActorName(event.target.value)} onBlur={() => { if (dirtyCount) setActorTouched(true); }} maxLength={80} placeholder="填写你本人的姓名" disabled={busy} />
+                {actorError ? <small id="entry-actor-error" className="entry-field-error" role="alert">{actorError}</small> : <small id="entry-actor-help">用于修改留痕，与渠道负责人分开填写。</small>}
+              </div>
+              <div className="entry-save-actions">
+                <Button type="primary" icon={<SaveOutlined />} loading={saveProgress !== null} disabled={!dirtyCount || (busy && saveProgress === null)} onClick={() => void saveRows(data.rows)}>{saveProgress ? `正在保存 ${saveProgress.saved}/${saveProgress.total}` : `保存全部改动${dirtyCount ? `（${dirtyCount}）` : ""}`}</Button>
+                <small role="status">{saveProgress ? "请勿关闭页面" : saveNotice || (dirtyCount ? "修改未提交，看板暂未更新" : "保存后看板同步更新")}</small>
+              </div>
+            </div>
+            <div className="entry-filter-controls">
+              <Select aria-label="筛选板块" allowClear placeholder="全部板块" disabled={busy} value={blockFilter} onChange={setBlockFilter} options={Array.from(new Map(data.rows.map((row) => [row.businessBlock, { value: row.businessBlock, label: row.businessBlockLabel }])).values())} />
+              <Input.Search allowClear aria-label="搜索渠道或负责人" placeholder="搜索渠道 / 负责人" disabled={busy} value={search} onChange={(event) => setSearch(event.target.value)} />
+              <Checkbox checked={onlyDirty} disabled={busy} onChange={(event) => setOnlyDirty(event.target.checked)}>只看未保存</Checkbox>
+            </div>
+          </div>
+          {failedIds.length > 0 && <Alert type="error" showIcon title={`${failedIds.length} 行保存失败，修改仍保留在页面中`} description={rowErrors[failedIds[0]]} action={<Button size="small" disabled={busy} onClick={() => locateRow(failedIds[0])}>定位问题行</Button>} />}
+          <div className="entry-input-status"><span>显示 {visibleRows.length} / {data.rows.length} 个渠道</span>{hiddenDirtyCount > 0 && <span className="entry-neutral">另有 {hiddenDirtyCount} 行修改被筛选隐藏，“保存全部”也会提交这些行。</span>}</div>
+          <Table<EntryRow> bordered size="small" rowKey="channelId" columns={columns} dataSource={visibleRows} pagination={false} scroll={{ x: 1970 }} rowClassName={(row) => `entry-block-${row.businessBlock}${focusedId === row.channelId ? " entry-highlight" : ""}${drafts[row.channelId] ? " entry-row-dirty" : ""}`} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={onlyDirty ? "当前筛选下没有未保存的修改" : "当前筛选下没有渠道"}><Button onClick={() => { setOnlyDirty(false); setBlockFilter(undefined); setSearch(""); }}>显示全部渠道</Button></Empty> }} />
           <p className="entry-footnote">原币录入，人民币汇总。历史零值暂按未确认显示，确认无发生时请填写 0。</p>
         </section>
       </> : null}
