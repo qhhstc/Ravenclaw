@@ -10,6 +10,7 @@ import type { EntryAudit, EntryData, EntryDraft, EntryPeriod, EntryRow } from "@
 import { ENTRY_BLOCK_COLORS, entryWeek } from "@/lib/channel-entry-analysis";
 import { entryActorError, entryDraftOf, entryHasSavedData, EntryRequestError, saveEntryBatch } from "@/lib/channel-entry-editor";
 import EntryDashboard from "./EntryDashboard";
+import EntryExchangeRate from "./EntryExchangeRate";
 import ThemeToggle from "@/components/common/ThemeToggle";
 
 dayjs.locale("zh-cn");
@@ -36,6 +37,7 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
   const [warnings, setWarnings] = useState<string[]>([]);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [saveProgress, setSaveProgress] = useState<{ saved: number; total: number } | null>(null);
+  const [fxApplying, setFxApplying] = useState(false);
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [saveNotice, setSaveNotice] = useState("");
   const saveLock = useRef(false);
@@ -52,7 +54,7 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
   const [auditError, setAuditError] = useState("");
   const tableRef = useRef<HTMLDivElement>(null);
   const dirtyCount = Object.keys(drafts).length;
-  const busy = loading || saveProgress !== null;
+  const busy = loading || saveProgress !== null || fxApplying;
   const actorError = actorTouched ? entryActorError(actorName) : "";
 
   useEffect(() => {
@@ -80,11 +82,11 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
     return () => { live = false; controller.abort(); };
   }, [period, refreshKey]);
   useEffect(() => {
-    if (!dirtyCount) return;
+    if (!dirtyCount && !fxApplying && !saveProgress) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirtyCount]);
+  }, [dirtyCount, fxApplying, saveProgress]);
   useEffect(() => {
     if (focusedId === null) return;
     const element = tableRef.current?.querySelector(`[data-row-key="${focusedId}"]`);
@@ -219,6 +221,7 @@ export default function PublicChannelEntryPage({ initialPeriod }: { initialPerio
       {error ? <Alert type="error" showIcon title="数据加载失败" description={error} action={<Button onClick={() => setRefreshKey((k) => k + 1)}>重试</Button>} /> : null}
       {warnings.length ? <Alert type="warning" showIcon title="部分渠道需要后台配置" description={warnings.join("；")} /> : null}
       {loading ? <div className="entry-loading"><Spin size="large" /><span>正在准备 {period.year} 年 {period.month} 月数据…</span></div> : data ? <>
+        <EntryExchangeRate key={`${data.year}-${data.month}`} data={data} actorName={actorName} onActorChange={setActorName} dirtyCount={dirtyCount} busy={busy} onBusyChange={setFxApplying} onApplied={(next) => { setData(next); setRowErrors({}); setSaveNotice("汇率已更新，看板已重新计算"); }} />
         <EntryDashboard data={data} statsWeek={statsWeek} selectedWeek={selectedWeek} onPeriodChange={setStatsWeek} onLocate={locateRow} />
         <section id="entry-input" className="entry-section" ref={tableRef}>
           <div className="entry-section-heading"><div><h2>负责人填报</h2><p>留空表示未填，0 表示确认无发生；橙框表示尚未保存的修改。</p></div><Tag color={dirtyCount ? "orange" : "default"}>{dirtyCount ? `${dirtyCount} 行待保存` : "无未保存改动"}</Tag></div>

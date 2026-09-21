@@ -222,6 +222,18 @@ a {
 .entry-toolbar { justify-content: space-between; padding: 15px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
 .entry-period-control label, .entry-input-toolbar label { font-weight: 600; white-space: nowrap; }
 .entry-period-control .entry-stats-week { min-width: 100px; }
+.entry-fx-bar { display: flex; align-items: center; gap: 12px 24px; flex-wrap: wrap; min-width: 0; padding: 12px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
+.entry-fx-applied, .entry-fx-reference { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.entry-fx-applied .ant-select { min-width: 145px; }
+.entry-fx-reference { flex: 1; }
+.entry-fx-bar small, .entry-fx-help { color: var(--muted); font-size: 11px; }
+.entry-fx-bar .entry-fx-warning { flex-basis: 100%; color: #b45309; }
+.entry-fx-form { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }
+.entry-fx-form p, .entry-fx-form small { color: var(--muted); }
+.entry-fx-form .ant-input-number { width: 200px; }
+.entry-fx-form .entry-field-error { color: #dc2626; }
+:root[data-theme="dark"] .entry-fx-bar .entry-fx-warning { color: #fbbf24; }
+:root[data-theme="dark"] .entry-fx-form .entry-field-error { color: #fb7185; }
 .entry-section { display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 18px; }
 .entry-section-heading { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; justify-content: space-between; }
 .entry-section-heading h2 { margin: 4px 0 6px; font-size: 22px; line-height: 1.3; font-weight: 700; }

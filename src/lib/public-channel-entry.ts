@@ -4,6 +4,7 @@ import { businessBlockLabel, resolveChannelBusinessBlock } from "@/lib/business-
 import { buildChannelWhere, PERIOD_TYPE_WEEK, WEEK_NUMBERS, toDecimal, toNumber } from "@/lib/channel-data";
 import { prisma } from "@/lib/prisma";
 import type { EntryAudit, EntryChange, EntryData, EntryDraft, EntryPeriod, EntryRow } from "./channel-entry-types";
+import { getEntryFxQuote } from "./channel-entry-fx-quotes";
 
 export class EntryError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -22,7 +23,7 @@ export function entryPeriodFromQuery(params: URLSearchParams) {
   return validateEntryPeriod(params.get("year") ?? current.year, params.get("month") ?? current.month);
 }
 function priorMonth({ year, month }: EntryPeriod): EntryPeriod { return month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 }; }
-function publicEntryChannelWhere(year: number, month: number): Prisma.ChannelWhereInput {
+export function publicEntryChannelWhere(year: number, month: number): Prisma.ChannelWhereInput {
   return {
     ...buildChannelWhere({ year, month }),
     OR: [
@@ -35,11 +36,13 @@ function entered(value: unknown, flag: boolean | null) {
   const amount = toNumber(value);
   return amount !== 0 || flag === true ? amount : null;
 }
-function recordSnapshot(metrics: ChannelMetricPeriod[]): EntryDraft & { currency: string; exchangeRate: number } {
+type RateSnapshot = EntryDraft & { currency?: string; exchangeRate?: number; weekRates?: Array<{ weekNumber: number; rate: number }> };
+export function recordSnapshot(metrics: ChannelMetricPeriod[]): EntryDraft & { currency: string; exchangeRate: number; weekRates: Array<{ weekNumber: number; rate: number }> } {
   const first = metrics.find((metric) => metric.weekNumber === 1) ?? metrics[0];
   return {
     owner: first?.decisionOwner ?? "", remark: first?.remark ?? "", currency: first?.currency ?? "CNY", exchangeRate: toNumber(first?.exchangeRate, 1),
     version: createHash("sha256").update(JSON.stringify(metrics.map((metric) => [metric.id, metric.updatedAt, metric.salesAmountOriginal, metric.adSpendOriginal, metric.entrySalesEntered, metric.entryAdSpendEntered, metric.currency, metric.exchangeRate, metric.decisionOwner, metric.remark]))).digest("hex"),
+    weekRates: metrics.map((metric) => ({ weekNumber: metric.weekNumber!, rate: toNumber(metric.exchangeRate) })),
     weeks: WEEK_NUMBERS.map((weekNumber) => {
       const metric = metrics.find((item) => item.weekNumber === weekNumber);
       return { weekNumber, salesAmountOriginal: metric ? entered(metric.salesAmountOriginal, metric.entrySalesEntered) : null, adSpendOriginal: metric ? entered(metric.adSpendOriginal, metric.entryAdSpendEntered) : null };
@@ -91,12 +94,30 @@ export async function preparePublicChannelMonth(year: number, month: number) {
   const known = new Set(existing.map((metric) => `${metric.channelId}-${metric.weekNumber}`));
   const warnings: string[] = [];
   const pending: Prisma.ChannelMetricPeriodCreateManyInput[] = [];
+  const monthRates = new Map<string, number>();
+  const observedRates = new Map<string, Set<number>>();
+  // Existing same-month rates (including manual overrides) remain the accounting snapshot.
+  for (const metric of existing) {
+    if (!observedRates.has(metric.currency)) observedRates.set(metric.currency, new Set());
+    observedRates.get(metric.currency)!.add(toNumber(metric.exchangeRate));
+  }
+  for (const [currency, values] of observedRates) if (values.size === 1) monthRates.set(currency, [...values][0]);
+  const today = new Date().toISOString().slice(0, 10);
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
   for (const channel of channels) {
     if (WEEK_NUMBERS.every((week) => known.has(`${channel.id}-${week}`))) continue;
     if (!channel.brandId || !channel.platformId) { warnings.push(`${channel.businessLine} / ${channel.channelName} 缺少品牌或平台，暂不可填报`); continue; }
-    const last = existing.find((metric) => metric.channelId === channel.id) ?? history.find((metric) => metric.channelId === channel.id);
+    const inMonth = existing.find((metric) => metric.channelId === channel.id);
+    const last = inMonth ?? history.find((metric) => metric.channelId === channel.id);
     const currency = last?.currency ?? channel.store?.defaultCurrency ?? channel.brand?.defaultCurrency ?? "CNY";
-    const rate = last ? toNumber(last.exchangeRate) : currency === "CNY" ? 1 : toNumber(rates.find((item) => item.baseCurrency === currency)?.rate);
+    let rate = currency === "CNY" ? 1 : inMonth ? toNumber(inMonth.exchangeRate) : monthRates.get(currency);
+    if (rate === undefined && (observedRates.get(currency)?.size ?? 0) > 1 && last) rate = toNumber(last.exchangeRate);
+    if (rate === undefined) {
+      const reference = await getEntryFxQuote(currency, monthEnd < today ? { asOf: monthEnd } : {});
+      rate = reference.rate !== null && !reference.stale ? reference.rate : last ? toNumber(last.exchangeRate) : toNumber(rates.find((item) => item.baseCurrency === currency)?.rate);
+      if (reference.stale) warnings.push(`${currency} 最新参考汇率未获取到，暂沿用 ${rate}，请核对后在汇率栏调整`);
+      monthRates.set(currency, rate);
+    }
     if (rate <= 0) { warnings.push(`${channel.businessLine} / ${channel.channelName} 缺少 ${currency}→CNY 汇率，请在后台配置`); continue; }
     const businessBlock = resolveChannelBusinessBlock({ channelGroup: channel.channelGroup, businessBlock: last?.businessBlock, businessLine: channel.businessLine, platformName: channel.platform?.name, storeType: channel.store?.storeType, channelType: channel.channelType });
     for (const weekNumber of WEEK_NUMBERS) {
@@ -117,8 +138,17 @@ function boundedText(value: unknown, label: string, limit: number): string {
   if (typeof value !== "string" || value.length > limit) throw new EntryError(`${label}格式不正确，最多 ${limit} 字`);
   return value.trim();
 }
-export function changesBetween(before: EntryDraft, after: EntryDraft): EntryChange[] {
+export function changesBetween(before: RateSnapshot, after: RateSnapshot): EntryChange[] {
   const changes: EntryChange[] = [];
+  if (before.weekRates && after.weekRates) {
+    const uniformBefore = new Set(before.weekRates.map((item) => item.rate));
+    const uniformAfter = new Set(after.weekRates.map((item) => item.rate));
+    if (uniformBefore.size === 1 && uniformAfter.size === 1 && before.exchangeRate !== after.exchangeRate) changes.push({ label: `${after.currency ?? "原币"}→CNY 汇率`, before: before.exchangeRate ?? null, after: after.exchangeRate ?? null });
+    else for (const week of after.weekRates) {
+      const previous = before.weekRates.find((item) => item.weekNumber === week.weekNumber);
+      if (previous && previous.rate !== week.rate) changes.push({ label: `W${week.weekNumber} 折算汇率`, before: previous.rate, after: week.rate });
+    }
+  }
   for (const [key, label] of [["owner", "负责人"], ["remark", "备注"]] as const) if (before[key] !== after[key]) changes.push({ label, before: before[key], after: after[key] });
   for (const week of after.weeks) {
     const old = before.weeks.find((item) => item.weekNumber === week.weekNumber);
@@ -158,7 +188,7 @@ export async function updatePublicChannelEntry(input: { year: unknown; month: un
       if (rate <= 0) throw new EntryError("渠道汇率无效，请联系管理员");
       await tx.channelMetricPeriod.update({ where: { id: metric.id }, data: {
         salesAmountOriginal: toDecimal(week.salesAmountOriginal ?? 0), adSpendOriginal: toDecimal(week.adSpendOriginal ?? 0),
-        salesAmountBase: toDecimal((week.salesAmountOriginal ?? 0) * rate), adSpendBase: toDecimal((week.adSpendOriginal ?? 0) * rate),
+        salesAmountBase: new Prisma.Decimal(week.salesAmountOriginal ?? 0).mul(metric.exchangeRate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP), adSpendBase: new Prisma.Decimal(week.adSpendOriginal ?? 0).mul(metric.exchangeRate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
         entrySalesEntered: week.salesAmountOriginal !== null, entryAdSpendEntered: week.adSpendOriginal !== null,
         decisionOwner: owner || null, remark: remark || null,
       } });
